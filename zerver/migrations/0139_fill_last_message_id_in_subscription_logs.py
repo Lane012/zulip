@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
-from django.db import migrations, models
-from django.db.backends.postgresql_psycopg2.schema import DatabaseSchemaEditor
+from django.db import migrations
+from django.db.backends.postgresql.schema import DatabaseSchemaEditor
 from django.db.migrations.state import StateApps
+
 
 def backfill_last_message_id(apps: StateApps, schema_editor: DatabaseSchemaEditor) -> None:
     event_type = ['subscription_created', 'subscription_deactivated', 'subscription_activated']
@@ -20,5 +18,6 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(backfill_last_message_id,
-                             reverse_code=migrations.RunPython.noop),
+                             reverse_code=migrations.RunPython.noop,
+                             elidable=True),
     ]

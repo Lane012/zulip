@@ -1,4 +1,3 @@
-
 import argparse
 import sys
 from typing import Any
@@ -8,16 +7,15 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import CommandError
 from django.db.utils import IntegrityError
 
-from zerver.lib.actions import do_create_user, notify_new_user
+from zerver.lib.actions import do_create_user
 from zerver.lib.initial_password import initial_password
 from zerver.lib.management import ZulipBaseCommand
-from zerver.models import email_to_username
+
 
 class Command(ZulipBaseCommand):
     help = """Create the specified user with a default initial password.
 
-A user MUST have ALREADY accepted the Terms of Service before creating their
-account this way.
+Set tos_version=None, so that the user needs to do a ToS flow on login.
 
 Omit both <email> and <full name> for interactive user creation.
 """
@@ -78,17 +76,22 @@ parameters, or specify no parameters for interactive user creation.""")
                 full_name = input("Full name: ")
 
         try:
-            if 'password' in options:
+            if options['password_file']:
+                with open(options['password_file']) as f:
+                    pw = f.read()
+            elif options['password']:
                 pw = options['password']
-            if 'password_file' in options:
-                pw = open(options['password_file'], 'r').read()
             else:
                 user_initial_password = initial_password(email)
                 if user_initial_password is None:
                     raise CommandError("Password is unusable.")
-                pw = user_initial_password.encode()
-            notify_new_user(do_create_user(email, pw,
-                                           realm, full_name, email_to_username(email)),
-                            internal=True)
+                pw = user_initial_password
+            do_create_user(
+                email,
+                pw,
+                realm,
+                full_name,
+                acting_user=None,
+            )
         except IntegrityError:
             raise CommandError("User already exists.")

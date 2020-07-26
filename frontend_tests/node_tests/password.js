@@ -1,15 +1,13 @@
-zrequire('zxcvbn', 'node_modules/zxcvbn/dist/zxcvbn');
-zrequire('common');
+set_global("zxcvbn", zrequire("zxcvbn", "zxcvbn"));
+zrequire("common");
 
-set_global('i18n', global.stub_i18n);
+run_test("basics", () => {
+    let accepted;
+    let password;
+    let warning;
 
-(function test_basics() {
-    var accepted;
-    var password;
-    var warning;
-
-    var bar = (function () {
-        var self = {};
+    const bar = (function () {
+        const self = {};
 
         self.width = function (width) {
             self.w = width;
@@ -17,7 +15,7 @@ set_global('i18n', global.stub_i18n);
         };
 
         self.removeClass = function (arg) {
-            assert.equal(arg, 'bar-success bar-danger');
+            assert.equal(arg, "bar-success bar-danger");
             return self;
         };
 
@@ -27,15 +25,15 @@ set_global('i18n', global.stub_i18n);
         };
 
         return self;
-    }());
+    })();
 
     function password_field(min_length, min_guesses) {
-        var self = {};
+        const self = {};
 
         self.data = function (field) {
-            if (field === 'minLength') {
+            if (field === "minLength") {
                 return min_length;
-            } else if (field === 'minGuesses') {
+            } else if (field === "minGuesses") {
                 return min_guesses;
             }
         };
@@ -43,33 +41,33 @@ set_global('i18n', global.stub_i18n);
         return self;
     }
 
-    password = 'z!X4@S_&';
+    password = "z!X4@S_&";
     accepted = common.password_quality(password, bar, password_field(10, 80000));
     assert(!accepted);
-    assert.equal(bar.w, '39.7%');
-    assert.equal(bar.added_class, 'bar-danger');
+    assert.equal(bar.w, "39.7%");
+    assert.equal(bar.added_class, "bar-danger");
     warning = common.password_warning(password, password_field(10));
-    assert.equal(warning, 'translated: Password should be at least 10 characters long');
+    assert.equal(warning, "translated: Password should be at least 10 characters long");
 
-    password = 'foo';
+    password = "foo";
     accepted = common.password_quality(password, bar, password_field(2, 200));
     assert(accepted);
-    assert.equal(bar.w, '10.390277164940581%');
-    assert.equal(bar.added_class, 'bar-success');
+    assert.equal(bar.w, "10.390277164940581%");
+    assert.equal(bar.added_class, "bar-success");
     warning = common.password_warning(password, password_field(2));
-    assert.equal(warning, 'translated: Password is too weak');
+    assert.equal(warning, "translated: Password is too weak");
 
-    password = 'aaaaaaaa';
+    password = "aaaaaaaa";
     accepted = common.password_quality(password, bar, password_field(6, 1e100));
     assert(!accepted);
-    assert.equal(bar.added_class, 'bar-danger');
+    assert.equal(bar.added_class, "bar-danger");
     warning = common.password_warning(password, password_field(6));
     assert.equal(warning, 'Repeats like "aaa" are easy to guess');
 
     delete global.zxcvbn;
-    password = 'aaaaaaaa';
+    password = "aaaaaaaa";
     accepted = common.password_quality(password, bar, password_field(6, 1e100));
     assert(accepted === undefined);
     warning = common.password_warning(password, password_field(6));
     assert(warning === undefined);
-}());
+});

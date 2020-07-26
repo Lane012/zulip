@@ -1,6 +1,4 @@
 # Code
-/min/
-/source-map/
 /webpack-bundles
 
 # Generated static files
@@ -9,18 +7,8 @@
 /generated/bots/
 # From emoji
 /generated/emoji
+/generated/emoji-styles
 # From passing pygments data to the frontend
-/generated/pygments_data.js
-# From `tools/update-authors-json`
-/generated/github-contributors.json
-# From tools/generate-custom-icon-webfont
-/generated/icons/
-
-# Generated i18n data
-/locale/en
-/locale/language_options.json
-/locale/language_name_map.json
-/locale/*/mobile.json
-
+/generated/pygments_data.json
 # Legacy emoji data directory
 /third/emoji-data

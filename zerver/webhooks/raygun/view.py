@@ -1,14 +1,13 @@
-from typing import Any, Dict, Optional, Text
+import time
+from typing import Any, Dict
 
 from django.http import HttpRequest, HttpResponse
 
 from zerver.decorator import api_key_only_webhook_view
 from zerver.lib.request import REQ, has_request_variables
 from zerver.lib.response import json_success
-from zerver.lib.webhooks.common import check_send_webhook_message
+from zerver.lib.webhooks.common import UnexpectedWebhookEventType, check_send_webhook_message
 from zerver.models import UserProfile
-
-import time
 
 
 @api_key_only_webhook_view('Raygun')
@@ -31,7 +30,7 @@ def api_raygun_webhook(request: HttpRequest, user_profile: UserProfile,
     elif event == 'error_activity':
         message = compose_activity_message(payload)
     else:
-        message = "Unsupported event type: {}".format(event)
+        raise UnexpectedWebhookEventType('Raygun', event)
 
     topic = 'test'
 
@@ -40,7 +39,7 @@ def api_raygun_webhook(request: HttpRequest, user_profile: UserProfile,
     return json_success()
 
 
-def make_user_stats_chunk(error_dict: Dict[str, Any]) -> Text:
+def make_user_stats_chunk(error_dict: Dict[str, Any]) -> str:
     """Creates a stat chunk about total occurrences and users affected for the
     error.
 
@@ -55,11 +54,10 @@ def make_user_stats_chunk(error_dict: Dict[str, Any]) -> Text:
     total_occurrences = error_dict['totalOccurrences']
 
     # One line is subjectively better than two lines for this.
-    return "{} users affected with {} total occurrences\n".format(
-        users_affected, total_occurrences)
+    return f"* {users_affected} users affected with {total_occurrences} total occurrences\n"
 
 
-def make_time_chunk(error_dict: Dict[str, Any]) -> Text:
+def make_time_chunk(error_dict: Dict[str, Any]) -> str:
     """Creates a time message chunk.
 
     Example: firstOccurredOn: "X", lastOccurredOn: "Y"
@@ -76,11 +74,10 @@ def make_time_chunk(error_dict: Dict[str, Any]) -> Text:
     time_last = parse_time(error_dict['lastOccurredOn'])
 
     # Provide time information about this error,
-    return "First occurred: {}\nLast occurred: {}\n".format(time_first,
-                                                            time_last)
+    return f"* **First occurred**: {time_first}\n* **Last occurred**: {time_last}\n"
 
 
-def make_message_chunk(message: Text) -> Text:
+def make_message_chunk(message: str) -> str:
     """Creates a message chunk if exists.
 
     Example: message: "This is an example message" returns "Message: This is an
@@ -91,10 +88,10 @@ def make_message_chunk(message: Text) -> Text:
     returns an empty string.
     """
     # "Message" shouldn't be included if there is none supplied.
-    return "Message: {}\n".format(message) if message != "" else ""
+    return f"* **Message**: {message}\n" if message != "" else ""
 
 
-def make_app_info_chunk(app_dict: Dict[str, str]) -> Text:
+def make_app_info_chunk(app_dict: Dict[str, str]) -> str:
     """Creates a message chunk that contains the application info and the link
     to the Raygun dashboard about the application.
 
@@ -103,10 +100,10 @@ def make_app_info_chunk(app_dict: Dict[str, str]) -> Text:
     """
     app_name = app_dict['name']
     app_url = app_dict['url']
-    return "Application details: [{}]({})\n".format(app_name, app_url)
+    return f"* **Application details**: [{app_name}]({app_url})\n"
 
 
-def notification_message_follow_up(payload: Dict[str, Any]) -> Text:
+def notification_message_follow_up(payload: Dict[str, Any]) -> str:
     """Creates a message for a repeating error follow up
 
     :param payload: Raygun payload
@@ -127,7 +124,7 @@ def notification_message_follow_up(payload: Dict[str, Any]) -> Text:
         # minute", where "FiveMinuteFollowUp" is "Five minute".
         prefix = followup_type[:len(followup_type) - 14] + " minute"
 
-    message += "{} {}\n".format(prefix, followup_link_md)
+    message += f"{prefix} {followup_link_md}:\n"
 
     # Get the message of the error.
     payload_msg = payload['error']['message']
@@ -140,7 +137,7 @@ def notification_message_follow_up(payload: Dict[str, Any]) -> Text:
     return message
 
 
-def notification_message_error_occurred(payload: Dict[str, Any]) -> Text:
+def notification_message_error_occurred(payload: Dict[str, Any]) -> str:
     """Creates a message for a new error or reoccurred error
 
     :param payload: Raygun payload
@@ -153,9 +150,9 @@ def notification_message_error_occurred(payload: Dict[str, Any]) -> Text:
 
     # Stylize the message based on the event type of the error.
     if payload['eventType'] == "NewErrorOccurred":
-        message += "**{}**\n".format("New {} occurred!".format(error_link_md))
+        message += "{}:\n".format(f"New {error_link_md} occurred")
     elif payload['eventType'] == "ErrorReoccurred":
-        message += "{}\n".format("{} reoccurred.".format(error_link_md))
+        message += "{}:\n".format(f"{error_link_md} reoccurred")
 
     # Get the message of the error. This value can be empty (as in "").
     payload_msg = payload['error']['message']
@@ -181,25 +178,24 @@ def notification_message_error_occurred(payload: Dict[str, Any]) -> Text:
     custom_data = error_instance['customData']
 
     if tags is not None:
-        message += "Tags: {}\n".format(", ".join(tags))
+        message += "* **Tags**: {}\n".format(", ".join(tags))
 
     if affected_user is not None:
         user_uuid = affected_user['UUID']
-        message += "Affected user: {}...{}\n".format(user_uuid[:6],
-                                                     user_uuid[-5:])
+        message += f"* **Affected user**: {user_uuid[:6]}...{user_uuid[-5:]}\n"
 
     if custom_data is not None:
         # We don't know what the keys and values beforehand, so we are forced
         # to iterate.
         for key in sorted(custom_data.keys()):
-            message += "{}: {}\n".format(key, custom_data[key])
+            message += f"* **{key}**: {custom_data[key]}\n"
 
     message += make_app_info_chunk(payload['application'])
 
     return message
 
 
-def compose_notification_message(payload: Dict[str, Any]) -> Text:
+def compose_notification_message(payload: Dict[str, Any]) -> str:
     """Composes a message that contains information on the error
 
     :param payload: Raygun payload
@@ -223,10 +219,10 @@ def compose_notification_message(payload: Dict[str, Any]) -> Text:
     elif "FollowUp" in event_type:
         return notification_message_follow_up(payload)
     else:
-        return "Unsupported event_type type: {}".format(event_type)
+        raise UnexpectedWebhookEventType('Raygun', event_type)
 
 
-def activity_message(payload: Dict[str, Any]) -> Text:
+def activity_message(payload: Dict[str, Any]) -> str:
     """Creates a message from an activity that is being taken for an error
 
     :param payload: Raygun payload
@@ -241,29 +237,23 @@ def activity_message(payload: Dict[str, Any]) -> Text:
     user = payload['error']['user']
     if event_type == "StatusChanged":
         error_status = payload['error']['status']
-        message += "{} status changed to: {} by {}\n".format(error_link_md,
-                                                             error_status,
-                                                             user)
+        message += f"{error_link_md} status changed to **{error_status}** by {user}:\n"
     elif event_type == "CommentAdded":
         comment = payload['error']['comment']
-        message += "{} left a comment on {}: {}\n".format(user,
-                                                          error_link_md,
-                                                          comment)
+        message += f"{user} commented on {error_link_md}:\n\n``` quote\n{comment}\n```\n"
     elif event_type == "AssignedToUser":
         assigned_to = payload['error']['assignedTo']
-        message += "{} assigned {} to {}\n".format(user,
-                                                   error_link_md,
-                                                   assigned_to)
+        message += f"{user} assigned {error_link_md} to {assigned_to}:\n"
 
-    message += "Timestamp: {}\n".format(parse_time(payload['error']
-                                                   ['activityDate']))
+    message += "* **Timestamp**: {}\n".format(
+        parse_time(payload['error']['activityDate']))
 
     message += make_app_info_chunk(payload['application'])
 
     return message
 
 
-def compose_activity_message(payload: Dict[str, Any]) -> Text:
+def compose_activity_message(payload: Dict[str, Any]) -> str:
     """Composes a message that contains an activity that is being taken to
     an error, such as commenting, assigning an error to a user, ignoring the
     error, etc.
@@ -285,10 +275,10 @@ def compose_activity_message(payload: Dict[str, Any]) -> Text:
             or event_type == "CommentAdded":
         return activity_message(payload)
     else:
-        return "Unsupported event_type type: {}".format(event_type)
+        raise UnexpectedWebhookEventType('Raygun', event_type)
 
 
-def parse_time(timestamp: Text) -> Text:
+def parse_time(timestamp: str) -> str:
     """Parses and returns the timestamp provided
 
     :param timestamp: The timestamp provided by the payload

@@ -38,7 +38,7 @@ the reader and remember to capitalize *Du*.
 For instructions, try to use the imperative (e.g. *"Gehe auf die Seite"* -
 *"Go to the page"*) instead of constructions with auxiliary verbs
 (e.g. *"Du musst auf die Seite ... gehen"* - *"You have to go the page ..."*).
-This keeps the phrases short, less stiff and avoids unnecessary addressings
+This keeps the phrases short, less stiff and avoids unnecessary addressing
 of the reader.
 
 ### Rules for labels
@@ -147,18 +147,6 @@ German word) here, since it comes closer to the original meaning of "starred".
 *"Markierte Nachricht" (GMail, Transifex),
 "Nachricht mit Stern" (WhatsApp)*
 
-* Realm - **Realm** (Developer documentation)
-
-**The term "realm" is discouraged in the user documentation and should not be
-used there anymore.** However, because of its relevance for the developer
-documentation, we still have it included in this list.
-
-* Realm - **Organization** (User documentation)
-
-While the literal translation for "realm" is "Königreich", it is referring to
-different domains/organizations on a Zulip server. Since the German term
-"Bereich" is a little vague, "Organization" is preferable here.
-
 *"Bereich" (Transifex), "Community" (Google+)*
 
 * Stream - **Stream**
@@ -183,7 +171,7 @@ For users to be able to join to an "invite-only" stream, they must have been
 invited by some user in this stream. This type of stream is equivalent to
 Facebook's "closed" groups, which in turn translates to "geschlossen" in German.
 This translation seems to be appropriate, for example [Linguee](
-http://www.linguee.de/englisch-deutsch/uebersetzung/invite-only.html)
+https://www.linguee.de/englisch-deutsch/uebersetzung/invite-only.html)
 search returns only paraphrases of this term.
 
 *"Geschlossener Stream" (Transifex), "Geschlossene Gruppe" (Facebook),
@@ -227,7 +215,7 @@ This one is tricky, since one might initially think of "Alarmwort" as a proper
 translation. "Alarm", however, has a negative connotation, people link it to
 unpleasant events. "Signal", on the other hand, is neutral, just like
 "alert word". Nevertheless, [Linguee](
-http://www.linguee.de/deutsch-englisch/search?source=auto&query=alert+word)
+https://www.linguee.de/deutsch-englisch/search?source=auto&query=alert+word)
 shows that some websites misuse "Alarm" for the translation.
 
 *"Signalwort" (Transifex), "Wort-Alarm" (Linguee)*

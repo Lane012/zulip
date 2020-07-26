@@ -1,44 +1,34 @@
 # API keys
 
-You can create bots on your [settings page](/#settings).
-Once you have a bot, you can use its email and API key to send messages.</p>
+An **API key** is how a bot identifies itself to Zulip. Anyone with a
+bot's API key can impersonate the bot, so be careful with it!
 
-Create a bot:
-<img class="screenshot" src="/static/images/api/create-bot.png" />
+## Get a bot's API key
 
-Look for the bot's email and API key:
-<img class="screenshot" src="/static/images/api/bot-key.png" />
+{settings_tab|your-bots}
 
-If you prefer to send messages as your own user, you can also find your API key on your [settings page](/#settings).
-When using our python bindings, you may either specify the user
-and API key for each Client object that you initialize, or let the binding look for
-them in your `~/.zuliprc`, the default config file, which you can create as follows:
+1. Click **Active bots**.
 
-```
-[api]
-key=BOT_API_KEY
-email=BOT_EMAIL_ADDRESS
-```
+1. Find your bot. The bot's API key is under **API KEY**.
 
-Additionally, you can also specify the parameters as environment variables as follows:
+## Get your API key
 
-```
-export ZULIP_CONFIG=/path/to/zulipconfig
-export ZULIP_EMAIL=BOT_EMAIL_ADDRESS
-export ZULIP_API_KEY=BOT_API_KEY
-```
+Anyone with your API key can impersonate you, so be doubly careful with it.
 
-The parameters specified in environment variables would override the parameters
-provided in the config file. For example, if you specify the variable `key`
-in the config file and specify `ZULIP_API_KEY` as an environment variable,
-the value of `ZULIP_API_KEY` would be considered.
+{settings_tab|your-account}
 
-The following variables can be specified:
+1. Under **API key**, click **Show/change your API key**.
 
-1. `ZULIP_CONFIG`
-2. `ZULIP_API_KEY`
-3. `ZULIP_EMAIL`
-4. `ZULIP_SITE`
-5. `ZULIP_CERT`
-6. `ZULIP_CERT_KEY`
-7. `ZULIP_CERT_BUNDLE`
+1. Enter your password, and click **Get API key**. If you never had a
+   password, click **Never had one? Forgotten it?** and follow the
+   instructions from there.
+
+1. Copy your API key.
+
+## Invalidate an API key
+
+To invalidate a key, follow the instructions above, and click
+**Generate new API key** or click the **refresh**
+(<i class="fa fa-refresh"></i>) icon as appropriate.
+
+This will generate a new key for you or the bot, and invalidate the old one.

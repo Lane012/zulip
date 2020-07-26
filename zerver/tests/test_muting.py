@@ -1,35 +1,27 @@
-
-import ujson
-
-from django.http import HttpResponse
-from mock import patch
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
+from unittest import mock
 
-from zerver.lib.test_classes import ZulipTestCase
+from django.utils.timezone import now as timezone_now
+
 from zerver.lib.stream_topic import StreamTopicTarget
-
-from zerver.models import (
-    get_realm,
-    get_stream,
-    get_stream_recipient,
-    get_user,
-    Recipient,
-    UserProfile,
-)
-
+from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.topic_mutes import (
     add_topic_mute,
     get_topic_mutes,
+    remove_topic_mute,
     topic_is_muted,
 )
+from zerver.models import MutedTopic, UserProfile, get_stream
+
 
 class MutedTopicsTests(ZulipTestCase):
     def test_user_ids_muting_topic(self) -> None:
         hamlet = self.example_user('hamlet')
         cordelia  = self.example_user('cordelia')
         realm = hamlet.realm
-        stream = get_stream(u'Verona', realm)
-        recipient = get_stream_recipient(stream.id)
+        stream = get_stream('Verona', realm)
+        recipient = stream.recipient
         topic_name = 'teST topic'
 
         stream_topic_target = StreamTopicTarget(
@@ -46,85 +38,138 @@ class MutedTopicsTests(ZulipTestCase):
                 stream_id=stream.id,
                 recipient_id=recipient.id,
                 topic_name='test TOPIC',
+                date_muted=timezone_now(),
             )
 
         mute_user(hamlet)
         user_ids = stream_topic_target.user_ids_muting_topic()
         self.assertEqual(user_ids, {hamlet.id})
+        hamlet_date_muted = MutedTopic.objects.filter(user_profile=hamlet)[0].date_muted
+        self.assertTrue(timezone_now() - hamlet_date_muted <= timedelta(seconds=100))
 
         mute_user(cordelia)
         user_ids = stream_topic_target.user_ids_muting_topic()
         self.assertEqual(user_ids, {hamlet.id, cordelia.id})
+        cordelia_date_muted = MutedTopic.objects.filter(user_profile=cordelia)[0].date_muted
+        self.assertTrue(timezone_now() - cordelia_date_muted <= timedelta(seconds=100))
 
     def test_add_muted_topic(self) -> None:
-        email = self.example_email('hamlet')
-        self.login(email)
+        user = self.example_user('hamlet')
+        self.login_user(user)
+
+        stream = get_stream('Verona', user.realm)
 
         url = '/api/v1/users/me/subscriptions/muted_topics'
-        data = {'stream': 'Verona', 'topic': 'Verona3', 'op': 'add'}
-        result = self.api_patch(email, url, data)
-        self.assert_json_success(result)
 
-        user = self.example_user('hamlet')
-        self.assertIn([u'Verona', u'Verona3'], get_topic_mutes(user))
+        payloads = [
+            {'stream': stream.name, 'topic': 'Verona3', 'op': 'add'},
+            {'stream_id': stream.id, 'topic': 'Verona3', 'op': 'add'},
+        ]
 
-        stream = get_stream(u'Verona', user.realm)
-        self.assertTrue(topic_is_muted(user, stream.id, 'Verona3'))
-        self.assertTrue(topic_is_muted(user, stream.id, 'verona3'))
+        mock_date_muted = datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp()
+        for data in payloads:
+            with mock.patch('zerver.views.muting.timezone_now',
+                            return_value=datetime(2020, 1, 1, tzinfo=timezone.utc)):
+                result = self.api_patch(user, url, data)
+                self.assert_json_success(result)
+
+            self.assertIn((stream.name, 'Verona3', mock_date_muted), get_topic_mutes(user))
+            self.assertTrue(topic_is_muted(user, stream.id, 'Verona3'))
+            self.assertTrue(topic_is_muted(user, stream.id, 'verona3'))
+
+            remove_topic_mute(
+                user_profile=user,
+                stream_id=stream.id,
+                topic_name='Verona3',
+            )
 
     def test_remove_muted_topic(self) -> None:
-        self.user_profile = self.example_user('hamlet')
-        email = self.user_profile.email
-        self.login(email)
+        user = self.example_user('hamlet')
+        realm = user.realm
+        self.login_user(user)
 
-        realm = self.user_profile.realm
-        stream = get_stream(u'Verona', realm)
-        recipient = get_stream_recipient(stream.id)
-        add_topic_mute(
-            user_profile=self.user_profile,
-            stream_id=stream.id,
-            recipient_id=recipient.id,
-            topic_name=u'Verona3',
-        )
+        stream = get_stream('Verona', realm)
+        recipient = stream.recipient
 
         url = '/api/v1/users/me/subscriptions/muted_topics'
-        data = {'stream': 'Verona', 'topic': 'vERONA3', 'op': 'remove'}
-        result = self.api_patch(email, url, data)
+        payloads = [
+            {'stream': stream.name, 'topic': 'vERONA3', 'op': 'remove'},
+            {'stream_id': stream.id, 'topic': 'vEroNA3', 'op': 'remove'},
+        ]
+        mock_date_muted = datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp()
 
-        self.assert_json_success(result)
-        user = self.example_user('hamlet')
-        self.assertNotIn([[u'Verona', u'Verona3']], get_topic_mutes(user))
+        for data in payloads:
+            add_topic_mute(
+                user_profile=user,
+                stream_id=stream.id,
+                recipient_id=recipient.id,
+                topic_name='Verona3',
+                date_muted=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            )
+            self.assertIn((stream.name, 'Verona3', mock_date_muted), get_topic_mutes(user))
+
+            result = self.api_patch(user, url, data)
+
+            self.assert_json_success(result)
+            self.assertNotIn((stream.name, 'Verona3', mock_date_muted), get_topic_mutes(user))
+            self.assertFalse(topic_is_muted(user, stream.id, 'verona3'))
 
     def test_muted_topic_add_invalid(self) -> None:
-        self.user_profile = self.example_user('hamlet')
-        email = self.user_profile.email
-        self.login(email)
+        user = self.example_user('hamlet')
+        realm = user.realm
+        self.login_user(user)
 
-        realm = self.user_profile.realm
-        stream = get_stream(u'Verona', realm)
-        recipient = get_stream_recipient(stream.id)
+        stream = get_stream('Verona', realm)
+        recipient = stream.recipient
         add_topic_mute(
-            user_profile=self.user_profile,
+            user_profile=user,
             stream_id=stream.id,
             recipient_id=recipient.id,
-            topic_name=u'Verona3',
+            topic_name='Verona3',
+            date_muted=timezone_now(),
         )
 
         url = '/api/v1/users/me/subscriptions/muted_topics'
-        data = {'stream': 'Verona', 'topic': 'Verona3', 'op': 'add'}
-        result = self.api_patch(email, url, data)
+
+        data: Dict[str, Any] = {'stream': stream.name, 'topic': 'Verona3', 'op': 'add'}
+        result = self.api_patch(user, url, data)
         self.assert_json_error(result, "Topic already muted")
 
+        data = {'stream_id': 999999999, 'topic': 'Verona3', 'op': 'add'}
+        result = self.api_patch(user, url, data)
+        self.assert_json_error(result, "Invalid stream id")
+
+        data = {'topic': 'Verona3', 'op': 'add'}
+        result = self.api_patch(user, url, data)
+        self.assert_json_error(result, "Please supply 'stream'.")
+
+        data = {'stream': stream.name, 'stream_id': stream.id, 'topic': 'Verona3', 'op': 'add'}
+        result = self.api_patch(user, url, data)
+        self.assert_json_error(result, "Please choose one: 'stream' or 'stream_id'.")
+
     def test_muted_topic_remove_invalid(self) -> None:
-        self.user_profile = self.example_user('hamlet')
-        email = self.user_profile.email
-        self.login(email)
+        user = self.example_user('hamlet')
+        realm = user.realm
+        self.login_user(user)
+        stream = get_stream('Verona', realm)
 
         url = '/api/v1/users/me/subscriptions/muted_topics'
-        data = {'stream': 'BOGUS', 'topic': 'Verona3', 'op': 'remove'}
-        result = self.api_patch(email, url, data)
-        self.assert_json_error(result, "Topic is not there in the muted_topics list")
+        data: Dict[str, Any] = {'stream': 'BOGUS', 'topic': 'Verona3', 'op': 'remove'}
+        result = self.api_patch(user, url, data)
+        self.assert_json_error(result, "Topic is not muted")
 
-        data = {'stream': 'Verona', 'topic': 'BOGUS', 'op': 'remove'}
-        result = self.api_patch(email, url, data)
-        self.assert_json_error(result, "Topic is not there in the muted_topics list")
+        data = {'stream': stream.name, 'topic': 'BOGUS', 'op': 'remove'}
+        result = self.api_patch(user, url, data)
+        self.assert_json_error(result, "Topic is not muted")
+
+        data = {'stream_id': 999999999, 'topic': 'BOGUS', 'op': 'remove'}
+        result = self.api_patch(user, url, data)
+        self.assert_json_error(result, "Topic is not muted")
+
+        data = {'topic': 'Verona3', 'op': 'remove'}
+        result = self.api_patch(user, url, data)
+        self.assert_json_error(result, "Please supply 'stream'.")
+
+        data = {'stream': stream.name, 'stream_id': stream.id, 'topic': 'Verona3', 'op': 'remove'}
+        result = self.api_patch(user, url, data)
+        self.assert_json_error(result, "Please choose one: 'stream' or 'stream_id'.")

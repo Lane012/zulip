@@ -7,7 +7,7 @@ Zulip has, and how we manage them.  Zulip's dependency management has
 some really nice properties:
 
 * **Fast provisioning**.  When switching to a different commit in the
-  Zulip project with the same dependencies, it takes under 10 seconds
+  Zulip project with the same dependencies, it takes under 5 seconds
   to re-provision a working Zulip development environment after
   switching.  If there are new dependencies, one only needs to wait to
   download the new ones, not all the pre-existing dependencies.
@@ -36,6 +36,24 @@ steps that would otherwise have been skipped due to caching.
 In the Vagrant development environment, `vagrant provision` will run
 the provision script; `vagrant up` will boot the machine, and will
 also run an initial provision the first time only.
+
+### PROVISION_VERSION
+
+In `version.py`, we have a special parameter, `PROVISION_VERSION`,
+which is used to help ensure developers don't spend time debugging
+test/linter/etc. failures that actually were caused by the developer
+rebasing and forgetting to provision".  `PROVISION_VERSION` has a
+format of `x.y`; when `x` doesn't match the value from the last time
+the user provisioned, or `y` is higher than than the value from last
+time, most Zulip tools will crash early and ask the user to provision.
+This has empirically made a huge impact on how often developers spend
+time debugging a "weird failure" after rebasing that had an easy
+solution.  (Of course, the other key part of achieving this is all the
+work that goes into making sure that `provision` reliably leaves the
+development environment in a good state.)
+
+`PROVISION_VERSION` must be manually updated when making changes that
+require re-running provision, so don't forget about it!
 
 ## Philosophy on adding third-party dependencies
 
@@ -74,12 +92,12 @@ the backend, but does in JavaScript.
 
 For the third-party services like Postgres, Redis, Nginx, and RabbitMQ
 that are documented in the
-[architecture overview](../overview/architecture-overview.html), we rely on the
+[architecture overview](../overview/architecture-overview.md), we rely on the
 versions of those packages provided alongside the Linux distribution
 on which Zulip is deployed.  Because Zulip
-[only supports Ubuntu in production](../production/requirements.html), this
+[only supports Ubuntu in production](../production/requirements.md), this
 usually means `apt`, though we do support
-[other platforms in development](../development/setup-advanced.html).  Since
+[other platforms in development](../development/setup-advanced.md).  Since
 we don't control the versions of these dependencies, we avoid relying
 on specific versions of these packages wherever possible.
 
@@ -87,7 +105,7 @@ The exact lists of `apt` packages needed by Zulip are maintained in a
 few places:
 * For production, in our puppet configuration, `puppet/zulip/`, using
   the `Package` and `SafePackage` directives.
-* For development, in `APT_DEPENDENCIES` in `tools/lib/provision.py`.
+* For development, in `SYSTEM_DEPENDENCIES` in `tools/lib/provision.py`.
 * The packages needed to build a Zulip virtualenv, in
   `VENV_DEPENDENCIES` in `scripts/lib/setup_venv.py`.  These are
   separate from the rest because (1) we may need to install a
@@ -95,14 +113,8 @@ few places:
   install other dependencies, and (2) because that list is shared
   between development and production.
 
-We maintain a [PPA (personal package archive)][ppa] with some packages
-unique to Zulip (e.g the `tsearch_extras` postgres extension) and
-backported versions of other dependencies (e.g. `camo`, to fix a buggy
-`init` script).  Our goal is to shrink or eliminate this PPA where
-possible by getting issues addressed in the upstream distributions.
-
 We also rely on the `pgroonga` PPA for the `pgroonga` postgres
-extension, used by our [full-text search](full-text-search.html).
+extension, used by our [full-text search](full-text-search.md).
 
 ## Python packages
 
@@ -164,7 +176,7 @@ highlighting.  The system is largely managed by the code in
   finally, we use `pip`'s built-in caching to ensure that a specific
   version of a specific package is only downloaded once.
 * **Garbage-collecting caches**.  We have a tool,
-  `scripts/lib/clean-venv-cache`, which will clean old cached
+  `scripts/lib/clean_venv_cache.py`, which will clean old cached
   virtualenvs that are no longer in use.  In production, the algorithm
   preserves recent virtualenvs as well as those in use by any current
   production deployment directory under `/home/zulip/deployments/`.
@@ -172,11 +184,27 @@ highlighting.  The system is largely managed by the code in
   amounts of disk over time.
 * **Scripts**.  Often, we want a script running in production to use
   the Zulip virtualenv.  To make that work without a lot of duplicated
-  code, we have a helpful library,
-  `scripts/lib/setup_path_on_import.py`, which on import will put the
+  code, we have a helpful function,
+  `scripts.lib.setup_path.setup_path`, which on import will put the
   currently running Python script into the Zulip virtualenv.  This is
   called by `./manage.py` to ensure that our Django code always uses
   the correct virtualenv as well.
+* **Mypy type checker**.  Because we're using mypy in a strict mode,
+  when you add use of a new Python dependency, you usually need to
+  either adds stubs to the `stubs/` directory for the library, or edit
+  `mypy.ini` in the root of the Zulip project to configure
+  `ignore_missing_imports` for the new library.  See
+  [our mypy docs][mypy-docs] for more details.
+
+### Upgrading packages
+
+See the [README][requirements-readme] file in `requirements/` directory
+to learn how to upgrade a single Python package.
+
+[mypy-docs]: ../testing/mypy.md
+[requirements-readme]: https://github.com/zulip/zulip/blob/master/requirements/README.md#requirements
+[stack-overflow]: https://askubuntu.com/questions/8653/how-to-keep-processes-running-after-ending-ssh-session
+[caching]: https://help.github.com/en/articles/caching-your-github-password-in-git
 
 ## JavaScript and other frontend packages
 
@@ -188,17 +216,17 @@ reasoning here.
   `scripts/lib/node_cache.py` manages cached `node_modules`
   directories in `/srv/zulip-npm-cache`.  Each is named by its hash,
   computed by the `generate_sha1sum_node_modules` function.
-  `scripts/lib/clean-npm-cache` handles garbage-collection.
+  `scripts/lib/clean_node_cache.py` handles garbage-collection.
 * We use [yarn][], a `pip`-like tool for JavaScript, to download most
   JavaScript dependencies.  Yarn talks to standard the [npm][]
   repository.  We use the standard `package.json` file to declare our
   direct dependencies, with sections for development and
   production.  Yarn takes care of pinning the versions of indirect
-  dependencies in the `yarn.lock` file; `yarn upgrade` updates the
+  dependencies in the `yarn.lock` file; `yarn install` updates the
   `yarn.lock` files.
 * `tools/update-prod-static`.  This process is discussed in detail in
-  the [static asset pipeline](../subsystems/front-end-build-process.html) article,
-  but we don't use the `node_modules` directories directly in
+  the [static asset pipeline](../subsystems/html-css.html#static-asset-pipeline)
+  article, but we don't use the `node_modules` directories directly in
   production.  Instead, static assets are compiled using our static
   asset pipeline and it is the compiled assets that are served
   directly to users.  As a result, we don't ship the `node_modules`
@@ -241,27 +269,27 @@ Zulip uses the [iamcal emoji data package][iamcal] for its emoji data
 and sprite sheets.  We download this dependency using `npm`, and then
 have a tool, `tools/setup/build_emoji`, which reformats the emoji data
 into the files under `static/generated/emoji`.  Those files are in
-turn used by our [markdown processor](../subsystems/markdown.html) and
+turn used by our [markdown processor](../subsystems/markdown.md) and
 `tools/update-prod-static` to make Zulip's emoji work in the various
 environments where they need to be displayed.
 
 Since processing emoji is a relatively expensive operation, as part of
 optimizing provisioning, we use the same caching strategy for the
 compiled emoji data as we use for virtualenvs and `node_modules`
-directories, with `scripts/lib/clean-emoji-cache` responsible for
+directories, with `scripts/lib/clean_emoji_cache.py` responsible for
 garbage-collection.  This caching and garbage-collection is required
 because a correct emoji implementation involves over 1000 small image
 files and a few large ones.  There is a more extended article on our
-[emoji infrastructure](emoji.html).
+[emoji infrastructure](emoji.md).
 
 ### Translations data
 
-Zulip's [translations infrastructure](../translating/translating.html) generates
+Zulip's [translations infrastructure](../translating/translating.md) generates
 several files from the source data, which we manage similar to our
 emoji, but without the caching (and thus without the
 garbage-collection).  New translations data is downloaded from
 Transifex and then compiled to generate both the production locale
-files and also language data in `static/locale/language*.json` using
+files and also language data in `locale/language*.json` using
 `manage.py compilemessages`, which extends the default Django
 implementation of that tool.
 
@@ -269,17 +297,8 @@ implementation of that tool.
 
 The list of languages supported by our markdown syntax highlighting
 comes from the [pygments][] package.  `tools/setup/build_pygments_data` is
-responsible for generating `static/generated/pygments_data.js` so that
+responsible for generating `static/generated/pygments_data.json` so that
 our JavaScript markdown processor has access to the supported list.
-
-### Authors data
-
-Zulip maintains data on the developers who have contributed the most to
-the current version of Zulip in the /about page.  These data are
-fetched using the GitHub API with `tools/update-authors-json`.  In
-development, it just returns some basic test data to avoid adding load
-to GitHub's APIs unnecessarily; it's primarily run as part of building
-a release tarball.
 
 ## Modifying provisioning
 
@@ -300,6 +319,6 @@ usually one needs to think about making changes in 3 places:
 [virtualenv]: https://virtualenv.pypa.io/en/stable/
 [virtualenv-clone]: https://github.com/edwardgeorge/virtualenv-clone/
 [yarn]: https://yarnpkg.com/
-[ppa]: https://launchpad.net/~tabbott/+archive/ubuntu/zulip
+[npm]: https://npmjs.com/
 [iamcal]: https://github.com/iamcal/emoji-data
-[pygments]: http://pygments.org/
+[pygments]: https://pygments.org/

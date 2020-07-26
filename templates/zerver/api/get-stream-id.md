@@ -1,73 +1,44 @@
 # Get stream ID
 
-Get the unique ID of a given stream.
-
-`GET {{ api_url }}/v1/get_stream_id`
+{generate_api_description(/get_stream_id:get)}
 
 ## Usage examples
 
-<div class="code-section" markdown="1">
-<ul class="nav">
-<li data-language="python">Python</li>
-<li data-language="javascript">JavaScript</li>
-<li data-language="curl">curl</li>
-</ul>
-<div class="blocks">
+{start_tabs}
+{tab|python}
 
-<div data-language="curl" markdown="1">
+{generate_code_example(python)|/get_stream_id:get|example}
 
-```
-curl {{ api_url }}/v1/get_stream_id?stream=Denmark \
-    -u BOT_EMAIL_ADDRESS:BOT_API_KEY
-```
-</div>
+{tab|js}
 
-<div data-language="python" markdown="1">
-
-{generate_code_example(python)|get-stream-id|example}
-
-</div>
-
-<div data-language="javascript" markdown="1">
 More examples and documentation can be found [here](https://github.com/zulip/zulip-js).
-```js
-const zulip = require('zulip-js');
 
-// Download zuliprc-dev from your dev server
-const config = {
-    zuliprc: 'zuliprc-dev',
-};
+{generate_code_example(javascript)|/get_stream_id:get|example}
 
-zulip(config).then((client) => {
-    // Get the ID of a given stream
-    client.streams.getStreamId('Denmark').then(console.log);
-});
-```
-</div>
+{tab|curl}
 
-</div>
+{generate_code_example(curl)|/get_stream_id:get|example}
 
-</div>
+{end_tabs}
 
-## Arguments
+## Parameters
 
-**Note**: The following arguments are all URL query parameters.
+**Note**: The following parameters are all URL query parameters.
 
-{generate_api_arguments_table|arguments.json|get-stream-id.md}
+{generate_api_arguments_table|zulip.yaml|/get_stream_id:get}
 
 ## Response
 
 #### Return values
 
-* `stream_id`: The ID of the given stream.
+{generate_return_values_table|zulip.yaml|/get_stream_id:get}
 
 #### Example response
 
 A typical successful JSON response may look like:
 
-{generate_code_example|get-stream-id|fixture}
+{generate_code_example|/get_stream_id:get|fixture(200)}
 
-An example of a JSON response for when the supplied stream does not
-exist:
+An example JSON response for when the supplied stream does not exist:
 
-{generate_code_example|invalid-stream-error|fixture}
+{generate_code_example|/get_stream_id:get|fixture(400)}

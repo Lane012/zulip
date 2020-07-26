@@ -43,7 +43,7 @@ zulip/zulip, you are ready to request your Zulip developer instance.
 If you haven't already, create an account on https://chat.zulip.org/.
 
 Next, join the [development
-help](https://chat.zulip.org/#narrow/stream/development.20help) stream. Create a
+help](https://chat.zulip.org/#narrow/stream/49-development-help) stream. Create a
 new **stream message** with your GitHub username as the **topic** and request
 your remote dev instance. **Please make sure you have completed steps 1 and 2
 before doing so**. A core developer should reply letting you know they're
@@ -67,17 +67,17 @@ Once your remote dev instance is ready:
 
 Once you've confirmed you can connect to your remote server, take a look at:
 
-* [developing remotely](../development/remote.html) for tips on using the remote dev
+* [developing remotely](../development/remote.md) for tips on using the remote dev
   instance, and
-* our [Git & GitHub Guide](../git/index.html) to learn how to use Git with Zulip.
+* our [Git & GitHub Guide](../git/index.md) to learn how to use Git with Zulip.
 
 Next, read the following to learn more about developing for Zulip:
 
-* [Using the Development Environment](../development/using.html)
-* [Testing](../testing/testing.html)
+* [Using the Development Environment](../development/using.md)
+* [Testing](../testing/testing.md)
 
 [github-join]: https://github.com/join
-[github-help-add-ssh-key]: https://help.github.com/articles/adding-a-new-ssh-key-to-your-github-account/
+[github-help-add-ssh-key]: https://help.github.com/en/articles/adding-a-new-ssh-key-to-your-github-account
 [github-zulip-zulip]: https://github.com/zulip/zulip/
-[github-help-fork]: https://help.github.com/articles/fork-a-repo/
+[github-help-fork]: https://help.github.com/en/articles/fork-a-repo
 [gitbook-rebase]: https://git-scm.com/book/en/v2/Git-Branching-Rebasing

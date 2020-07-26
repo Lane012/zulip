@@ -1,18 +1,18 @@
+from typing import Any
+from unittest.mock import patch
 
 import ujson
-
 from django.http import HttpResponse
-from mock import patch
-from typing import Any, Dict
 
 from zerver.lib.test_classes import ZulipTestCase
-from zerver.models import get_user, get_realm
+from zerver.lib.users import get_api_key
+from zerver.models import get_realm, get_user
 
 
 class ZephyrTest(ZulipTestCase):
     def test_webathena_kerberos_login(self) -> None:
-        email = self.example_email('hamlet')
-        self.login(email)
+        user = self.example_user('hamlet')
+        self.login_user(user)
 
         def post(subdomain: Any, **kwargs: Any) -> HttpResponse:
             params = {k: ujson.dumps(v) for k, v in kwargs.items()}
@@ -27,7 +27,9 @@ class ZephyrTest(ZulipTestCase):
 
         email = str(self.mit_email("starnine"))
         realm = get_realm('zephyr')
-        self.login(email, realm=realm)
+        user = get_user(email, realm)
+        api_key = get_api_key(user)
+        self.login_user(user)
 
         def ccache_mock(**kwargs: Any) -> Any:
             return patch('zerver.views.zephyr.make_ccache', **kwargs)
@@ -66,7 +68,7 @@ class ZephyrTest(ZulipTestCase):
             '--',
             '/home/zulip/python-zulip-api/zulip/integrations/zephyr/process_ccache',
             'starnine',
-            get_user(email, realm).api_key,
+            api_key,
             'MTIzNA=='])
 
         # Accounts whose Kerberos usernames are known not to match their
@@ -92,5 +94,5 @@ class ZephyrTest(ZulipTestCase):
             '--',
             '/home/zulip/python-zulip-api/zulip/integrations/zephyr/process_ccache',
             'starnine',
-            get_user(email, realm).api_key,
+            api_key,
             'MTIzNA=='])

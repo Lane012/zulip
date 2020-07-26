@@ -1,81 +1,74 @@
-set_global('$', function () {
-});
-set_global('blueslip', {});
-global.blueslip.warn = function () {};
+zrequire("stream_data");
+zrequire("people");
+zrequire("compose_fade");
 
-zrequire('util');
-zrequire('stream_data');
-zrequire('people');
-zrequire('compose_fade');
-
-var me = {
-    email: 'me@example.com',
+const me = {
+    email: "me@example.com",
     user_id: 30,
-    full_name: 'Me Myself',
+    full_name: "Me Myself",
 };
 
-var alice = {
-    email: 'alice@example.com',
+const alice = {
+    email: "alice@example.com",
     user_id: 31,
-    full_name: 'Alice',
+    full_name: "Alice",
 };
 
-var bob = {
-    email: 'bob@example.com',
+const bob = {
+    email: "bob@example.com",
     user_id: 32,
-    full_name: 'Bob',
+    full_name: "Bob",
 };
 
-people.add(me);
+people.add_active_user(me);
 people.initialize_current_user(me.user_id);
 
-people.add(alice);
-people.add(bob);
+people.add_active_user(alice);
+people.add_active_user(bob);
 
-
-(function test_set_focused_recipient() {
-    var sub = {
+run_test("set_focused_recipient", () => {
+    const sub = {
         stream_id: 101,
-        name: 'social',
+        name: "social",
         subscribed: true,
         can_access_subscribers: true,
     };
-    stream_data.add_sub('social', sub);
+    stream_data.add_sub(sub);
     stream_data.set_subscribers(sub, [me.user_id, alice.user_id]);
 
     global.$ = function (selector) {
         switch (selector) {
-        case '#stream':
-            return {
-                val: function () {
-                    return 'social';
-                },
-            };
-        case '#subject':
-            return {
-                val: function () {
-                    return 'lunch';
-                },
-            };
+            case "#stream_message_recipient_stream":
+                return {
+                    val() {
+                        return "social";
+                    },
+                };
+            case "#stream_message_recipient_topic":
+                return {
+                    val() {
+                        return "lunch";
+                    },
+                };
         }
     };
 
-    compose_fade.set_focused_recipient('stream');
+    compose_fade.set_focused_recipient("stream");
 
-    assert(compose_fade.would_receive_message('me@example.com'));
-    assert(compose_fade.would_receive_message('alice@example.com'));
-    assert(!compose_fade.would_receive_message('bob@example.com'));
+    assert.equal(compose_fade.would_receive_message(me.user_id), true);
+    assert.equal(compose_fade.would_receive_message(alice.user_id), true);
+    assert.equal(compose_fade.would_receive_message(bob.user_id), false);
 
-    var good_msg = {
-        type: 'stream',
+    const good_msg = {
+        type: "stream",
         stream_id: 101,
-        subject: 'lunch',
+        topic: "lunch",
     };
-    var bad_msg = {
-        type: 'stream',
+    const bad_msg = {
+        type: "stream",
         stream_id: 999,
-        subject: 'lunch',
+        topic: "lunch",
     };
     assert(!compose_fade.should_fade_message(good_msg));
     assert(compose_fade.should_fade_message(bad_msg));
-}());
+});

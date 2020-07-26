@@ -22,7 +22,7 @@ preparing a new release.
 * Download updated translation strings from Transifex and commit them.
 * Use `build-release-tarball` to generate a release tarball.
 * Test the new tarball extensively, both new install and upgrade from last
-  release, on both Trusty and Xenial.
+  release, on both Bionic and Focal.
 * Repeat until release is ready.
 * When near finished: move the blog post draft to Ghost.  (For a draft
   in Dropbox Paper, use "··· > Download > Markdown" to get a pretty
@@ -33,26 +33,27 @@ preparing a new release.
 
 * Do final updates to `changelog.md`, for any final changes and with
   any revisions from the draft blog post.  (And the date!)
-* Update `ZULIP_VERSION` in `version.py`.
-* Update `version` and/or `release` in `docs/conf.py` (ReadTheDocs meta tags).
-  Leave "+git" off.
+* Update `ZULIP_VERSION` and `LATEST_RELEASE_VERSION` in `version.py`.
+* For major releases, update `API_FEATURE_LEVEL` to a feature level
+  for the final release, and document a reserved range.
 * Use `build-release-tarball` to generate a final release tarball.
 * Post the release tarball on https://www.zulip.org/dist/releases/ :
   add the file, update the `zulip-server-latest.tar.gz` symlink, and
-  add to SHA256SUMS.txt.
+  add to SHA256SUMS.txt, using `ship-release.sh`.
 * Create a Git tag and push the tag.
 * Post the release on GitHub, using the text from `changelog.md`.
+* Update the [Docker image](https://github.com/zulip/docker-zulip) and do a release of that.
+* Update the image of DigitalOcean one click app using [Fabric](https://github.com/zulip/marketplace-partners)
+  and publish it to DO marketplace.
 * Publish the blog post.
-* Email zulip-announce, and send a tweet.
-* For a major release: submit blog post to aggregators.
+* Email zulip-announce, post to #announce, and send a tweet.
 
 ### Post-release
 
 * Push the release commit to master, if applicable (typically for a
   major release); otherwise, make sure any last changes make it back
   to master.
-* Update `ZULIP_VERSION` in `version.py`, and `release` and `version` in
- `docs/conf.py`, to e.g. `1.6.0+git`.
-* Update the handful of places where we link to docs for the latest
-  release, rather than for master.  See `git grep 'zulip.readthedocs.io/en/[0-9]'`.
+* Update `ZULIP_VERSION` in `version.py` to e.g. `2.2.0+git` following
+  a 2.1.0 release, and make a Git tag named e.g. `2.2-dev` pointing to
+  this update.
 * Consider removing a few old releases from ReadTheDocs.

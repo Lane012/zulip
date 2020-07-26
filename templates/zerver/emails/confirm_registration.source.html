@@ -1,24 +1,16 @@
 {% extends "zerver/emails/compiled/email_base_default.html" %}
 
 {% block illustration %}
-<img src="{{ email_images_base_uri }}/registration_confirmation.png"/>
+<img src="{{ email_images_base_uri }}/registration_confirmation.png" alt=""/>
 {% endblock %}
 
 {% block content %}
-<p>Hello there.
+<p>
+    {{ _('You recently signed up for Zulip. Awesome!') }}
 </p>
 <p>
-    You recently signed up for Zulip. Awesome!
+    {{ _('Click the button below to complete registration.') }}
+    <a class="button" href="{{ activate_url }}">{{ _('Complete registration') }}</a>
 </p>
-<p>
-    To complete signup, please click here:
-    <a class="button" href="{{ activate_url }}">Complete registration</a>
-</p>
-<p>
-    Feel free to give us a shout at <a href="mailto:{{ support_email }}">{{ support_email }}</a>, if you have any questions.
-</p>
-<p>
-    Cheers,<br />
-    Team Zulip
-</p>
+<p>{% trans %}Contact us any time at <a href="mailto:{{ support_email }}">{{ support_email }}</a> if you run into trouble, have any feedback, or just want to chat!{% endtrans %}</p>
 {% endblock %}

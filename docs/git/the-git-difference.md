@@ -34,7 +34,7 @@ Here are the top things to know:
 
 - **Git stores all data as objects, of which there are four types:** blob
   (file), tree (directory), commit (revision), and tag. Each of these objects
-  is named by a unique hash, the SHA-1 has of its contents. Most of the time
+  is named by a unique hash, the SHA-1 hash of its contents. Most of the time
   you'll refer to objects by their truncated hash or more human-readable
   reference like `HEAD` (the current branch). Blobs and trees represent files
   and directories. Tags are named references to other objects. A commit object
@@ -61,4 +61,4 @@ Here are the top things to know:
   current branch with `git commit`.
 
 [gitbook-basics]: https://git-scm.com/book/en/v2/Getting-Started-Git-Basics
-[understanding-git]: http://web.mit.edu/nelhage/Public/git-slides-2009.pdf
+[understanding-git]: https://web.mit.edu/nelhage/Public/git-slides-2009.pdf

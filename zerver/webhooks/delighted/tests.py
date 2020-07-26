@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
-from typing import Text
-
 from zerver.lib.test_classes import WebhookTestCase
+
 
 class DelightedHookTests(WebhookTestCase):
     STREAM_NAME = 'delighted'
@@ -9,27 +7,38 @@ class DelightedHookTests(WebhookTestCase):
     FIXTURE_DIR_NAME = 'delighted'
 
     def test_feedback_message_promoter(self) -> None:
-        expected_subject = "Survey Response"
-        expected_message = ("Kudos! You have a new promoter.\n"
-                            ">Score of 9/10 from charlie_gravis@example.com"
-                            "\n>Your service is fast and flawless!")
+        expected_topic = "Survey Response"
+        expected_message = """
+Kudos! You have a new promoter. Score of 9/10 from charlie_gravis@example.com:
+
+``` quote
+Your service is fast and flawless!
+```
+""".strip()
 
         self.send_and_test_stream_message('survey_response_updated_promoter',
-                                          expected_subject,
+                                          expected_topic,
                                           expected_message,
                                           content_type="application/x-www-form-urlencoded")
 
     def test_feedback_message_non_promoter(self) -> None:
-        expected_subject = "Survey Response"
+        expected_topic = "Survey Response"
         expected_message = ("Great! You have new feedback.\n"
                             ">Score of 5/10 from paul_gravis@example.com"
                             "\n>Your service is slow, but nearly flawless! "
                             "Keep up the good work!")
+        expected_message = """
+Great! You have new feedback. Score of 5/10 from paul_gravis@example.com:
+
+``` quote
+Your service is slow, but nearly flawless! Keep up the good work!
+```
+""".strip()
 
         self.send_and_test_stream_message('survey_response_updated_non_promoter',
-                                          expected_subject,
+                                          expected_topic,
                                           expected_message,
                                           content_type="application/x-www-form-urlencoded")
 
-    def get_body(self, fixture_name: Text) -> Text:
-        return self.fixture_data("delighted", fixture_name, file_type="json")
+    def get_body(self, fixture_name: str) -> str:
+        return self.webhook_fixture_data("delighted", fixture_name, file_type="json")

@@ -1,19 +1,16 @@
-var user_pill = (function () {
-
-var exports = {};
-
 // This will be used for pills for things like composing PMs
 // or adding users to a stream/group.
+const settings_data = require("./settings_data");
 
 exports.create_item_from_email = function (email, current_items) {
     // For normal Zulip use, we need to validate the email for our realm.
-    var user = people.get_by_email(email);
+    const user = people.get_by_email(email);
 
     if (!user) {
         if (page_params.realm_is_zephyr_mirror_realm) {
-            var existing_emails = _.pluck(current_items, 'email');
+            const existing_emails = current_items.map((item) => item.email);
 
-            if (existing_emails.indexOf(email) >= 0) {
+            if (existing_emails.includes(email)) {
                 return;
             }
 
@@ -22,7 +19,7 @@ exports.create_item_from_email = function (email, current_items) {
             // is the email itself.
             return {
                 display_value: email,
-                email: email,
+                email,
             };
         }
 
@@ -30,59 +27,133 @@ exports.create_item_from_email = function (email, current_items) {
         return;
     }
 
-    var existing_ids = _.pluck(current_items, 'user_id');
+    const existing_ids = current_items.map((item) => item.user_id);
 
-    if (existing_ids.indexOf(user.user_id) >= 0) {
+    if (existing_ids.includes(user.user_id)) {
         return;
     }
 
+    const avatar_url = people.small_avatar_url_for_person(user);
+
     // We must supply display_value for the widget to work.  Everything
     // else is for our own use in callbacks.
-    var item = {
+    const item = {
         display_value: user.full_name,
         user_id: user.user_id,
         email: user.email,
+        img_src: avatar_url,
     };
 
     return item;
 };
 
 exports.get_email_from_item = function (item) {
-  return item.email;
+    return item.email;
 };
 
 exports.append_person = function (opts) {
-    var person = opts.person;
-    var pill_widget = opts.pill_widget;
+    const person = opts.person;
+    const pill_widget = opts.pill_widget;
+    const avatar_url = people.small_avatar_url_for_person(person);
 
     pill_widget.appendValidatedData({
         display_value: person.full_name,
         user_id: person.user_id,
         email: person.email,
+        img_src: avatar_url,
     });
     pill_widget.clear_text();
 };
 
 exports.get_user_ids = function (pill_widget) {
-    var items = pill_widget.items();
-    var user_ids = _.pluck(items, 'user_id');
-    user_ids = _.filter(user_ids); // be defensive about undefined users
+    const items = pill_widget.items();
+    let user_ids = items.map((item) => item.user_id);
+    user_ids = user_ids.filter(Boolean); // be defensive about undefined users
 
     return user_ids;
 };
 
+exports.has_unconverted_data = function (pill_widget) {
+    // This returns true if we either have text that hasn't been
+    // turned into pills or email-only pills (for Zephyr).
+    if (pill_widget.is_pending()) {
+        return true;
+    }
+
+    const items = pill_widget.items();
+    const has_unknown_items = items.some((item) => item.user_id === undefined);
+
+    return has_unknown_items;
+};
+
 exports.typeahead_source = function (pill_widget) {
-    var items = people.get_realm_persons();
-    var taken_user_ids = exports.get_user_ids(pill_widget);
-    items = _.filter(items, function (item) {
-        return taken_user_ids.indexOf(item.user_id) === -1;
-    });
+    const persons = people.get_realm_users();
+    return exports.filter_taken_users(persons, pill_widget);
+};
+
+exports.filter_taken_users = function (items, pill_widget) {
+    const taken_user_ids = exports.get_user_ids(pill_widget);
+    items = items.filter((item) => !taken_user_ids.includes(item.user_id));
     return items;
 };
 
-return exports;
-}());
+exports.append_user = function (user, pills) {
+    if (user) {
+        exports.append_person({
+            pill_widget: pills,
+            person: user,
+        });
+    } else {
+        blueslip.warn("Undefined user in function append_user");
+    }
+};
 
-if (typeof module !== 'undefined') {
-    module.exports = user_pill;
-}
+exports.create_pills = function (pill_container) {
+    const pills = input_pill.create({
+        container: pill_container,
+        create_item_from_text: exports.create_item_from_email,
+        get_text_from_item: exports.get_email_from_item,
+    });
+    return pills;
+};
+
+exports.set_up_typeahead_on_pills = function (input, pills, opts) {
+    let source = opts.source;
+    if (!opts.source) {
+        source = () => exports.typeahead_source(pills);
+    }
+
+    input.typeahead({
+        items: 5,
+        fixed: true,
+        dropup: true,
+        source,
+        highlighter(item) {
+            return typeahead_helper.render_person(item);
+        },
+        matcher(item) {
+            let query = this.query.toLowerCase();
+            query = query.replace(/\u00A0/g, String.fromCharCode(32));
+            if (!settings_data.show_email()) {
+                return item.full_name.toLowerCase().includes(query);
+            }
+            const email = people.get_visible_email(item);
+            return (
+                email.toLowerCase().includes(query) || item.full_name.toLowerCase().includes(query)
+            );
+        },
+        sorter(matches) {
+            return typeahead_helper.sort_recipientbox_typeahead(this.query, matches, "");
+        },
+        updater(user) {
+            exports.append_user(user, pills);
+            input.trigger("focus");
+            if (opts.update_func) {
+                opts.update_func();
+            }
+        },
+        stopAdvance: true,
+    });
+};
+
+window.user_pill = exports;

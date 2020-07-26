@@ -1,15 +1,10 @@
 {% extends "zerver/portico.html" %}
+{% set entrypoint = "landing-page" %}
 
 {# Terms of Service. #}
 
 {% block customhead %}
-{{ super() }}
-
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-{% stylesheet 'portico' %}
-{% stylesheet 'landing-page' %}
-{{ render_bundle('landing-page') }}
-
 {% endblock %}
 
 {% block portico_content %}
@@ -22,9 +17,9 @@
     </div>
     <div class="main">
         <div class="padded-content">
-            <div class="inner-content">
+            <div class="inner-content markdown">
                 {% if terms_of_service %}
-                    {{ render_markdown_path(terms_of_service) }}
+                    {{ render_markdown_path(terms_of_service, pure_markdown=True) }}
                 {% else %}
                     {% trans %}
                     This installation of Zulip does not have a configured terms of service.

@@ -1,10 +1,10 @@
-import sys
 from argparse import ArgumentParser
 from typing import Any
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from analytics.lib.counts import do_drop_all_analytics_tables
+
 
 class Command(BaseCommand):
     help = """Clear analytics tables."""
@@ -18,5 +18,4 @@ class Command(BaseCommand):
         if options['force']:
             do_drop_all_analytics_tables()
         else:
-            print("Would delete all data from analytics tables (!); use --force to do so.")
-            sys.exit(1)
+            raise CommandError("Would delete all data from analytics tables (!); use --force to do so.")

@@ -1,5 +1,27 @@
 # Code style and conventions
 
+One can summarize Zulip's coding philosophy as a relentless focus on
+making the codebase easy to understand and difficult to make dangerous
+mistakes in.  The majority of work in any large software development
+project is understanding the existing code so one can debug or modify
+it, and investments in code readability usually end up paying for
+themselves when someone inevitably needs to debug or improve the code.
+
+When there's something subtle or complex to explain or ensure in the
+implementation, we try hard to make it clear, through a combination of
+clean and intuitive interfaces, well-named variables and functions,
+comments/docstrings, and commit messages (roughly in order of priority
+-- if you can make something clear with a good interface, that's a lot
+better than writing a comment explaining how the bad interface works).
+
+This page documents code style policies that every Zulip developer
+should understand.  We aim for this document to be short and focused
+only on details that cannot be easily enforced another way (e.g.
+through linters, automated tests, subsystem design that makes classes
+of mistakes unlikely, etc.).  This approach minimizes the cognitive
+load of ensuring a consistent coding style for both contributors and
+maintainers.
+
 ## Be consistent!
 
 Look at the surrounding code, or a similar part of the project, and try
@@ -16,14 +38,14 @@ You can run them all at once with
 
 You can set this up as a local Git commit hook with
 
-    ``tools/setup-git-repo``
+    tools/setup-git-repo
 
 The Vagrant setup process runs this for you.
 
 `lint` runs many lint checks in parallel, including
 
--   JavaScript ([ESLint](http://eslint.org/))
--   Python ([Pyflakes](http://pypi.python.org/pypi/pyflakes))
+-   JavaScript ([ESLint](https://eslint.org/))
+-   Python ([Pyflakes](https://pypi.python.org/pypi/pyflakes))
 -   templates
 -   Puppet configuration
 -   custom checks (e.g. trailing whitespace and spaces-not-tabs)
@@ -31,30 +53,44 @@ The Vagrant setup process runs this for you.
 ## Secrets
 
 Please don't put any passwords, secret access keys, etc. inline in the
-code. Instead, use the `get_secret` function in `zproject/settings.py`
+code. Instead, use the `get_secret` function in `zproject/config.py`
 to read secrets from `/etc/zulip/secrets.conf`.
 
 ## Dangerous constructs
 
-### Misuse of database queries
+### Too many database queries
 
 Look out for Django code like this:
 
-    [Foo.objects.get(id=bar.x.id)
-    for bar in Bar.objects.filter(...)
-    if  bar.baz < 7]
+    bars = Bar.objects.filter(...)
+    for bar in bars:
+        foo = bar.foo
+        # Make use of foo
 
-This will make one database query for each `Bar`, which is slow in
-production (but not in local testing!). Instead of a list comprehension,
-write a single query using Django's [QuerySet
-API](https://docs.djangoproject.com/en/dev/ref/models/querysets/).
+...because it equates to:
+
+    bars = Bar.objects.filter(...)
+    for bar in bars:
+        foo = Foo.objects.get(id=bar.foo.id)
+        # Make use of foo
+
+...which makes a database query for every Bar.  While this may be fast
+locally in development, it may be quite slow in production!  Instead,
+tell Django's [QuerySet
+API](https://docs.djangoproject.com/en/dev/ref/models/querysets/) to
+_prefetch_ the data in the initial query:
+
+    bars = Bar.objects.filter(...).select_related()
+    for bar in bars:
+        foo = bar.foo  # This doesn't take another query, now!
+        # Make use of foo
 
 If you can't rewrite it as a single query, that's a sign that something
 is wrong with the database schema. So don't defer this optimization when
 performing schema changes, or else you may later find that it's
 impossible.
 
-### UserProfile.objects.get() / Client.objects.get / etc.
+### UserProfile.objects.get() / Client.objects.get() / etc.
 
 In our Django code, never do direct `UserProfile.objects.get(email=foo)`
 database queries. Instead always use `get_user_profile_by_{email,id}`.
@@ -62,12 +98,13 @@ There are 3 reasons for this:
 
 1.  It's guaranteed to correctly do a case-inexact lookup
 2.  It fetches the user object from remote cache, which is faster
-3.  It always fetches a UserProfile object which has been queried using
-    .select\_related(), and thus will perform well when one later
-    accesses related models like the Realm.
+3.  It always fetches a UserProfile object which has been queried
+    using `.select_related()` (see above!), and thus will perform well
+    when one later accesses related models like the Realm.
 
-Similarly we have `get_client` and `get_stream` functions to fetch those
-commonly accessed objects via remote cache.
+Similarly we have `get_client` and `access_stream_by_id` /
+`access_stream_by_name` functions to fetch those commonly accessed
+objects via remote cache.
 
 ### Using Django model objects as keys in sets/dicts
 
@@ -75,11 +112,22 @@ Don't use Django model objects as keys in sets/dictionaries -- you will
 get unexpected behavior when dealing with objects obtained from
 different database queries:
 
-For example,
-`UserProfile.objects.only("id").get(id=17) in set([UserProfile.objects.get(id=17)])`
-is False
+For example, the following will, surprisingly, fail:
 
-You should work with the IDs instead.
+```
+# Bad example -- will raise!
+obj: UserProfile = get_user_profile_by_id(17)
+some_objs = UserProfile.objects.get(id=17)
+assert obj in set([some_objs])
+```
+
+You should work with the IDs instead:
+
+```
+obj: UserProfile = get_user_profile_by_id(17)
+some_objs = UserProfile.objects.get(id=17)
+assert obj.id in set([o.id for i in some_objs])
+```
 
 ### user\_profile.save()
 
@@ -105,17 +153,19 @@ Python allows datetime objects to not have an associated timezone, which can
 cause time-related bugs that are hard to catch with a test suite, or bugs
 that only show up during daylight savings time.
 
-Good ways to make timezone-aware datetimes are below. We import `timezone`
-function as `from django.utils.timezone import now as timezone_now` and
-`from django.utils.timezone import utc as timezone_utc`. When Django is not
-available, `timezone_utc` should be replaced with `pytz.utc` below.
-* `timezone_now()` when Django is available, such as in `zerver/`.
-* `datetime.now(tz=pytz.utc)` when Django is not available, such as for bots
-  and scripts.
-* `datetime.fromtimestamp(timestamp, tz=timezone_utc)` if creating a
+Good ways to make timezone-aware datetimes are below. We import timezone
+libraries as `from datetime import datetime, timezone` and `from
+django.utils.timezone import now as timezone_now`.
+
+Use:
+* `timezone_now()` to get a datetime when Django is available, such as
+  in `zerver/`.
+* `datetime.now(tz=timezone.utc)` when Django is not available, such as
+  for bots and scripts.
+* `datetime.fromtimestamp(timestamp, tz=timezone.utc)` if creating a
   datetime from a timestamp. This is also available as
   `zerver.lib.timestamp.timestamp_to_datetime`.
-* `datetime.strptime(date_string, format).replace(tzinfo=timezone_utc)` if
+* `datetime.strptime(date_string, format).replace(tzinfo=timezone.utc)` if
   creating a datetime from a formatted string that is in UTC.
 
 Idioms that result in timezone-naive datetimes, and should be avoided, are
@@ -145,63 +195,50 @@ string, use the `id` function, as it will simplify future code changes.
 In most contexts in JavaScript where a string is needed, you can pass a
 number without any explicit conversion.
 
-### JavaScript var
+### JavaScript `const` and `let`
 
-Always declare JavaScript variables using `var`.  JavaScript has
-function scope only, not block scope. This means that a `var`
-declaration inside a `for` or `if` acts the same as a `var`
-declaration at the beginning of the surrounding `function`. To avoid
-confusion, declare all variables at the top of a function.
+Always declare JavaScript variables using `const` or `let` rather than
+`var`, except in the Casper tests (since Casper does not support
+`const` and `let`).
 
-### JavaScript `for (i in myArray)`
+### JavaScript and TypeScript `for (i in myArray)`
 
 Don't use it:
-[[1]](http://stackoverflow.com/questions/500504/javascript-for-in-with-arrays),
+[[1]](https://stackoverflow.com/questions/500504/javascript-for-in-with-arrays),
 [[2]](https://google.github.io/styleguide/javascriptguide.xml#for-in_loop),
-[[3]](http://www.jslint.com/help.html#forin)
+[[3]](https://www.jslint.com/help.html#forin)
 
 ### Translation tags
 
 Remember to
-[tag all user-facing strings for translation](../translating/translating.html), whether
-they are in HTML templates or JavaScript editing the HTML (e.g. error
+[tag all user-facing strings for translation](../translating/translating.md), whether
+they are in HTML templates or JavaScript/TypeScript editing the HTML (e.g. error
 messages).
 
-### State and logs files
+### Paths to state or log files
 
-When writing out state of log files, always declare the path in
-`ZULIP_PATHS` in `zproject/settings.py`, which will do the right thing
-in both development and production.
+When writing out state or log files, always pass an absolute path
+through `zulip_path` (found in `zproject/settings.py`), which will do
+the right thing in both development and production.
 
 ## JS array/object manipulation
 
-For generic functions that operate on arrays or JavaScript objects, you
-should generally use [Underscore](http://underscorejs.org/). We used to
-use jQuery's utility functions, but the Underscore equivalents are more
-consistent, better-behaved and offer more choices.
-
-A quick conversion table:
-
-       $.each → _.each (parameters to the callback reversed)
-       $.inArray → _.indexOf (parameters reversed)
-       $.grep → _.filter
-       $.map → _.map
-       $.extend → _.extend
-
-There's a subtle difference in the case of `_.extend`; it will replace
-attributes with undefined, whereas jQuery won't:
-
-       $.extend({foo: 2}, {foo: undefined});  // yields {foo: 2}, BUT...
-       _.extend({foo: 2}, {foo: undefined});  // yields {foo: undefined}!
-
-Also, `_.each` does not let you break out of the iteration early by
-returning false, the way jQuery's version does. If you're doing this,
-you probably want `_.find`, `_.every`, or `_.any`, rather than 'each'.
-
-Some Underscore functions have multiple names. You should always use the
-canonical name (given in large print in the Underscore documentation),
-with the exception of `_.any`, which we prefer over the less clear
-'some'.
+For functions that operate on arrays or JavaScript objects, you should
+generally use modern
+[ECMAScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Language_Resources)
+primitives such as [`for … of`
+loops](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/for...of),
+[`Array.prototype.{entries, every, filter, find, indexOf, map,
+some}`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array),
+[`Object.{assign, entries, keys,
+values}`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object),
+[spread
+syntax](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_syntax),
+and so on. Our Babel configuration automatically transpiles and
+polyfills these using [`core-js`](https://github.com/zloirock/core-js)
+when necessary. We used to use the
+[Underscore](https://underscorejs.org/) library, but that should be
+avoided in new code.
 
 ## More arbitrary style things
 
@@ -212,26 +249,18 @@ we should still avoid extremely long lines. A general guideline is:
 refactor stuff to get it under 85 characters, unless that makes the
 code a lot uglier, in which case it's fine to go up to 120 or so.
 
-### JavaScript
+### JavaScript and TypeScript
 
-When calling a function with an anonymous function as an argument, use
-this style:
-
-    my_function('foo', function (data) {
-        var x = ...;
-        // ...
-    });
-
-The inner function body is indented one level from the outer function
-call. The closing brace for the inner function and the closing
-parenthesis for the outer call are together on the same line. This style
-isn't necessarily appropriate for calls with multiple anonymous
-functions or other arguments following them.
+Our JavaScript and TypeScript code is formatted with
+[Prettier](https://prettier.io/).  You can ask Prettier to reformat
+all code via our [linter tool](../testing/linters.md) with `tools/lint
+--only=prettier --fix`.  You can also [integrate it with your
+editor](https://prettier.io/docs/en/editors.html).
 
 Combine adjacent on-ready functions, if they are logically related.
 
 The best way to build complicated DOM elements is a Mustache template
-like `static/templates/message_reactions.handlebars`. For simpler things
+like `static/templates/message_reactions.hbs`. For simpler things
 you can use jQuery DOM building APIs like so:
 
     var new_tr = $('<tr />').attr('id', object.id);
@@ -288,9 +317,12 @@ type changes in the future.
 
 ### Tests
 
-All significant new features should come with tests. See testing.
+Clear, readable code is important for [tests](../testing/testing.md);
+familiarize yourself with our testing frameworks so that you can write
+clean, readable tests.  Comments about anything subtle about what is
+being verified are appreciated.
 
 ### Third party code
 
-See [our docs on dependencies](../subsystems/dependencies.html) for discussion of
+See [our docs on dependencies](../subsystems/dependencies.md) for discussion of
 rules about integrating third-party projects.

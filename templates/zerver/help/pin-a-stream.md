@@ -1,33 +1,27 @@
 # Pin a stream
 
-If you are subscribed to a lot of streams, pinning important streams to the top
-of the **Streams** section on your left sidebar can be a good way to organize
-streams.
+Pinning a stream moves it to the top of the left sidebar. We recommend
+pinning important streams if you have more streams than fit in the left
+sidebar.
 
-## Pinning a stream using the left sidebar
+### Pin a stream
 
-If you want to quickly pin a single stream, you can do so through the stream sidebar.
+{start_tabs}
 
 {!stream-actions.md!}
 
-2. Click on the {!down-chevron.md!} Select the **Pin stream (stream name) to top**
-option from the actions dropdown.
+1. Click **Pin stream to top**.
 
-3. Upon selecting the **Pin stream (stream name) to top** option, the selected
-stream will be pinned the top of the **Streams** section, confirming the success
-of your pinning.
+{end_tabs}
 
-### Pinning a stream using the [Streams](/#streams) page
+### From the streams page (alternate method)
 
-If you want to pin multiple streams at once, you should pin streams through the [Streams](/#streams) page.
+{start_tabs}
 
-{!subscriptions.md!}
-{!filter-streams.md!}
+{relative|stream|subscribed}
 
-2. Select the stream you want to pin in the [Streams](/#streams) page; {!stream-settings.md!}
+1. Select a stream.
 
-3. Select the **Pin stream to top of left sidebar** option in **Stream settings**.
+1. Click **Pin stream to top of left sidebar**.
 
-4. Once you close the [Streams](/#streams) page, the selected stream
-will be pinned the top of the **Streams** section, confirming the success of
-your pinning.
+{end_tabs}

@@ -2,25 +2,15 @@
 
 {!admin-only.md!}
 
-{!follow-steps.md!} rename existing streams in your organization.
+{start_tabs}
 
-{!subscriptions.md!}
-{!filter-streams.md!}
+{relative|stream|all}
 
-    !!! tip ""
-    {!all-streams.md!}
+1. Select a stream.
 
-3. After selecting a stream, {!stream-settings.md!}
+1. On the right, click the **pencil** (<i class="fa fa-pencil"></i>)
+   next to the stream name. Enter a new name.
 
-{!stream-settings-scroll.md!} **Administrator settings** section. This section
-shows all stream settings that can be modified by an organization administrator.
+1. Click the **checkmark** to save.
 
-5. Locate the **Rename stream**, and type in the new stream name in the **Rename stream**
-field.
-
-    !!! tip ""
-        Your new stream name must be unique to all other stream names and no
-        longer than 60 characters.
-
-5. If your stream name is valid, clicking the **Rename stream** button will
-save your changes.
+{end_tabs}

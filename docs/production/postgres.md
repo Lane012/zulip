@@ -1,6 +1,18 @@
 Postgres database details
 =========================
 
+Starting with Zulip 3.0, Zulip supports using Postgres 10, 11, or 12,
+defaulting to Postgres 12 for new installations.
+
+Previous versions of Zulip used whatever version of Postgres was
+included with the base operating system (E.g. Postgres 12 on Ubuntu
+Focal, 10 on Ubuntu Bionic, and 9.6 on Ubuntu Xenial).  We recommend
+that installations currently using older Postgres releases [upgrade to
+Postgres 12][upgrade-postgres], as may drop support for older postgres
+in a future release.
+
+[upgrade-postgres]: ../production/upgrade-or-modify.html#upgrading-postgresql
+
 #### Remote Postgres database
 
 This is a bit annoying to setup, but you can configure Zulip to use a
@@ -16,11 +28,11 @@ override that configuration).
 If you want to use a remote Postgresql database, you should configure
 the information about the connection with the server. You need a user
 called "zulip" in your database server. You can configure these
-options in /etc/zulip/settings.py (the below descriptions are from the
+options in `/etc/zulip/settings.py` (the below descriptions are from the
 Postgresql documentation):
 
-* REMOTE_POSTGRES_HOST: Name or IP address of the remote host
-* REMOTE_POSTGRES_SSLMODE: SSL Mode used to connect to the server,
+* `REMOTE_POSTGRES_HOST`: Name or IP address of the remote host
+* `REMOTE_POSTGRES_SSLMODE`: SSL Mode used to connect to the server,
   different options you can use are:
   * disable: I don't care about security, and I don't want to pay the
     overhead of encryption.

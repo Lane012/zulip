@@ -1,37 +1,42 @@
-var echo = (function () {
+const util = require("./util");
+// Docs: https://zulip.readthedocs.io/en/latest/subsystems/sending-messages.html
 
-var exports = {};
+const waiting_for_id = new Map();
+let waiting_for_ack = new Map();
 
-var waiting_for_id = {};
-var waiting_for_ack = {};
+function failed_message_success(message_id) {
+    message_store.get(message_id).failed_request = false;
+    ui.show_failed_message_success(message_id);
+}
 
 function resend_message(message, row) {
     message.content = message.raw_content;
-    var retry_spinner = row.find('.refresh-failed-message');
-    retry_spinner.toggleClass('rotating', true);
+    const retry_spinner = row.find(".refresh-failed-message");
+    retry_spinner.toggleClass("rotating", true);
 
     // Always re-set queue_id if we've gotten a new one
     // since the time when the message object was initially created
     message.queue_id = page_params.queue_id;
 
-    var local_id = message.local_id;
+    const local_id = message.local_id;
 
     function on_success(data) {
-        var message_id = data.id;
-        var locally_echoed = true;
+        const message_id = data.id;
+        const locally_echoed = true;
 
-        retry_spinner.toggleClass('rotating', false);
+        retry_spinner.toggleClass("rotating", false);
 
         compose.send_message_success(local_id, message_id, locally_echoed);
 
         // Resend succeeded, so mark as no longer failed
-        message_store.get(message_id).failed_request = false;
-        ui.show_failed_message_success(message_id);
+        failed_message_success(message_id);
     }
 
     function on_error(response) {
-        exports.message_send_error(local_id, response);
-        retry_spinner.toggleClass('rotating', false);
+        exports.message_send_error(message.id, response);
+        setTimeout(() => {
+            retry_spinner.toggleClass("rotating", false);
+        }, 300);
         blueslip.log("Manual resend of message failed");
     }
 
@@ -39,53 +44,74 @@ function resend_message(message, row) {
     transmit.send_message(message, on_success, on_error);
 }
 
-function truncate_precision(float) {
-    return parseFloat(float.toFixed(3));
-}
+exports.build_display_recipient = function (message) {
+    if (message.type === "stream") {
+        return message.stream;
+    }
 
-var get_next_local_id = (function () {
+    // Build a display recipient with the full names of each
+    // recipient.  Note that it's important that use
+    // util.extract_pm_recipients, which filters out any spurious
+    // ", " at the end of the recipient list
+    const emails = util.extract_pm_recipients(message.private_message_recipient);
 
-    var already_used = {};
-
-    return function () {
-        var local_id_increment = 0.01;
-        var latest = page_params.max_message_id;
-        if (typeof message_list.all !== 'undefined' && message_list.all.last() !== undefined) {
-            latest = message_list.all.last().id;
-        }
-        latest = Math.max(0, latest);
-        var next_local_id = truncate_precision(latest + local_id_increment);
-
-        if (already_used[next_local_id]) {
-            // If our id is already used, it is probably an edge case like we had
-            // to abort a very recent message.
-            blueslip.warn("We don't reuse ids for local echo.");
-            return;
-        }
-
-        if (next_local_id % 1 > local_id_increment * 5) {
-            blueslip.warn("Turning off local echo for this message to let host catch up");
-            return;
-        }
-
-        if (next_local_id % 1 === 0) {
-            // The logic to stop at 0.05 should prevent us from ever wrapping around
-            // to the next integer.
-            blueslip.error("Programming error");
-            return;
+    let sender_in_display_recipients = false;
+    const display_recipient = emails.map((email) => {
+        email = email.trim();
+        const person = people.get_by_email(email);
+        if (person === undefined) {
+            // For unknown users, we return a skeleton object.
+            //
+            // This allows us to support zephyr mirroring situations
+            // where the server might dynamically create users in
+            // response to messages being sent to their email address.
+            //
+            // TODO: It might be cleaner for the webapp for such
+            // dynamic user creation to happen inside a separate API
+            // call when the pill is constructed, and then enforcing
+            // the requirement that we have an actual user object in
+            // `people.js` when sending messages.
+            return {
+                email,
+                full_name: email,
+                unknown_local_echo_user: true,
+            };
         }
 
-        already_used[next_local_id] = true;
+        if (person.user_id === message.sender_id) {
+            sender_in_display_recipients = true;
+        }
 
-        return next_local_id;
-    };
-}());
+        // NORMAL PATH
+        //
+        // This should match the format of display_recipient
+        // objects generated by the backend code in models.py,
+        // which is why we create a new object with a `.id` field
+        // rather than a `.user_id` field.
+        return {
+            id: person.user_id,
+            email: person.email,
+            full_name: person.full_name,
+        };
+    });
 
-function insert_local_message(message_request, local_id) {
+    if (!sender_in_display_recipients) {
+        // Ensure that the current user is included in
+        // display_recipient for group PMs.
+        display_recipient.push({
+            id: message.sender_id,
+            email: message.sender_email,
+            full_name: message.sender_full_name,
+        });
+    }
+    return display_recipient;
+};
+
+exports.insert_local_message = function (message_request, local_id_float) {
     // Shallow clone of message request object that is turned into something suitable
     // for zulip.js:add_message
     // Keep this in sync with changes to compose.create_message_object
-    var message = $.extend({}, message_request);
+    const message = {...message_request};
 
     // Locally delivered messages cannot be unread (since we sent them), nor
     // can they alert the user.
@@ -96,91 +122,133 @@ function insert_local_message(message_request, local_id) {
     // NOTE: This will parse synchronously. We're not using the async pipeline
     markdown.apply_markdown(message);
 
-    message.content_type = 'text/html';
+    message.content_type = "text/html";
     message.sender_email = people.my_current_email();
     message.sender_full_name = people.my_full_name();
     message.avatar_url = page_params.avatar_url;
-    message.timestamp = new XDate().getTime() / 1000;
-    message.local_id = local_id;
+    message.timestamp = local_message.now();
+    message.local_id = local_id_float.toString();
     message.locally_echoed = true;
-    message.id = message.local_id;
-    markdown.add_subject_links(message);
+    message.id = local_id_float;
+    markdown.add_topic_links(message);
 
-    waiting_for_id[message.local_id] = message;
-    waiting_for_ack[message.local_id] = message;
+    waiting_for_id.set(message.local_id, message);
+    waiting_for_ack.set(message.local_id, message);
 
-    if (message.type === 'stream') {
-        message.display_recipient = message.stream;
-    } else {
-        // Build a display recipient with the full names of each
-        // recipient.  Note that it's important that use
-        // util.extract_pm_recipients, which filters out any spurious
-        // ", " at the end of the recipient list
-        var emails = util.extract_pm_recipients(message_request.private_message_recipient);
-        message.display_recipient = _.map(emails, function (email) {
-            email = email.trim();
-            var person = people.get_by_email(email);
-            if (person === undefined) {
-                // For unknown users, we return a skeleton object.
-                return {email: email, full_name: email,
-                        unknown_local_echo_user: true};
-            }
-            // NORMAL PATH
-            return person;
-        });
-    }
+    message.display_recipient = exports.build_display_recipient(message);
+    local_message.insert_message(message);
+    return message;
+};
 
-    // It is a little bit funny to go through the message_events
-    // codepath, but it's sort of the idea behind local echo that
-    // we are simulating server events before they actually arrive.
-    message_events.insert_new_messages([message], true);
-    return message.local_id;
-}
+exports.is_slash_command = function (content) {
+    return !content.startsWith("/me") && content.startsWith("/");
+};
 
-exports.try_deliver_locally = function try_deliver_locally(message_request) {
+exports.try_deliver_locally = function (message_request) {
     if (markdown.contains_backend_only_syntax(message_request.content)) {
         return;
     }
 
-    if (narrow_state.active() && !narrow_state.filter().can_apply_locally()) {
+    if (narrow_state.active() && !narrow_state.filter().can_apply_locally(true)) {
         return;
     }
 
-    if (!current_msg_list.fetch_status.can_append()) {
-        blueslip.log('Suppressing echo for list that is behind on fetches.');
+    if (exports.is_slash_command(message_request.content)) {
         return;
     }
 
-    var next_local_id = get_next_local_id();
+    if (!current_msg_list.data.fetch_status.has_found_newest()) {
+        // If the current message list doesn't yet have the latest
+        // messages before the one we just sent, local echo would make
+        // it appear as though there were no messages between what we
+        // have and the new message we just sent, when in fact we're
+        // in the process of fetching those from the server.  In this
+        // case, it's correct to skip local echo; we'll get the
+        // message we just sent placed appropriately when we get it
+        // from either server_events or message_fetch.
+        blueslip.info("Skipping local echo until newest messages get loaded.");
+        return;
+    }
 
-    if (!next_local_id) {
+    const local_id_float = local_message.get_next_id_float();
+
+    if (!local_id_float) {
         // This can happen for legit reasons.
         return;
     }
 
-    return insert_local_message(message_request, next_local_id);
+    const message = exports.insert_local_message(message_request, local_id_float);
+    return message;
 };
 
-exports.edit_locally = function edit_locally(message, raw_content, new_topic) {
-    message.raw_content = raw_content;
-    if (new_topic !== undefined) {
-        topic_data.remove_message({
+exports.edit_locally = function (message, request) {
+    // Responsible for doing the rendering work of locally editing the
+    // content ofa message.  This is used in several code paths:
+    // * Editing a message where a message was locally echoed but
+    //   it got an error back from the server
+    // * Locally echoing any content-only edits to fully sent messages
+    // * Restoring the original content should the server return an
+    //   error after having locally echoed content-only messages.
+    // The details of what should be changed are encoded in the request.
+    const raw_content = request.raw_content;
+    const message_content_edited = raw_content !== undefined && message.raw_content !== raw_content;
+
+    if (request.new_topic !== undefined || request.new_stream_id !== undefined) {
+        const new_stream_id = request.new_stream_id;
+        const new_topic = request.new_topic;
+        stream_topic_history.remove_messages({
             stream_id: message.stream_id,
-            topic_name: message.subject,
+            topic_name: message.topic,
+            num_messages: 1,
         });
 
-        message.subject = new_topic;
+        if (new_stream_id !== undefined) {
+            message.stream_id = new_stream_id;
+        }
+        if (new_topic !== undefined) {
+            message.topic = new_topic;
+        }
 
-        topic_data.add_message({
+        stream_topic_history.add_message({
             stream_id: message.stream_id,
-            topic_name: message.subject,
+            topic_name: message.topic,
             message_id: message.id,
         });
     }
 
-    markdown.apply_markdown(message);
+    if (message_content_edited) {
+        message.raw_content = raw_content;
+        if (request.content !== undefined) {
+            // This happens in the code path where message editing
+            // failed and we're trying to undo the local echo.  We use
+            // the saved content and flags rather than rendering; this
+            // is important in case
+            // markdown.contains_backend_only_syntax(message) is true.
+            message.content = request.content;
+            message.mentioned = request.mentioned;
+            message.mentioned_me_directly = request.mentioned_me_directly;
+            message.alerted = request.alerted;
+        } else {
+            // Otherwise, we markdown-render the message; this resets
+            // all flags, so we need to restore those flags that are
+            // properties of how the user has interacted with the
+            // message, and not its rendering.
+            markdown.apply_markdown(message);
+            if (request.starred !== undefined) {
+                message.starred = request.starred;
+            }
+            if (request.historical !== undefined) {
+                message.historical = request.historical;
+            }
+            if (request.collapsed !== undefined) {
+                message.collapsed = request.collapsed;
+            }
+        }
+    }
 
-    // We don't handle unread counts since local messages must be sent by us
+    // We don't have logic to adjust unread counts, because message
+    // reaching this code path must either have been sent by us or the
+    // topic isn't being edited, so unread counts can't have changed.
 
     home_msg_list.view.rerender_messages([message]);
     if (current_msg_list === message_list.narrowed) {
@@ -190,9 +258,9 @@ exports.edit_locally = function edit_locally(message, raw_content, new_topic) {
     pm_list.update_private_messages();
 };
 
-exports.reify_message_id = function reify_message_id(local_id, server_id) {
-    var message = waiting_for_id[local_id];
-    delete waiting_for_id[local_id];
+exports.reify_message_id = function (local_id, server_id) {
+    const message = waiting_for_id.get(local_id);
+    waiting_for_id.delete(local_id);
 
     // reify_message_id is called both on receiving a self-sent message
     // from the server, and on receiving the response to the send request
@@ -204,34 +272,39 @@ exports.reify_message_id = function reify_message_id(local_id, server_id) {
     message.id = server_id;
     message.locally_echoed = false;
 
-    var opts = {old_id: local_id, new_id: server_id};
+    const opts = {old_id: parseFloat(local_id), new_id: server_id};
 
     message_store.reify_message_id(opts);
     notifications.reify_message_id(opts);
+    recent_topics.reify_message_id_if_available(opts);
 };
 
-exports.process_from_server = function process_from_server(messages) {
-    var msgs_to_rerender = [];
-    var non_echo_messages = [];
+exports.process_from_server = function (messages) {
+    const msgs_to_rerender = [];
+    const non_echo_messages = [];
 
-    _.each(messages, function (message) {
+    for (const message of messages) {
         // In case we get the sent message before we get the send ACK, reify here
 
-        var client_message = waiting_for_ack[message.local_id];
-
+        const local_id = message.local_id;
+        const client_message = waiting_for_ack.get(local_id);
         if (client_message === undefined) {
             // For messages that weren't locally echoed, we go through
             // the "main" codepath that doesn't have to id reconciliation.
             // We simply return non-echo messages to our caller.
             non_echo_messages.push(message);
-            return;
+            continue;
         }
 
-        exports.reify_message_id(message.local_id, message.id);
+        exports.reify_message_id(local_id, message.id);
+
+        if (message_store.get(message.id).failed_request) {
+            failed_message_success(message.id);
+        }
 
         if (client_message.content !== message.content) {
             client_message.content = message.content;
-            sent_messages.mark_disparity(message.local_id);
+            sent_messages.mark_disparity(local_id);
         }
 
         message_store.update_booleans(client_message, message.flags);
@@ -249,9 +322,13 @@ exports.process_from_server = function process_from_server(messages) {
         // the backend.
         client_message.timestamp = message.timestamp;
 
+        client_message.topic_links = message.topic_links;
+        client_message.is_me_message = message.is_me_message;
+        client_message.submessages = message.submessages;
+
         msgs_to_rerender.push(client_message);
-        delete waiting_for_ack[client_message.id];
-    });
+        waiting_for_ack.delete(local_id);
+    }
 
     if (msgs_to_rerender.length > 0) {
         // In theory, we could just rerender messages where there were
@@ -267,44 +344,47 @@ exports.process_from_server = function process_from_server(messages) {
     return non_echo_messages;
 };
 
-exports.message_send_error = function message_send_error(local_id, error_response) {
+exports._patch_waiting_for_ack = function (data) {
+    // Only for testing
+    waiting_for_ack = data;
+};
+
+exports.message_send_error = function (message_id, error_response) {
     // Error sending message, show inline
-    message_store.get(local_id).failed_request = true;
-    ui.show_message_failed(local_id, error_response);
+    message_store.get(message_id).failed_request = true;
+    ui.show_message_failed(message_id, error_response);
 };
 
 function abort_message(message) {
     // Remove in all lists in which it exists
-    _.each([message_list.all, home_msg_list, current_msg_list], function (msg_list) {
+    for (const msg_list of [message_list.all, home_msg_list, current_msg_list]) {
         msg_list.remove_and_rerender([message]);
-    });
+    }
 }
 
-$(function () {
+exports.initialize = function () {
     function on_failed_action(action, callback) {
         $("#main_div").on("click", "." + action + "-failed-message", function (e) {
             e.stopPropagation();
             popovers.hide_all();
-            var row = $(this).closest(".message_row");
-            var message_id = rows.id(row);
+            const row = $(this).closest(".message_row");
+            const local_id = rows.local_echo_id(row);
             // Message should be waiting for ack and only have a local id,
             // otherwise send would not have failed
-            var message = waiting_for_ack[message_id];
+            const message = waiting_for_ack.get(local_id);
             if (message === undefined) {
-                blueslip.warn("Got resend or retry on failure request but did not find message in ack list " + message_id);
+                blueslip.warn(
+                    "Got resend or retry on failure request but did not find message in ack list " +
+                        local_id,
+                );
                 return;
             }
             callback(message, row);
         });
     }
 
-    on_failed_action('remove', abort_message);
-    on_failed_action('refresh', resend_message);
-});
+    on_failed_action("remove", abort_message);
+    on_failed_action("refresh", resend_message);
+};
 
-return exports;
-
-}());
-if (typeof module !== 'undefined') {
-    module.exports = echo;
-}
+window.echo = exports;

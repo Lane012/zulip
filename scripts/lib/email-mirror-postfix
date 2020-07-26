@@ -1,31 +1,33 @@
 #!/usr/bin/env python3
 
-"""
-Forward messages sent to the configured email gateway to Zulip.
+"""Postfix implementation of the incoming email gateway's helper for
+forwarding emails into Zulip.
 
-For zulip.com, messages to that address go to the Inbox of emailgateway@zulip.com.
-Zulip voyager configurations will differ.
+https://zulip.readthedocs.io/en/latest/production/settings.html#email-gateway
 
-Messages meant for Zulip have a special recipient form of
+The email gateway supports two major modes of operation: An email
+server (using postfix) where the email address configured in
+EMAIL_GATEWAY_PATTERN delivers emails directly to Zulip (this) or a
+cron job that connects to an IMAP inbox (which receives the emails)
+periodically.
 
-    <stream name>+<regenerable stream token>@streams.zulip.com
-
-This pattern is configurable via the EMAIL_GATEWAY_PATTERN settings.py
-variable.
-
-Configure your MTA to execute this script on message
-receipt with the contents of the message piped to standard input. The
-script will queue the message for processing. In this mode of invocation,
-you should pass the destination email address in the ORIGINAL_RECIPIENT
-environment variable.
+Zulip's puppet configuration takes care of configuring postfix to
+execute this script when emails are received by postfix, piping the
+email content via standard input (and the destination email address in
+the ORIGINAL_RECIPIENT environment variable).
 
 In Postfix, you can express that via an /etc/aliases entry like this:
  |/home/zulip/deployments/current/scripts/lib/email-mirror-postfix -r ${original_recipient}
 
+To manage DoS issues, this script does very little work (just sending
+an HTTP request to queue the message for processing) to avoid
+importing expensive libraries.
+
 Also you can use optional keys to configure the script and change default values:
 
 -s SHARED_SECRET    For adding shared secret key if it is not contained in
-                    "/etc/zulip/zulip-secrets.conf".
+                    "/etc/zulip/zulip-secrets.conf".  This key is used to authenticate
+                    the HTTP requests made by this tool.
 
 -d HOST             Destination Zulip host for email uploading. Address must contain type of
                     HTTP protocol, i.e "https://example.com". Default value: "https://127.0.0.1".
@@ -36,22 +38,19 @@ Also you can use optional keys to configure the script and change default values
                     self-signed certificates. Default value: False.
 
 -t                  Disable sending request to the Zulip server. Default value: False.
-"""
 
+"""
+import argparse
+import base64
+import json
 import os
+import posix
 import ssl
 import sys
-
-import argparse
-
-import posix
-import json
-
-from urllib.parse import urljoin, urlencode
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError
 from configparser import RawConfigParser
-
+from urllib.error import HTTPError
+from urllib.parse import urlencode, urljoin
+from urllib.request import Request, urlopen
 
 parser = argparse.ArgumentParser()
 
@@ -79,38 +78,34 @@ options = parser.parse_args()
 MAX_ALLOWED_PAYLOAD = 25 * 1024 * 1024
 
 
-def process_response_error(e):
-    # type: (HTTPError) -> None
+def process_response_error(e: HTTPError) -> None:
     if e.code == 400:
         response_content = e.read()
         response_data = json.loads(response_content.decode('utf8'))
         print(response_data['msg'])
-        exit(posix.EX_NOUSER)  # type: ignore # There are no stubs for posix in python 3
+        exit(posix.EX_NOUSER)
     else:
         print("4.4.2 Connection dropped: Internal server error.")
         exit(1)
 
 
-def send_email_mirror(rcpt_to, shared_secret, host, url, test, verify_ssl):
-    # type: (str, str, str, str, bool, bool) -> None
+def send_email_mirror(
+    rcpt_to: str, shared_secret: str, host: str, url: str, test: bool, verify_ssl: bool,
+) -> None:
     if not rcpt_to:
         print("5.1.1 Bad destination mailbox address: No missed message email address.")
-        exit(posix.EX_NOUSER)  # type: ignore # There are no stubs for posix in python 3
-    msg_text = sys.stdin.read(MAX_ALLOWED_PAYLOAD + 1)
-    if len(msg_text) > MAX_ALLOWED_PAYLOAD:
+        exit(posix.EX_NOUSER)
+    msg_bytes = sys.stdin.buffer.read(MAX_ALLOWED_PAYLOAD + 1)
+    if len(msg_bytes) > MAX_ALLOWED_PAYLOAD:
         # We're not at EOF, reject large mail.
         print("5.3.4 Message too big for system: Max size is 25MiB")
-        exit(posix.EX_DATAERR)  # type: ignore # There are no stubs for posix in python 3
+        exit(posix.EX_DATAERR)
 
     secrets_file = RawConfigParser()
     secrets_file.read("/etc/zulip/zulip-secrets.conf")
     if not shared_secret:
         shared_secret = secrets_file.get('secrets', 'shared_secret')
 
-    request_data = {
-        "recipient": rcpt_to,
-        "msg_text": msg_text
-    }
     if test:
         exit(0)
 
@@ -119,18 +114,19 @@ def send_email_mirror(rcpt_to, shared_secret, host, url, test, verify_ssl):
         # work, and connections to 127.0.0.1 are secure without SSL.
         verify_ssl = False
 
-    request_context = {}
-    if not verify_ssl and sys.version_info > (2, 7, 9):
-        # Python version below 2.7.9 doesn't support request context
-        # and doesn't check ssl certificates.
-        request_context['context'] = ssl.create_default_context()
-        request_context['context'].check_hostname = False
-        request_context['context'].verify_mode = ssl.CERT_NONE
-    data = {"data": json.dumps(request_data),
-            "secret": shared_secret}
+    context = None
+    if not verify_ssl:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    data = {
+        "rcpt_to": rcpt_to,
+        "msg_base64": base64.b64encode(msg_bytes).decode(),
+        "secret": shared_secret,
+    }
     req = Request(url=urljoin(host, url), data=urlencode(data).encode('utf8'))
     try:
-        urlopen(req, **request_context)  # type: ignore # urllib.request
+        urlopen(req, context=context)
     except HTTPError as err:
         process_response_error(err)
 

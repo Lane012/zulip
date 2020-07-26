@@ -1,36 +1,38 @@
-from typing import Any, Callable, Dict, Iterable, List, Set, Tuple, Text
-
-from collections import defaultdict
 import datetime
 import logging
-import pytz
+from collections import defaultdict
+from typing import Any, Dict, List, Set, Tuple, Union
 
-from django.db.models import Q, QuerySet
-from django.template import loader
 from django.conf import settings
 from django.utils.timezone import now as timezone_now
 
-from zerver.lib.notifications import build_message_list, encode_stream, \
-    one_click_unsubscribe_link
-from zerver.lib.send_email import send_future_email, FromAddress
-from zerver.models import UserProfile, UserMessage, Recipient, Stream, \
-    Subscription, UserActivity, get_active_streams, get_user_profile_by_id, \
-    Realm
+from confirmation.models import one_click_unsubscribe_link
 from zerver.context_processors import common_context
-from zerver.lib.queue import queue_json_publish
+from zerver.lib.email_notifications import build_message_list
 from zerver.lib.logging_util import log_to_file
+from zerver.lib.queue import queue_json_publish
+from zerver.lib.send_email import FromAddress, send_future_email
+from zerver.lib.url_encoding import encode_stream
+from zerver.models import (
+    Message,
+    Realm,
+    RealmAuditLog,
+    Recipient,
+    Subscription,
+    UserActivity,
+    UserProfile,
+    get_active_streams,
+    get_user_profile_by_id,
+)
 
 logger = logging.getLogger(__name__)
 log_to_file(logger, settings.DIGEST_LOG_PATH)
 
-VALID_DIGEST_DAY = 1  # Tuesdays
 DIGEST_CUTOFF = 5
 
-# Digests accumulate 4 types of interesting traffic for a user:
-# 1. Missed PMs
-# 2. New streams
-# 3. New users
-# 4. Interesting stream traffic, as determined by the longest and most
+# Digests accumulate 2 types of interesting traffic for a user:
+# 1. New streams
+# 2. Interesting stream traffic, as determined by the longest and most
 #    diversely comment upon topics.
 
 def inactive_since(user_profile: UserProfile, cutoff: datetime.datetime) -> bool:
@@ -64,10 +66,8 @@ def enqueue_emails(cutoff: datetime.datetime) -> None:
     if not settings.SEND_DIGEST_EMAILS:
         return
 
-    if timezone_now().weekday() != VALID_DIGEST_DAY:
-        return
-
-    for realm in Realm.objects.filter(deactivated=False, show_digest_email=True):
+    weekday = timezone_now().weekday()
+    for realm in Realm.objects.filter(deactivated=False, digest_emails_enabled=True, digest_weekday=weekday):
         if not should_process_digest(realm.string_id):
             continue
 
@@ -77,10 +77,12 @@ def enqueue_emails(cutoff: datetime.datetime) -> None:
         for user_profile in user_profiles:
             if inactive_since(user_profile, cutoff):
                 queue_digest_recipient(user_profile, cutoff)
-                logger.info("%s is inactive, queuing for potential digest" % (
-                    user_profile.email,))
+                logger.info(
+                    "User %s is inactive, queuing for potential digest",
+                    user_profile.id,
+                )
 
-def gather_hot_conversations(user_profile: UserProfile, stream_messages: QuerySet) -> List[Dict[str, Any]]:
+def gather_hot_conversations(user_profile: UserProfile, messages: List[Message]) -> List[Dict[str, Any]]:
     # Gather stream conversations of 2 types:
     # 1. long conversations
     # 2. conversations where many different people participated
@@ -88,17 +90,21 @@ def gather_hot_conversations(user_profile: UserProfile, stream_messages: QuerySe
     # Returns a list of dictionaries containing the templating
     # information for each hot conversation.
 
-    conversation_length = defaultdict(int)  # type: Dict[Tuple[int, Text], int]
-    conversation_diversity = defaultdict(set)  # type: Dict[Tuple[int, Text], Set[Text]]
-    for user_message in stream_messages:
-        if not user_message.message.sent_by_human():
+    conversation_length: Dict[Tuple[int, str], int] = defaultdict(int)
+    conversation_messages: Dict[Tuple[int, str], List[Message]] = defaultdict(list)
+    conversation_diversity: Dict[Tuple[int, str], Set[str]] = defaultdict(set)
+    for message in messages:
+        key = (message.recipient.type_id,
+               message.topic_name())
+
+        conversation_messages[key].append(message)
+
+        if not message.sent_by_human():
             # Don't include automated messages in the count.
             continue
 
-        key = (user_message.message.recipient.type_id,
-               user_message.message.subject)
         conversation_diversity[key].add(
-            user_message.message.sender.full_name)
+            message.sender.full_name)
         conversation_length[key] += 1
 
     diversity_list = list(conversation_diversity.items())
@@ -125,15 +131,12 @@ def gather_hot_conversations(user_profile: UserProfile, stream_messages: QuerySe
 
     hot_conversation_render_payloads = []
     for h in hot_conversations:
-        stream_id, subject = h
         users = list(conversation_diversity[h])
         count = conversation_length[h]
+        messages = conversation_messages[h]
 
         # We'll display up to 2 messages from the conversation.
-        first_few_messages = [user_message.message for user_message in
-                              stream_messages.filter(
-                                  message__recipient__type_id=stream_id,
-                                  message__subject=subject)[:2]]
+        first_few_messages = messages[:2]
 
         teaser_data = {"participants": users,
                        "count": count - len(first_few_messages),
@@ -143,101 +146,64 @@ def gather_hot_conversations(user_profile: UserProfile, stream_messages: QuerySe
         hot_conversation_render_payloads.append(teaser_data)
     return hot_conversation_render_payloads
 
-def gather_new_users(user_profile: UserProfile, threshold: datetime.datetime) -> Tuple[int, List[Text]]:
-    # Gather information on users in the realm who have recently
-    # joined.
-    if user_profile.realm.is_zephyr_mirror_realm:
-        new_users = []  # type: List[UserProfile]
-    else:
-        new_users = list(UserProfile.objects.filter(
-            realm=user_profile.realm, date_joined__gt=threshold,
-            is_bot=False))
-    user_names = [user.full_name for user in new_users]
-
-    return len(user_names), user_names
-
 def gather_new_streams(user_profile: UserProfile,
-                       threshold: datetime.datetime) -> Tuple[int, Dict[str, List[Text]]]:
-    if user_profile.realm.is_zephyr_mirror_realm:
-        new_streams = []  # type: List[Stream]
-    else:
+                       threshold: datetime.datetime) -> Tuple[int, Dict[str, List[str]]]:
+    if user_profile.can_access_public_streams():
         new_streams = list(get_active_streams(user_profile.realm).filter(
             invite_only=False, date_created__gt=threshold))
+    else:
+        new_streams = []
 
-    base_url = "%s/#narrow/stream/" % (user_profile.realm.uri,)
+    base_url = f"{user_profile.realm.uri}/#narrow/stream/"
 
     streams_html = []
     streams_plain = []
 
     for stream in new_streams:
         narrow_url = base_url + encode_stream(stream.id, stream.name)
-        stream_link = "<a href='%s'>%s</a>" % (narrow_url, stream.name)
+        stream_link = f"<a href='{narrow_url}'>{stream.name}</a>"
         streams_html.append(stream_link)
         streams_plain.append(stream.name)
 
     return len(new_streams), {"html": streams_html, "plain": streams_plain}
 
-def enough_traffic(unread_pms: Text, hot_conversations: Text, new_streams: int, new_users: int) -> bool:
-    if unread_pms or hot_conversations:
-        # If you have any unread traffic, good enough.
-        return True
-    if new_streams and new_users:
-        # If you somehow don't have any traffic but your realm did get
-        # new streams and users, good enough.
-        return True
-    return False
+def enough_traffic(hot_conversations: str, new_streams: int) -> bool:
+    return bool(hot_conversations or new_streams)
 
-def handle_digest_email(user_profile_id: int, cutoff: float) -> None:
+def handle_digest_email(user_profile_id: int, cutoff: float,
+                        render_to_web: bool = False) -> Union[None, Dict[str, Any]]:
     user_profile = get_user_profile_by_id(user_profile_id)
 
-    # We are disabling digest emails for soft deactivated users for the time.
-    # TODO: Find an elegant way to generate digest emails for these users.
-    if user_profile.long_term_idle:
-        return None
-
     # Convert from epoch seconds to a datetime object.
-    cutoff_date = datetime.datetime.fromtimestamp(int(cutoff), tz=pytz.utc)
-
-    all_messages = UserMessage.objects.filter(
-        user_profile=user_profile,
-        message__pub_date__gt=cutoff_date).order_by("message__pub_date")
+    cutoff_date = datetime.datetime.fromtimestamp(int(cutoff), tz=datetime.timezone.utc)
 
     context = common_context(user_profile)
 
     # Start building email template data.
     context.update({
-        'realm_name': user_profile.realm.name,
-        'name': user_profile.full_name,
-        'unsubscribe_link': one_click_unsubscribe_link(user_profile, "digest")
+        'unsubscribe_link': one_click_unsubscribe_link(user_profile, "digest"),
     })
 
-    # Gather recent missed PMs, re-using the missed PM email logic.
-    # You can't have an unread message that you sent, but when testing
-    # this causes confusion so filter your messages out.
-    pms = all_messages.filter(
-        ~Q(message__recipient__type=Recipient.STREAM) &
-        ~Q(message__sender=user_profile))
+    home_view_streams = Subscription.objects.filter(
+        user_profile=user_profile,
+        recipient__type=Recipient.STREAM,
+        active=True,
+        is_muted=False).values_list('recipient__type_id', flat=True)
 
-    # Show up to 4 missed PMs.
-    pms_limit = 4
+    if not user_profile.long_term_idle:
+        stream_ids = home_view_streams
+    else:
+        stream_ids = exclude_subscription_modified_streams(user_profile, home_view_streams, cutoff_date)
 
-    context['unread_pms'] = build_message_list(
-        user_profile, [pm.message for pm in pms[:pms_limit]])
-    context['remaining_unread_pms_count'] = min(0, len(pms) - pms_limit)
-
-    home_view_recipients = [sub.recipient for sub in
-                            Subscription.objects.filter(
-                                user_profile=user_profile,
-                                active=True,
-                                in_home_view=True)]
-
-    stream_messages = all_messages.filter(
-        message__recipient__type=Recipient.STREAM,
-        message__recipient__in=home_view_recipients)
+    # Fetch list of all messages sent after cutoff_date where the user is subscribed
+    messages = Message.objects.filter(
+        recipient__type=Recipient.STREAM,
+        recipient__type_id__in=stream_ids,
+        date_sent__gt=cutoff_date).select_related('recipient', 'sender', 'sending_client')
 
     # Gather hot conversations.
     context["hot_conversations"] = gather_hot_conversations(
-        user_profile, stream_messages)
+        user_profile, messages)
 
     # Gather new streams.
     new_streams_count, new_streams = gather_new_streams(
@@ -245,16 +211,36 @@ def handle_digest_email(user_profile_id: int, cutoff: float) -> None:
     context["new_streams"] = new_streams
     context["new_streams_count"] = new_streams_count
 
-    # Gather users who signed up recently.
-    new_users_count, new_users = gather_new_users(
-        user_profile, cutoff_date)
-    context["new_users"] = new_users
+    # TODO: Set has_preheader if we want to include a preheader.
+
+    if render_to_web:
+        return context
 
     # We don't want to send emails containing almost no information.
-    if enough_traffic(context["unread_pms"], context["hot_conversations"],
-                      new_streams_count, new_users_count):
-        logger.info("Sending digest email for %s" % (user_profile.email,))
+    if enough_traffic(context["hot_conversations"], new_streams_count):
+        logger.info("Sending digest email for user %s", user_profile.id)
         # Send now, as a ScheduledEmail
-        send_future_email('zerver/emails/digest', user_profile.realm, to_user_id=user_profile.id,
-                          from_name="Zulip Digest", from_address=FromAddress.NOREPLY,
+        send_future_email('zerver/emails/digest', user_profile.realm, to_user_ids=[user_profile.id],
+                          from_name="Zulip Digest", from_address=FromAddress.no_reply_placeholder,
                           context=context)
+    return None
+
+def exclude_subscription_modified_streams(user_profile: UserProfile,
+                                          stream_ids: List[int],
+                                          cutoff_date: datetime.datetime) -> List[int]:
+    """Exclude streams from given list where users' subscription was modified."""
+
+    events = [
+        RealmAuditLog.SUBSCRIPTION_CREATED,
+        RealmAuditLog.SUBSCRIPTION_ACTIVATED,
+        RealmAuditLog.SUBSCRIPTION_DEACTIVATED,
+    ]
+
+    # Streams where the user's subscription was changed
+    modified_streams = RealmAuditLog.objects.filter(
+        realm=user_profile.realm,
+        modified_user=user_profile,
+        event_time__gt=cutoff_date,
+        event_type__in=events).values_list('modified_stream_id', flat=True)
+
+    return list(set(stream_ids) - set(modified_streams))

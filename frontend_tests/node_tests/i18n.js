@@ -1,27 +1,25 @@
-zrequire('Handlebars', 'handlebars');
-zrequire('templates');
-zrequire('i18n', 'i18next');
+set_global("Handlebars", global.make_handlebars());
+zrequire("templates");
 
-i18n.init({
-    nsSeparator: false,
-    keySeparator: false,
-    interpolation: {
-        prefix: "__",
-        suffix: "__",
-    },
-    lng: 'fr',
-    resources: {
-        fr: {
-            translation: {
-                "Quote and reply": "French translation",
-                "Notifications are triggered when a message arrives and Zulip isn't in focus or the message is offscreen.": "Some French text with Zulip",
-            },
-        },
+// We download our translations in `page_params` (which
+// are for the user's chosen language), so we simulate
+// that here for the tests.
+set_global("page_params", {
+    translation_data: {
+        "Quote and reply": "French translation",
+        "Notification triggers": "Some French text",
     },
 });
 
-(function test_t_tag() {
-    var args = {
+// All of our other tests stub out i18n activity;
+// here we do a quick sanity check on the engine itself.
+// We use `i18n.js` to initialize `i18next` and
+// to set `i18n` to `i18next` on the global namespace
+// for `templates.js`.
+zrequire("i18n");
+
+run_test("t_tag", () => {
+    const args = {
         message: {
             is_stream: true,
             id: "99",
@@ -35,12 +33,12 @@ i18n.init({
         narrowed: true,
     };
 
-    var html = global.render_template('actions_popover_content', args);
+    const html = require("../../static/templates/actions_popover_content.hbs")(args);
     assert(html.indexOf("French translation") > 0);
-}());
+});
 
-(function test_tr_tag() {
-    var args = {
+run_test("tr_tag", () => {
+    const args = {
         page_params: {
             full_name: "John Doe",
             password_auth_enabled: false,
@@ -49,17 +47,16 @@ i18n.init({
             twenty_four_hour_time: false,
             enable_stream_desktop_notifications: false,
             enable_stream_push_notifications: false,
-            enable_stream_sounds: false,
+            enable_stream_audible_notifications: false,
             enable_desktop_notifications: false,
             enable_sounds: false,
             enable_offline_email_notifications: false,
             enable_offline_push_notifications: false,
             enable_online_push_notifications: false,
             enable_digest_emails: false,
-            default_desktop_notifications: false,
         },
     };
 
-    var html = global.render_template('settings_tab', args);
-    assert(html.indexOf('Some French text with Zulip') > 0);
-}());
+    const html = require("../../static/templates/settings_tab.hbs")(args);
+    assert(html.indexOf("Some French text") > 0);
+});

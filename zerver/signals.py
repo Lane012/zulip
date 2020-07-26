@@ -1,17 +1,20 @@
-
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from django.conf import settings
-from django.contrib.auth.signals import user_logged_in
+from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
-from django.template import loader
-from django.utils.timezone import \
-    get_current_timezone_name as timezone_get_current_timezone_name
+from django.utils.timezone import get_current_timezone_name as timezone_get_current_timezone_name
 from django.utils.timezone import now as timezone_now
+from django.utils.translation import ugettext as _
 
+from confirmation.models import one_click_unsubscribe_link
+from zerver.lib.actions import do_set_zoom_token
 from zerver.lib.queue import queue_json_publish
-from zerver.lib.send_email import FromAddress, send_email
+from zerver.lib.send_email import FromAddress
+from zerver.lib.timezone import get_timezone
 from zerver.models import UserProfile
+
+JUST_CREATED_THRESHOLD = 60
 
 def get_device_browser(user_agent: str) -> Optional[str]:
     user_agent = user_agent.lower()
@@ -49,12 +52,16 @@ def get_device_os(user_agent: str) -> Optional[str]:
         return "iOS"
     elif "like mac os x" in user_agent:
         return "iOS"
+    elif " cros " in user_agent:
+        return "ChromeOS"
     else:
         return None
 
 
 @receiver(user_logged_in, dispatch_uid="only_on_login")
 def email_on_new_login(sender: Any, user: UserProfile, request: Any, **kwargs: Any) -> None:
+    if not user.enable_login_emails:
+        return
     # We import here to minimize the dependencies of this module,
     # since it runs as part of `manage.py` initialization
     from zerver.context_processors import common_context
@@ -64,29 +71,39 @@ def email_on_new_login(sender: Any, user: UserProfile, request: Any, **kwargs: A
 
     if request:
         # If the user's account was just created, avoid sending an email.
-        if getattr(user, "just_registered", False):
+        if (timezone_now() - user.date_joined).total_seconds() <= JUST_CREATED_THRESHOLD:
             return
 
-        login_time = timezone_now().strftime('%A, %B %d, %Y at %I:%M%p ') + \
-            timezone_get_current_timezone_name()
         user_agent = request.META.get('HTTP_USER_AGENT', "").lower()
-        device_browser = get_device_browser(user_agent)
-        device_os = get_device_os(user_agent)
-        device_ip = request.META.get('REMOTE_ADDR') or "Uknown IP address"
-        device_info = {"device_browser": device_browser,
-                       "device_os": device_os,
-                       "device_ip": device_ip,
-                       "login_time": login_time
-                       }
 
         context = common_context(user)
-        context['device_info'] = device_info
-        context['user_email'] = user.email
+        context['user_email'] = user.delivery_email
+        user_tz = user.timezone
+        if user_tz == '':
+            user_tz = timezone_get_current_timezone_name()
+        local_time = timezone_now().astimezone(get_timezone(user_tz))
+        if user.twenty_four_hour_time:
+            hhmm_string = local_time.strftime('%H:%M')
+        else:
+            hhmm_string = local_time.strftime('%I:%M%p')
+        context['login_time'] = local_time.strftime(f'%A, %B %d, %Y at {hhmm_string} %Z')
+        context['device_ip'] = request.META.get('REMOTE_ADDR') or _("Unknown IP address")
+        context['device_os'] = get_device_os(user_agent) or _("an unknown operating system")
+        context['device_browser'] = get_device_browser(user_agent) or _("An unknown browser")
+        context['unsubscribe_link'] = one_click_unsubscribe_link(user, 'login')
 
         email_dict = {
             'template_prefix': 'zerver/emails/notify_new_login',
-            'to_user_id': user.id,
-            'from_name': 'Zulip Account Security',
+            'to_user_ids': [user.id],
+            'from_name': FromAddress.security_email_from_name(user_profile=user),
             'from_address': FromAddress.NOREPLY,
             'context': context}
         queue_json_publish("email_senders", email_dict)
+
+
+@receiver(user_logged_out)
+def clear_zoom_token_on_logout(
+    sender: object, *, user: Optional[UserProfile], **kwargs: object
+) -> None:
+    if user is not None and user.zoom_token is not None:
+        do_set_zoom_token(user, None)

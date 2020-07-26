@@ -1,29 +1,25 @@
 # Upload a file
 
-Upload a single file and get the corresponding URI.
-
-`POST {{ api_url}}/v1/user_uploads`
+{generate_api_description(/user_uploads:post)}
 
 ## Usage examples
-<div class="code-section" markdown="1">
-<ul class="nav">
-<li data-language="python">Python</li>
-</ul>
-<div class="blocks">
 
-<div data-language="python" markdown="1">
+{start_tabs}
 
-{generate_code_example(python)|upload-file|example}
+{tab|python}
 
-</div>
+{generate_code_example(python)|/user_uploads:post|example}
 
-</div>
+{tab|curl}
 
-</div>
+{generate_code_example(curl)|/user_uploads:post|example}
 
-## Arguments
+{end_tabs}
 
-{generate_api_arguments_table|arguments.json|upload-file.md}
+## Parameters
+
+As described above, the file to upload must be provided in the
+request's body.
 
 ## Maximum file size
 
@@ -38,10 +34,10 @@ to 25MB.
 
 #### Return values
 
-* `uri`: The URI of the uploaded file.
+{generate_return_values_table|zulip.yaml|/user_uploads:post}
 
 #### Example response
 
 A typical successful JSON response may look like:
 
-{generate_code_example|upload-file|fixture}
+{generate_code_example|/user_uploads:post|fixture(200)}

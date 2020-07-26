@@ -1,82 +1,257 @@
-
 import itertools
-import json
 import logging
 import re
 import time
+import urllib
 from collections import defaultdict
-from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, \
-    Optional, Set, Text, Tuple, Type, Union
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, Union
 
 import pytz
 from django.conf import settings
-from django.urls import reverse
+from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.db import connection
-from django.db.models import Sum
 from django.db.models.query import QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseNotFound
 from django.shortcuts import render
-from django.template import RequestContext, loader
-from django.utils.timezone import now as timezone_now, utc as timezone_utc
+from django.template import loader
+from django.urls import reverse
+from django.utils.timesince import timesince
+from django.utils.timezone import now as timezone_now
 from django.utils.translation import ugettext as _
 from jinja2 import Markup as mark_safe
+from psycopg2.sql import SQL, Composable, Literal
 
-from analytics.lib.counts import COUNT_STATS, CountStat, process_count_stat
+from analytics.lib.counts import COUNT_STATS, CountStat
 from analytics.lib.time_utils import time_range
-from analytics.models import BaseCount, InstallationCount, \
-    RealmCount, StreamCount, UserCount, last_successful_fill
-from zerver.decorator import require_server_admin, \
-    to_non_negative_int, to_utc_datetime, zulip_login_required
+from analytics.models import (
+    BaseCount,
+    InstallationCount,
+    RealmCount,
+    StreamCount,
+    UserCount,
+    installation_epoch,
+    last_successful_fill,
+)
+from confirmation.models import Confirmation, _properties, confirmation_url
+from confirmation.settings import STATUS_ACTIVE
+from zerver.decorator import (
+    require_non_guest_user,
+    require_server_admin,
+    require_server_admin_api,
+    to_utc_datetime,
+    zulip_login_required,
+)
+from zerver.lib.actions import (
+    do_change_plan_type,
+    do_deactivate_realm,
+    do_scrub_realm,
+    do_send_realm_reactivation_email,
+)
 from zerver.lib.exceptions import JsonableError
+from zerver.lib.realm_icon import realm_icon_url
 from zerver.lib.request import REQ, has_request_variables
 from zerver.lib.response import json_success
-from zerver.lib.timestamp import ceiling_to_day, \
-    ceiling_to_hour, convert_to_UTC, timestamp_to_datetime
-from zerver.models import Client, get_realm, Realm, \
-    UserActivity, UserActivityInterval, UserProfile
+from zerver.lib.subdomains import get_subdomain_from_hostname
+from zerver.lib.timestamp import convert_to_UTC, timestamp_to_datetime
+from zerver.lib.validator import to_non_negative_int
+from zerver.models import (
+    Client,
+    MultiuseInvite,
+    PreregistrationUser,
+    Realm,
+    UserActivity,
+    UserActivityInterval,
+    UserProfile,
+    get_realm,
+)
+from zerver.views.invite import get_invitee_emails_set
+
+if settings.BILLING_ENABLED:
+    from corporate.lib.stripe import (
+        approve_sponsorship,
+        attach_discount_to_realm,
+        get_current_plan_by_realm,
+        get_customer_by_realm,
+        get_discount_for_realm,
+        get_latest_seat_count,
+        make_end_of_cycle_updates_if_needed,
+        update_sponsorship_status,
+    )
+
+if settings.ZILENCER_ENABLED:
+    from zilencer.models import RemoteInstallationCount, RemoteRealmCount, RemoteZulipServer
+else:
+    from unittest.mock import Mock
+    RemoteInstallationCount = Mock()  # type: ignore[misc] # https://github.com/JukkaL/mypy/issues/1188
+    RemoteZulipServer = Mock()  # type: ignore[misc] # https://github.com/JukkaL/mypy/issues/1188
+    RemoteRealmCount = Mock()  # type: ignore[misc] # https://github.com/JukkaL/mypy/issues/1188
+
+MAX_TIME_FOR_FULL_ANALYTICS_GENERATION = timedelta(days=1, minutes=30)
+
+def is_analytics_ready(realm: Realm) -> bool:
+    return (timezone_now() - realm.date_created) > MAX_TIME_FOR_FULL_ANALYTICS_GENERATION
+
+def render_stats(request: HttpRequest, data_url_suffix: str, target_name: str,
+                 for_installation: bool=False, remote: bool=False,
+                 analytics_ready: bool=True) -> HttpRequest:
+    page_params = dict(
+        data_url_suffix=data_url_suffix,
+        for_installation=for_installation,
+        remote=remote,
+        debug_mode=False,
+    )
+    return render(request,
+                  'analytics/stats.html',
+                  context=dict(target_name=target_name,
+                               page_params=page_params,
+                               analytics_ready=analytics_ready))
 
 @zulip_login_required
 def stats(request: HttpRequest) -> HttpResponse:
-    return render(request,
-                  'analytics/stats.html',
-                  context=dict(realm_name = request.user.realm.name))
+    realm = request.user.realm
+    if request.user.is_guest:
+        # TODO: Make @zulip_login_required pass the UserProfile so we
+        # can use @require_member_or_admin
+        raise JsonableError(_("Not allowed for guest users"))
+    return render_stats(request, '', realm.name or realm.string_id,
+                        analytics_ready=is_analytics_ready(realm))
 
+@require_server_admin
 @has_request_variables
-def get_chart_data(request: HttpRequest, user_profile: UserProfile, chart_name: Text=REQ(),
+def stats_for_realm(request: HttpRequest, realm_str: str) -> HttpResponse:
+    try:
+        realm = get_realm(realm_str)
+    except Realm.DoesNotExist:
+        return HttpResponseNotFound(f"Realm {realm_str} does not exist")
+
+    return render_stats(request, f'/realm/{realm_str}', realm.name or realm.string_id,
+                        analytics_ready=is_analytics_ready(realm))
+
+@require_server_admin
+@has_request_variables
+def stats_for_remote_realm(request: HttpRequest, remote_server_id: int,
+                           remote_realm_id: int) -> HttpResponse:
+    server = RemoteZulipServer.objects.get(id=remote_server_id)
+    return render_stats(request, f'/remote/{server.id}/realm/{remote_realm_id}',
+                        f"Realm {remote_realm_id} on server {server.hostname}")
+
+@require_server_admin_api
+@has_request_variables
+def get_chart_data_for_realm(request: HttpRequest, user_profile: UserProfile,
+                             realm_str: str, **kwargs: Any) -> HttpResponse:
+    try:
+        realm = get_realm(realm_str)
+    except Realm.DoesNotExist:
+        raise JsonableError(_("Invalid organization"))
+
+    return get_chart_data(request=request, user_profile=user_profile, realm=realm, **kwargs)
+
+@require_server_admin_api
+@has_request_variables
+def get_chart_data_for_remote_realm(
+        request: HttpRequest, user_profile: UserProfile, remote_server_id: int,
+        remote_realm_id: int, **kwargs: Any) -> HttpResponse:
+    server = RemoteZulipServer.objects.get(id=remote_server_id)
+    return get_chart_data(request=request, user_profile=user_profile, server=server,
+                          remote=True, remote_realm_id=int(remote_realm_id), **kwargs)
+
+@require_server_admin
+def stats_for_installation(request: HttpRequest) -> HttpResponse:
+    return render_stats(request, '/installation', 'Installation', True)
+
+@require_server_admin
+def stats_for_remote_installation(request: HttpRequest, remote_server_id: int) -> HttpResponse:
+    server = RemoteZulipServer.objects.get(id=remote_server_id)
+    return render_stats(request, f'/remote/{server.id}/installation',
+                        f'remote Installation {server.hostname}', True, True)
+
+@require_server_admin_api
+@has_request_variables
+def get_chart_data_for_installation(request: HttpRequest, user_profile: UserProfile,
+                                    chart_name: str=REQ(), **kwargs: Any) -> HttpResponse:
+    return get_chart_data(request=request, user_profile=user_profile, for_installation=True, **kwargs)
+
+@require_server_admin_api
+@has_request_variables
+def get_chart_data_for_remote_installation(
+        request: HttpRequest,
+        user_profile: UserProfile,
+        remote_server_id: int,
+        chart_name: str=REQ(),
+        **kwargs: Any) -> HttpResponse:
+    server = RemoteZulipServer.objects.get(id=remote_server_id)
+    return get_chart_data(request=request, user_profile=user_profile, for_installation=True,
+                          remote=True, server=server, **kwargs)
+
+@require_non_guest_user
+@has_request_variables
+def get_chart_data(request: HttpRequest, user_profile: UserProfile, chart_name: str=REQ(),
                    min_length: Optional[int]=REQ(converter=to_non_negative_int, default=None),
                    start: Optional[datetime]=REQ(converter=to_utc_datetime, default=None),
-                   end: Optional[datetime]=REQ(converter=to_utc_datetime, default=None)) -> HttpResponse:
+                   end: Optional[datetime]=REQ(converter=to_utc_datetime, default=None),
+                   realm: Optional[Realm]=None, for_installation: bool=False,
+                   remote: bool=False, remote_realm_id: Optional[int]=None,
+                   server: Optional[RemoteZulipServer]=None) -> HttpResponse:
+    if for_installation:
+        if remote:
+            aggregate_table = RemoteInstallationCount
+            assert server is not None
+        else:
+            aggregate_table = InstallationCount
+    else:
+        if remote:
+            aggregate_table = RemoteRealmCount
+            assert server is not None
+            assert remote_realm_id is not None
+        else:
+            aggregate_table = RealmCount
+
     if chart_name == 'number_of_humans':
-        stat = COUNT_STATS['realm_active_humans::day']
-        tables = [RealmCount]
-        subgroup_to_label = {None: 'human'}  # type: Dict[Optional[str], str]
+        stats = [
+            COUNT_STATS['1day_actives::day'],
+            COUNT_STATS['realm_active_humans::day'],
+            COUNT_STATS['active_users_audit:is_bot:day']]
+        tables = [aggregate_table]
+        subgroup_to_label: Dict[CountStat, Dict[Optional[str], str]] = {
+            stats[0]: {None: '_1day'},
+            stats[1]: {None: '_15day'},
+            stats[2]: {'false': 'all_time'}}
         labels_sort_function = None
         include_empty_subgroups = True
     elif chart_name == 'messages_sent_over_time':
-        stat = COUNT_STATS['messages_sent:is_bot:hour']
-        tables = [RealmCount, UserCount]
-        subgroup_to_label = {'false': 'human', 'true': 'bot'}
+        stats = [COUNT_STATS['messages_sent:is_bot:hour']]
+        tables = [aggregate_table, UserCount]
+        subgroup_to_label = {stats[0]: {'false': 'human', 'true': 'bot'}}
         labels_sort_function = None
         include_empty_subgroups = True
     elif chart_name == 'messages_sent_by_message_type':
-        stat = COUNT_STATS['messages_sent:message_type:day']
-        tables = [RealmCount, UserCount]
-        subgroup_to_label = {'public_stream': 'Public streams',
-                             'private_stream': 'Private streams',
-                             'private_message': 'Private messages',
-                             'huddle_message': 'Group private messages'}
-        labels_sort_function = lambda data: sort_by_totals(data['realm'])
+        stats = [COUNT_STATS['messages_sent:message_type:day']]
+        tables = [aggregate_table, UserCount]
+        subgroup_to_label = {stats[0]: {'public_stream': _('Public streams'),
+                                        'private_stream': _('Private streams'),
+                                        'private_message': _('Private messages'),
+                                        'huddle_message': _('Group private messages')}}
+        labels_sort_function = lambda data: sort_by_totals(data['everyone'])
         include_empty_subgroups = True
     elif chart_name == 'messages_sent_by_client':
-        stat = COUNT_STATS['messages_sent:client:day']
-        tables = [RealmCount, UserCount]
+        stats = [COUNT_STATS['messages_sent:client:day']]
+        tables = [aggregate_table, UserCount]
         # Note that the labels are further re-written by client_label_map
-        subgroup_to_label = {str(id): name for id, name in Client.objects.values_list('id', 'name')}
+        subgroup_to_label = {stats[0]:
+                             {str(id): name for id, name in Client.objects.values_list('id', 'name')}}
         labels_sort_function = sort_client_labels
         include_empty_subgroups = False
+    elif chart_name == 'messages_read_over_time':
+        stats = [COUNT_STATS['messages_read::hour']]
+        tables = [aggregate_table, UserCount]
+        subgroup_to_label = {stats[0]: {None: 'read'}}
+        labels_sort_function = None
+        include_empty_subgroups = True
     else:
-        raise JsonableError(_("Unknown chart name: %s") % (chart_name,))
+        raise JsonableError(_("Unknown chart name: {}").format(chart_name))
 
     # Most likely someone using our API endpoint. The /stats page does not
     # pass a start or end in its requests.
@@ -85,30 +260,72 @@ def get_chart_data(request: HttpRequest, user_profile: UserProfile, chart_name: 
     if end is not None:
         end = convert_to_UTC(end)
     if start is not None and end is not None and start > end:
-        raise JsonableError(_("Start time is later than end time. Start: %(start)s, End: %(end)s") %
-                            {'start': start, 'end': end})
+        raise JsonableError(_("Start time is later than end time. Start: {start}, End: {end}").format(
+            start=start, end=end,
+        ))
 
-    realm = user_profile.realm
-    if start is None:
-        start = realm.date_created
-    if end is None:
-        end = last_successful_fill(stat.property)
-    if end is None or start > end:
-        logging.warning("User from realm %s attempted to access /stats, but the computed "
-                        "start time: %s (creation time of realm) is later than the computed "
-                        "end time: %s (last successful analytics update). Is the "
-                        "analytics cron job running?" % (realm.string_id, start, end))
-        raise JsonableError(_("No analytics data available. Please contact your server administrator."))
+    if realm is None:
+        # Note that this value is invalid for Remote tables; be
+        # careful not to access it in those code paths.
+        realm = user_profile.realm
 
-    end_times = time_range(start, end, stat.frequency, min_length)
-    data = {'end_times': end_times, 'frequency': stat.frequency}
+    if remote:
+        # For remote servers, we don't have fillstate data, and thus
+        # should simply use the first and last data points for the
+        # table.
+        assert server is not None
+        if not aggregate_table.objects.filter(server=server).exists():
+            raise JsonableError(_("No analytics data available. Please contact your server administrator."))
+        if start is None:
+            start = aggregate_table.objects.filter(server=server).first().end_time
+        if end is None:
+            end = aggregate_table.objects.filter(server=server).last().end_time
+    else:
+        # Otherwise, we can use tables on the current server to
+        # determine a nice range, and some additional validation.
+        if start is None:
+            if for_installation:
+                start = installation_epoch()
+            else:
+                start = realm.date_created
+        if end is None:
+            end = max(last_successful_fill(stat.property) or
+                      datetime.min.replace(tzinfo=timezone.utc) for stat in stats)
+
+        if start > end and (timezone_now() - start > MAX_TIME_FOR_FULL_ANALYTICS_GENERATION):
+            logging.warning("User from realm %s attempted to access /stats, but the computed "
+                            "start time: %s (creation of realm or installation) is later than the computed "
+                            "end time: %s (last successful analytics update). Is the "
+                            "analytics cron job running?", realm.string_id, start, end)
+            raise JsonableError(_("No analytics data available. Please contact your server administrator."))
+
+    assert len({stat.frequency for stat in stats}) == 1
+    end_times = time_range(start, end, stats[0].frequency, min_length)
+    data: Dict[str, Any] = {'end_times': end_times, 'frequency': stats[0].frequency}
+
+    aggregation_level = {
+        InstallationCount: 'everyone',
+        RealmCount: 'everyone',
+        RemoteInstallationCount: 'everyone',
+        RemoteRealmCount: 'everyone',
+        UserCount: 'user',
+    }
+    # -1 is a placeholder value, since there is no relevant filtering on InstallationCount
+    id_value = {
+        InstallationCount: -1,
+        RealmCount: realm.id,
+        RemoteInstallationCount: server.id if server is not None else None,
+        # TODO: RemoteRealmCount logic doesn't correctly handle
+        # filtering by server_id as well.
+        RemoteRealmCount: remote_realm_id,
+        UserCount: user_profile.id,
+    }
     for table in tables:
-        if table == RealmCount:
-            data['realm'] = get_time_series_by_subgroup(
-                stat, RealmCount, realm.id, end_times, subgroup_to_label, include_empty_subgroups)
-        if table == UserCount:
-            data['user'] = get_time_series_by_subgroup(
-                stat, UserCount, user_profile.id, end_times, subgroup_to_label, include_empty_subgroups)
+        data[aggregation_level[table]] = {}
+        for stat in stats:
+            data[aggregation_level[table]].update(get_time_series_by_subgroup(
+                stat, table, id_value[table], end_times, subgroup_to_label[stat], include_empty_subgroups))
+
     if labels_sort_function is not None:
         data['display_order'] = labels_sort_function(data)
     else:
@@ -127,9 +344,9 @@ def sort_by_totals(value_arrays: Dict[str, List[int]]) -> List[str]:
 # tries to rank the clients so that taking the first N elements of the
 # sorted list has a reasonable chance of doing so.
 def sort_client_labels(data: Dict[str, Dict[str, List[int]]]) -> List[str]:
-    realm_order = sort_by_totals(data['realm'])
+    realm_order = sort_by_totals(data['everyone'])
     user_order = sort_by_totals(data['user'])
-    label_sort_values = {}  # type: Dict[str, float]
+    label_sort_values: Dict[str, float] = {}
     for i, label in enumerate(realm_order):
         label_sort_values[label] = i
     for i, label in enumerate(user_order):
@@ -146,8 +363,12 @@ def table_filtered_to_id(table: Type[BaseCount], key_id: int) -> QuerySet:
         return StreamCount.objects.filter(stream_id=key_id)
     elif table == InstallationCount:
         return InstallationCount.objects.all()
+    elif table == RemoteInstallationCount:
+        return RemoteInstallationCount.objects.filter(server_id=key_id)
+    elif table == RemoteRealmCount:
+        return RemoteRealmCount.objects.filter(realm_id=key_id)
     else:
-        raise AssertionError("Unknown table: %s" % (table,))
+        raise AssertionError(f"Unknown table: {table}")
 
 def client_label_map(name: str) -> str:
     if name == "website":
@@ -169,7 +390,7 @@ def client_label_map(name: str) -> str:
     return name
 
 def rewrite_client_arrays(value_arrays: Dict[str, List[int]]) -> Dict[str, List[int]]:
-    mapped_arrays = {}  # type: Dict[str, List[int]]
+    mapped_arrays: Dict[str, List[int]] = {}
     for label, array in value_arrays.items():
         mapped_label = client_label_map(label)
         if mapped_label in mapped_arrays:
@@ -187,7 +408,7 @@ def get_time_series_by_subgroup(stat: CountStat,
                                 include_empty_subgroups: bool) -> Dict[str, List[int]]:
     queryset = table_filtered_to_id(table, key_id).filter(property=stat.property) \
                                                   .values_list('subgroup', 'end_time', 'value')
-    value_dicts = defaultdict(lambda: defaultdict(int))  # type: Dict[Optional[str], Dict[datetime, int]]
+    value_dicts: Dict[Optional[str], Dict[datetime, int]] = defaultdict(lambda: defaultdict(int))
     for subgroup, end_time, value in queryset:
         value_dicts[subgroup][end_time] = value
     value_arrays = {}
@@ -205,7 +426,7 @@ def get_time_series_by_subgroup(stat: CountStat,
 
 eastern_tz = pytz.timezone('US/Eastern')
 
-def make_table(title: str, cols: List[str], rows: List[Any], has_row_class: bool=False) -> str:
+def make_table(title: str, cols: Sequence[str], rows: Sequence[Any], has_row_class: bool = False) -> str:
 
     if not has_row_class:
         def fix_row(row: Any) -> Dict[str, Any]:
@@ -216,7 +437,7 @@ def make_table(title: str, cols: List[str], rows: List[Any], has_row_class: bool
 
     content = loader.render_to_string(
         'analytics/ad_hoc_query.html',
-        dict(data=data)
+        dict(data=data),
     )
 
     return content
@@ -231,10 +452,10 @@ def dictfetchall(cursor: connection.cursor) -> List[Dict[str, Any]]:
 
 
 def get_realm_day_counts() -> Dict[str, Dict[str, str]]:
-    query = '''
+    query = SQL('''
         select
             r.string_id,
-            (now()::date - pub_date::date) age,
+            (now()::date - date_sent::date) age,
             count(*) cnt
         from zerver_message m
         join zerver_userprofile up on up.id = m.sender_id
@@ -243,7 +464,7 @@ def get_realm_day_counts() -> Dict[str, Dict[str, str]]:
         where
             (not up.is_bot)
         and
-            pub_date > now()::date - interval '8 day'
+            date_sent > now()::date - interval '8 day'
         and
             c.name not in ('zephyr_mirror', 'ZulipMonitoring')
         group by
@@ -252,13 +473,13 @@ def get_realm_day_counts() -> Dict[str, Dict[str, str]]:
         order by
             r.string_id,
             age
-    '''
+    ''')
     cursor = connection.cursor()
     cursor.execute(query)
     rows = dictfetchall(cursor)
     cursor.close()
 
-    counts = defaultdict(dict)  # type: Dict[str, Dict[int, int]]
+    counts: Dict[str, Dict[int, int]] = defaultdict(dict)
     for row in rows:
         counts[row['string_id']][row['age']] = row['cnt']
 
@@ -278,7 +499,7 @@ def get_realm_day_counts() -> Dict[str, Dict[str, str]]:
             else:
                 good_bad = 'neutral'
 
-            return '<td class="number %s">%s</td>' % (good_bad, cnt)
+            return f'<td class="number {good_bad}">{cnt}</td>'
 
         cnts = (format_count(raw_cnts[0], 'neutral')
                 + ''.join(map(format_count, raw_cnts[1:])))
@@ -286,13 +507,17 @@ def get_realm_day_counts() -> Dict[str, Dict[str, str]]:
 
     return result
 
+def get_plan_name(plan_type: int) -> str:
+    return ['', 'self hosted', 'limited', 'standard', 'open source'][plan_type]
+
 def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
     now = timezone_now()
 
-    query = '''
+    query = SQL('''
         SELECT
             realm.string_id,
             realm.date_created,
+            realm.plan_type,
             coalesce(user_counts.dau_count, 0) dau_count,
             coalesce(wau_counts.wau_count, 0) wau_count,
             (
@@ -345,7 +570,7 @@ def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
                 FROM (
                     SELECT
                         realm.id as realm_id,
-                        up.email
+                        up.delivery_email
                     FROM zerver_useractivity ua
                     JOIN zerver_userprofile up
                         ON up.id = ua.user_profile_id
@@ -362,13 +587,16 @@ def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
                             '/json/users/me/pointer',
                             'update_pointer_backend'
                         )
-                    GROUP by realm.id, up.email
+                    GROUP by realm.id, up.delivery_email
                     HAVING max(last_visit) > now() - interval '7 day'
                 ) as wau_users
                 GROUP BY realm_id
             ) wau_counts
             ON wau_counts.realm_id = realm.id
-        WHERE EXISTS (
+        WHERE
+            realm.plan_type = 3
+            OR
+            EXISTS (
                 SELECT *
                 FROM zerver_useractivity ua
                 JOIN zerver_userprofile up
@@ -390,7 +618,7 @@ def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
                     last_visit > now() - interval '2 week'
         )
         ORDER BY dau_count DESC, string_id ASC
-        '''
+        ''')
 
     cursor = connection.cursor()
     cursor.execute(query)
@@ -398,15 +626,16 @@ def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
     cursor.close()
 
     # Fetch all the realm administrator users
-    realm_admins = defaultdict(list)  # type: Dict[str, List[str]]
+    realm_admins: Dict[str, List[str]] = defaultdict(list)
     for up in UserProfile.objects.select_related("realm").filter(
-        is_realm_admin=True,
-        is_active=True
+        role=UserProfile.ROLE_REALM_ADMINISTRATOR,
+        is_active=True,
     ):
-        realm_admins[up.realm.string_id].append(up.email)
+        realm_admins[up.realm.string_id].append(up.delivery_email)
 
     for row in rows:
         row['date_created_day'] = row['date_created'].strftime('%Y-%m-%d')
+        row['plan_type_string'] = get_plan_name(row['plan_type'])
         row['age_days'] = int((now - row['date_created']).total_seconds()
                               / 86400)
         row['is_new'] = row['age_days'] < 12 * 7
@@ -420,6 +649,16 @@ def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
         except Exception:
             row['history'] = ''
 
+    # estimate annual subscription revenue
+    total_amount = 0
+    if settings.BILLING_ENABLED:
+        from corporate.lib.stripe import estimate_annual_recurring_revenue_by_realm
+        estimated_arrs = estimate_annual_recurring_revenue_by_realm()
+        for row in rows:
+            if row['string_id'] in estimated_arrs:
+                row['amount'] = estimated_arrs[row['string_id']]
+        total_amount += sum(estimated_arrs.values())
+
     # augment data with realm_minutes
     total_hours = 0.0
     for row in rows:
@@ -429,12 +668,13 @@ def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
         total_hours += hours
         row['hours'] = str(int(hours))
         try:
-            row['hours_per_user'] = '%.1f' % (hours / row['dau_count'],)
+            row['hours_per_user'] = '{:.1f}'.format(hours / row['dau_count'])
         except Exception:
             pass
 
     # formatting
     for row in rows:
+        row['stats_link'] = realm_stats_link(row['string_id'])
         row['string_id'] = realm_activity_link(row['string_id'])
 
     # Count active sites
@@ -454,8 +694,11 @@ def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
         total_bot_count += int(row['bot_count'])
         total_wau_count += int(row['wau_count'])
 
-    rows.append(dict(
+    total_row = dict(
         string_id='Total',
+        plan_type_string="",
+        amount=total_amount,
+        stats_link = '',
         date_created_day='',
         realm_admin_email='',
         dau_count=total_dau_count,
@@ -463,12 +706,14 @@ def realm_summary_table(realm_minutes: Dict[str, float]) -> str:
         bot_count=total_bot_count,
         hours=int(total_hours),
         wau_count=total_wau_count,
-    ))
+    )
+
+    rows.insert(0, total_row)
 
     content = loader.render_to_string(
         'analytics/realm_summary_table.html',
         dict(rows=rows, num_active_sites=num_active_sites,
-             now=now.strftime('%Y-%m-%dT%H:%M:%SZ'))
+             now=now.strftime('%Y-%m-%dT%H:%M:%SZ')),
     )
     return content
 
@@ -482,28 +727,28 @@ def user_activity_intervals() -> Tuple[mark_safe, Dict[str, float]]:
 
     all_intervals = UserActivityInterval.objects.filter(
         end__gte=day_start,
-        start__lte=day_end
+        start__lte=day_end,
     ).select_related(
         'user_profile',
-        'user_profile__realm'
+        'user_profile__realm',
     ).only(
         'start',
         'end',
-        'user_profile__email',
-        'user_profile__realm__string_id'
+        'user_profile__delivery_email',
+        'user_profile__realm__string_id',
     ).order_by(
         'user_profile__realm__string_id',
-        'user_profile__email'
+        'user_profile__delivery_email',
     )
 
     by_string_id = lambda row: row.user_profile.realm.string_id
-    by_email = lambda row: row.user_profile.email
+    by_email = lambda row: row.user_profile.delivery_email
 
     realm_minutes = {}
 
     for string_id, realm_intervals in itertools.groupby(all_intervals, by_string_id):
         realm_duration = timedelta(0)
-        output += '<hr>%s\n' % (string_id,)
+        output += f'<hr>{string_id}\n'
         for email, intervals in itertools.groupby(realm_intervals, by_email):
             duration = timedelta(0)
             for interval in intervals:
@@ -513,13 +758,13 @@ def user_activity_intervals() -> Tuple[mark_safe, Dict[str, float]]:
 
             total_duration += duration
             realm_duration += duration
-            output += "  %-*s%s\n" % (37, email, duration)
+            output += f"  {email:<37}{duration}\n"
 
         realm_minutes[string_id] = realm_duration.total_seconds() / 60
 
-    output += "\nTotal Duration:                      %s\n" % (total_duration,)
-    output += "\nTotal Duration in minutes:           %s\n" % (total_duration.total_seconds() / 60.,)
-    output += "Total Duration amortized to a month: %s" % (total_duration.total_seconds() * 30. / 60.,)
+    output += f"\nTotal Duration:                      {total_duration}\n"
+    output += f"\nTotal Duration in minutes:           {total_duration.total_seconds() / 60.}\n"
+    output += f"Total Duration amortized to a month: {total_duration.total_seconds() * 30. / 60.}"
     content = mark_safe('<pre>' + output + '</pre>')
     return content, realm_minutes
 
@@ -529,10 +774,10 @@ def sent_messages_report(realm: str) -> str:
     cols = [
         'Date',
         'Humans',
-        'Bots'
+        'Bots',
     ]
 
-    query = '''
+    query = SQL('''
         select
             series.day::date,
             humans.cnt,
@@ -546,7 +791,7 @@ def sent_messages_report(realm: str) -> str:
         ) as series
         left join (
             select
-                pub_date::date pub_date,
+                date_sent::date date_sent,
                 count(*) cnt
             from zerver_message m
             join zerver_userprofile up on up.id = m.sender_id
@@ -556,16 +801,16 @@ def sent_messages_report(realm: str) -> str:
             and
                 (not up.is_bot)
             and
-                pub_date > now() - interval '2 week'
+                date_sent > now() - interval '2 week'
             group by
-                pub_date::date
+                date_sent::date
             order by
-                pub_date::date
+                date_sent::date
         ) humans on
-            series.day = humans.pub_date
+            series.day = humans.date_sent
         left join (
             select
-                pub_date::date pub_date,
+                date_sent::date date_sent,
                 count(*) cnt
             from zerver_message m
             join zerver_userprofile up on up.id = m.sender_id
@@ -575,14 +820,14 @@ def sent_messages_report(realm: str) -> str:
             and
                 up.is_bot
             and
-                pub_date > now() - interval '2 week'
+                date_sent > now() - interval '2 week'
             group by
-                pub_date::date
+                date_sent::date
             order by
-                pub_date::date
+                date_sent::date
         ) bots on
-            series.day = bots.pub_date
-    '''
+            series.day = bots.date_sent
+    ''')
     cursor = connection.cursor()
     cursor.execute(query, [realm, realm])
     rows = cursor.fetchall()
@@ -591,7 +836,8 @@ def sent_messages_report(realm: str) -> str:
     return make_table(title, cols, rows)
 
 def ad_hoc_queries() -> List[Dict[str, str]]:
-    def get_page(query: str, cols: List[str], title: str) -> Dict[str, str]:
+    def get_page(query: Composable, cols: Sequence[str], title: str,
+                 totals_columns: Sequence[int]=[]) -> Dict[str, str]:
         cursor = connection.cursor()
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -603,17 +849,30 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
             for row in rows:
                 row[i] = fixup_func(row[i])
 
+        total_row = []
         for i, col in enumerate(cols):
             if col == 'Realm':
                 fix_rows(i, realm_activity_link)
             elif col in ['Last time', 'Last visit']:
                 fix_rows(i, format_date_for_activity_reports)
+            elif col == 'Hostname':
+                for row in rows:
+                    row[i] = remote_installation_stats_link(row[0], row[i])
+            if len(totals_columns) > 0:
+                if i == 0:
+                    total_row.append("Total")
+                elif i in totals_columns:
+                    total_row.append(str(sum(row[i] for row in rows if row[i] is not None)))
+                else:
+                    total_row.append('')
+        if len(totals_columns) > 0:
+            rows.insert(0, total_row)
 
         content = make_table(title, cols, rows)
 
         return dict(
             content=content,
-            title=title
+            title=title,
         )
 
     pages = []
@@ -621,9 +880,9 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
     ###
 
     for mobile_type in ['Android', 'ZulipiOS']:
-        title = '%s usage' % (mobile_type,)
+        title = f'{mobile_type} usage'
 
-        query = '''
+        query = SQL('''
             select
                 realm.string_id,
                 up.id user_id,
@@ -635,18 +894,20 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
             join zerver_userprofile up on up.id = ua.user_profile_id
             join zerver_realm realm on realm.id = up.realm_id
             where
-                client.name like '%s'
+                client.name like {mobile_type}
             group by string_id, up.id, client.name
             having max(last_visit) > now() - interval '2 week'
             order by string_id, up.id, client.name
-        ''' % (mobile_type,)
+        ''').format(
+            mobile_type=Literal(mobile_type),
+        )
 
         cols = [
             'Realm',
             'User id',
             'Name',
             'Hits',
-            'Last time'
+            'Last time',
         ]
 
         pages.append(get_page(query, cols, title))
@@ -655,7 +916,7 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
 
     title = 'Desktop users'
 
-    query = '''
+    query = SQL('''
         select
             realm.string_id,
             client.name,
@@ -670,13 +931,13 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
         group by string_id, client.name
         having max(last_visit) > now() - interval '2 week'
         order by string_id, client.name
-    '''
+    ''')
 
     cols = [
         'Realm',
         'Client',
         'Hits',
-        'Last time'
+        'Last time',
     ]
 
     pages.append(get_page(query, cols, title))
@@ -685,7 +946,7 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
 
     title = 'Integrations by realm'
 
-    query = '''
+    query = SQL('''
         select
             realm.string_id,
             case
@@ -708,13 +969,13 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
         group by string_id, client_name
         having max(last_visit) > now() - interval '2 week'
         order by string_id, client_name
-    '''
+    ''')
 
     cols = [
         'Realm',
         'Client',
         'Hits',
-        'Last time'
+        'Last time',
     ]
 
     pages.append(get_page(query, cols, title))
@@ -723,7 +984,7 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
 
     title = 'Integrations by client'
 
-    query = '''
+    query = SQL('''
         select
             case
                 when query like '%%external%%' then split_part(query, '/', 5)
@@ -746,24 +1007,67 @@ def ad_hoc_queries() -> List[Dict[str, str]]:
         group by client_name, string_id
         having max(last_visit) > now() - interval '2 week'
         order by client_name, string_id
-    '''
+    ''')
 
     cols = [
         'Client',
         'Realm',
         'Hits',
-        'Last time'
+        'Last time',
     ]
 
     pages.append(get_page(query, cols, title))
+
+    title = 'Remote Zulip servers'
+
+    query = SQL('''
+        with icount as (
+            select
+                server_id,
+                max(value) as max_value,
+                max(end_time) as max_end_time
+            from zilencer_remoteinstallationcount
+            where
+                property='active_users:is_bot:day'
+                and subgroup='false'
+            group by server_id
+            ),
+        remote_push_devices as (
+            select server_id, count(distinct(user_id)) as push_user_count from zilencer_remotepushdevicetoken
+            group by server_id
+        )
+        select
+            rserver.id,
+            rserver.hostname,
+            rserver.contact_email,
+            max_value,
+            push_user_count,
+            max_end_time
+        from zilencer_remotezulipserver rserver
+        left join icount on icount.server_id = rserver.id
+        left join remote_push_devices on remote_push_devices.server_id = rserver.id
+        order by max_value DESC NULLS LAST, push_user_count DESC NULLS LAST
+    ''')
+
+    cols = [
+        'ID',
+        'Hostname',
+        'Contact email',
+        'Analytics users',
+        'Mobile users',
+        'Last update time',
+    ]
+
+    pages.append(get_page(query, cols, title,
+                          totals_columns=[3, 4]))
 
     return pages
 
 @require_server_admin
 @has_request_variables
 def get_activity(request: HttpRequest) -> HttpResponse:
-    duration_content, realm_minutes = user_activity_intervals()  # type: Tuple[mark_safe, Dict[str, float]]
-    counts_content = realm_summary_table(realm_minutes)  # type: str
+    duration_content, realm_minutes = user_activity_intervals()
+    counts_content: str = realm_summary_table(realm_minutes)
     data = [
         ('Counts', counts_content),
         ('Durations', duration_content),
@@ -779,10 +1083,157 @@ def get_activity(request: HttpRequest) -> HttpResponse:
         context=dict(data=data, title=title, is_home=True),
     )
 
+def get_confirmations(types: List[int], object_ids: List[int],
+                      hostname: Optional[str]=None) -> List[Dict[str, Any]]:
+    lowest_datetime = timezone_now() - timedelta(days=30)
+    confirmations = Confirmation.objects.filter(type__in=types, object_id__in=object_ids,
+                                                date_sent__gte=lowest_datetime)
+    confirmation_dicts = []
+    for confirmation in confirmations:
+        realm = confirmation.realm
+        content_object = confirmation.content_object
+
+        type = confirmation.type
+        days_to_activate = _properties[type].validity_in_days
+        expiry_date = confirmation.date_sent + timedelta(days=days_to_activate)
+
+        if hasattr(content_object, "status"):
+            if content_object.status == STATUS_ACTIVE:
+                link_status = "Link has been clicked"
+            else:
+                link_status = "Link has never been clicked"
+        else:
+            link_status = ""
+
+        if timezone_now() < expiry_date:
+            expires_in = timesince(confirmation.date_sent, expiry_date)
+        else:
+            expires_in = "Expired"
+
+        url = confirmation_url(confirmation.confirmation_key, realm, type)
+        confirmation_dicts.append({"object": confirmation.content_object,
+                                   "url": url, "type": type, "link_status": link_status,
+                                   "expires_in": expires_in})
+    return confirmation_dicts
+
+@require_server_admin
+def support(request: HttpRequest) -> HttpResponse:
+    context: Dict[str, Any] = {}
+    if settings.BILLING_ENABLED and request.method == "POST":
+        # We check that request.POST only has two keys in it: The
+        # realm_id and a field to change.
+        keys = set(request.POST.keys())
+        if "csrfmiddlewaretoken" in keys:
+            keys.remove("csrfmiddlewaretoken")
+        assert(len(keys) == 2)
+
+        realm_id = request.POST.get("realm_id")
+        realm = Realm.objects.get(id=realm_id)
+
+        if request.POST.get("plan_type", None) is not None:
+            new_plan_type = int(request.POST.get("plan_type"))
+            current_plan_type = realm.plan_type
+            do_change_plan_type(realm, new_plan_type)
+            msg = f"Plan type of {realm.name} changed from {get_plan_name(current_plan_type)} to {get_plan_name(new_plan_type)} "
+            context["message"] = msg
+        elif request.POST.get("discount", None) is not None:
+            new_discount = Decimal(request.POST.get("discount"))
+            current_discount = get_discount_for_realm(realm)
+            attach_discount_to_realm(realm, new_discount)
+            msg = f"Discount of {realm.name} changed to {new_discount} from {current_discount} "
+            context["message"] = msg
+        elif request.POST.get("status", None) is not None:
+            status = request.POST.get("status")
+            if status == "active":
+                do_send_realm_reactivation_email(realm)
+                context["message"] = f"Realm reactivation email sent to admins of {realm.name}."
+            elif status == "deactivated":
+                do_deactivate_realm(realm, request.user)
+                context["message"] = f"{realm.name} deactivated."
+        elif request.POST.get("sponsorship_pending", None) is not None:
+            sponsorship_pending = request.POST.get("sponsorship_pending")
+            if sponsorship_pending == "true":
+                update_sponsorship_status(realm, True)
+                context["message"] = f"{realm.name} marked as pending sponsorship."
+            elif sponsorship_pending == "false":
+                update_sponsorship_status(realm, False)
+                context["message"] = f"{realm.name} is no longer pending sponsorship."
+        elif request.POST.get('approve_sponsorship') is not None:
+            if request.POST.get('approve_sponsorship') == "approve_sponsorship":
+                approve_sponsorship(realm)
+                context["message"] = f"Sponsorship approved for {realm.name}"
+        elif request.POST.get("scrub_realm", None) is not None:
+            if request.POST.get("scrub_realm") == "scrub_realm":
+                do_scrub_realm(realm, acting_user=request.user)
+                context["message"] = f"{realm.name} scrubbed."
+
+    query = request.GET.get("q", None)
+    if query:
+        key_words = get_invitee_emails_set(query)
+
+        context["users"] = UserProfile.objects.filter(delivery_email__in=key_words)
+        realms = set(Realm.objects.filter(string_id__in=key_words))
+
+        for key_word in key_words:
+            try:
+                URLValidator()(key_word)
+                parse_result = urllib.parse.urlparse(key_word)
+                hostname = parse_result.hostname
+                assert hostname is not None
+                if parse_result.port:
+                    hostname = f"{hostname}:{parse_result.port}"
+                subdomain = get_subdomain_from_hostname(hostname)
+                try:
+                    realms.add(get_realm(subdomain))
+                except Realm.DoesNotExist:
+                    pass
+            except ValidationError:
+                pass
+
+        for realm in realms:
+            realm.customer = get_customer_by_realm(realm)
+
+            current_plan = get_current_plan_by_realm(realm)
+            if current_plan is not None:
+                new_plan, last_ledger_entry = make_end_of_cycle_updates_if_needed(current_plan, timezone_now())
+                if last_ledger_entry is not None:
+                    if new_plan is not None:
+                        realm.current_plan = new_plan
+                    else:
+                        realm.current_plan = current_plan
+                    realm.current_plan.licenses = last_ledger_entry.licenses
+                    realm.current_plan.licenses_used = get_latest_seat_count(realm)
+
+        context["realms"] = realms
+
+        confirmations: List[Dict[str, Any]] = []
+
+        preregistration_users = PreregistrationUser.objects.filter(email__in=key_words)
+        confirmations += get_confirmations([Confirmation.USER_REGISTRATION, Confirmation.INVITATION,
+                                            Confirmation.REALM_CREATION], preregistration_users,
+                                           hostname=request.get_host())
+
+        multiuse_invites = MultiuseInvite.objects.filter(realm__in=realms)
+        confirmations += get_confirmations([Confirmation.MULTIUSE_INVITE], multiuse_invites)
+
+        confirmations += get_confirmations([Confirmation.REALM_REACTIVATION], [realm.id for realm in realms])
+
+        context["confirmations"] = confirmations
+
+    def realm_admin_emails(realm: Realm) -> str:
+        return ", ".join(realm.get_human_admin_users().order_by('delivery_email').values_list(
+            "delivery_email", flat=True))
+
+    context["realm_admin_emails"] = realm_admin_emails
+    context["get_discount_for_realm"] = get_discount_for_realm
+    context["realm_icon_url"] = realm_icon_url
+    context["Confirmation"] = Confirmation
+    return render(request, 'analytics/support.html', context=context)
+
 def get_user_activity_records_for_realm(realm: str, is_bot: bool) -> QuerySet:
     fields = [
         'user_profile__full_name',
-        'user_profile__email',
+        'user_profile__delivery_email',
         'query',
         'client__name',
         'count',
@@ -792,9 +1243,9 @@ def get_user_activity_records_for_realm(realm: str, is_bot: bool) -> QuerySet:
     records = UserActivity.objects.filter(
         user_profile__realm__string_id=realm,
         user_profile__is_active=True,
-        user_profile__is_bot=is_bot
+        user_profile__is_bot=is_bot,
     )
-    records = records.order_by("user_profile__email", "-last_visit")
+    records = records.order_by("user_profile__delivery_email", "-last_visit")
     records = records.select_related('user_profile', 'client').only(*fields)
     return records
 
@@ -804,11 +1255,11 @@ def get_user_activity_records_for_email(email: str) -> List[QuerySet]:
         'query',
         'client__name',
         'count',
-        'last_visit'
+        'last_visit',
     ]
 
     records = UserActivity.objects.filter(
-        user_profile__email=email
+        user_profile__delivery_email=email,
     )
     records = records.order_by("-last_visit")
     records = records.select_related('user_profile', 'client').only(*fields)
@@ -819,7 +1270,7 @@ def raw_user_activity_table(records: List[QuerySet]) -> str:
         'query',
         'client',
         'count',
-        'last_visit'
+        'last_visit',
     ]
 
     def row(record: QuerySet) -> List[Any]:
@@ -827,7 +1278,7 @@ def raw_user_activity_table(records: List[QuerySet]) -> str:
             record.query,
             record.client.name,
             record.count,
-            format_date_for_activity_reports(record.last_visit)
+            format_date_for_activity_reports(record.last_visit),
         ]
 
     rows = list(map(row, records))
@@ -840,19 +1291,19 @@ def get_user_activity_summary(records: List[QuerySet]) -> Dict[str, Dict[str, An
     #: We could use something like:
     # `Union[Dict[str, Dict[str, int]], Dict[str, Dict[str, datetime]]]`
     #: but that would require this long `Union` to carry on throughout inner functions.
-    summary = {}  # type: Dict[str, Dict[str, Any]]
+    summary: Dict[str, Dict[str, Any]] = {}
 
     def update(action: str, record: QuerySet) -> None:
         if action not in summary:
             summary[action] = dict(
                 count=record.count,
-                last_visit=record.last_visit
+                last_visit=record.last_visit,
             )
         else:
             summary[action]['count'] += record.count
             summary[action]['last_visit'] = max(
                 summary[action]['last_visit'],
-                record.last_visit
+                record.last_visit,
             )
 
     if records:
@@ -892,14 +1343,26 @@ def format_date_for_activity_reports(date: Optional[datetime]) -> str:
 def user_activity_link(email: str) -> mark_safe:
     url_name = 'analytics.views.get_user_activity'
     url = reverse(url_name, kwargs=dict(email=email))
-    email_link = '<a href="%s">%s</a>' % (url, email)
+    email_link = f'<a href="{url}">{email}</a>'
     return mark_safe(email_link)
 
 def realm_activity_link(realm_str: str) -> mark_safe:
     url_name = 'analytics.views.get_realm_activity'
     url = reverse(url_name, kwargs=dict(realm_str=realm_str))
-    realm_link = '<a href="%s">%s</a>' % (url, realm_str)
+    realm_link = f'<a href="{url}">{realm_str}</a>'
     return mark_safe(realm_link)
+
+def realm_stats_link(realm_str: str) -> mark_safe:
+    url_name = 'analytics.views.stats_for_realm'
+    url = reverse(url_name, kwargs=dict(realm_str=realm_str))
+    stats_link = f'<a href="{url}"><i class="fa fa-pie-chart"></i>{realm_str}</a>'
+    return mark_safe(stats_link)
+
+def remote_installation_stats_link(server_id: int, hostname: str) -> mark_safe:
+    url_name = 'analytics.views.stats_for_remote_installation'
+    url = reverse(url_name, kwargs=dict(remote_server_id=server_id))
+    stats_link = f'<a href="{url}"><i class="fa fa-pie-chart"></i>{hostname}</a>'
+    return mark_safe(stats_link)
 
 def realm_client_table(user_summaries: Dict[str, Dict[str, Dict[str, Any]]]) -> str:
     exclude_keys = [
@@ -972,11 +1435,11 @@ def user_activity_summary_table(user_summary: Dict[str, Dict[str, Any]]) -> str:
     return make_table(title, cols, rows)
 
 def realm_user_summary_table(all_records: List[QuerySet],
-                             admin_emails: Set[Text]) -> Tuple[Dict[str, Dict[str, Any]], str]:
+                             admin_emails: Set[str]) -> Tuple[Dict[str, Dict[str, Any]], str]:
     user_records = {}
 
     def by_email(record: QuerySet) -> str:
-        return record.user_profile.email
+        return record.user_profile.delivery_email
 
     for email, records in itertools.groupby(all_records, by_email):
         user_records[email] = get_user_activity_summary(list(records))
@@ -1039,15 +1502,15 @@ def realm_user_summary_table(all_records: List[QuerySet],
 
 @require_server_admin
 def get_realm_activity(request: HttpRequest, realm_str: str) -> HttpResponse:
-    data = []  # type: List[Tuple[str, str]]
-    all_user_records = {}  # type: Dict[str, Any]
+    data: List[Tuple[str, str]] = []
+    all_user_records: Dict[str, Any] = {}
 
     try:
-        admins = Realm.objects.get(string_id=realm_str).get_admin_users()
+        admins = Realm.objects.get(string_id=realm_str).get_human_admin_users()
     except Realm.DoesNotExist:
-        return HttpResponseNotFound("Realm %s does not exist" % (realm_str,))
+        return HttpResponseNotFound(f"Realm {realm_str} does not exist")
 
-    admin_emails = {admin.email for admin in admins}
+    admin_emails = {admin.delivery_email for admin in admins}
 
     for is_bot, page_title in [(False, 'Humans'), (True, 'Bots')]:
         all_records = list(get_user_activity_records_for_realm(realm_str, is_bot))
@@ -1076,7 +1539,7 @@ def get_realm_activity(request: HttpRequest, realm_str: str) -> HttpResponse:
 def get_user_activity(request: HttpRequest, email: str) -> HttpResponse:
     records = get_user_activity_records_for_email(email)
 
-    data = []  # type: List[Tuple[str, str]]
+    data: List[Tuple[str, str]] = []
     user_summary = get_user_activity_summary(records)
     content = user_activity_summary_table(user_summary)
 

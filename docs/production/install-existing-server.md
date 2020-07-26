@@ -2,13 +2,13 @@
 :orphan:
 ```
 
-# Production Installation on Existing Ubuntu Server
+# Production Installation on Existing Server
 
 Here are some tips for installing the latest release Zulip on a
-production server running Ubuntu. The Zulip installation scripts
-assume that it has carte blanche to overwrite your configuration files
-in /etc, so we recommend against installing it on a server running
-other nginx or django apps.
+production server running Debian or Ubuntu. The Zulip installation
+scripts assume that it has carte blanche to overwrite your
+configuration files in /etc, so we recommend against installing it on
+a server running other nginx or django apps.
 
 But if you do, here are some things you can do that may make it
 possible to retain your existing site. However, this is *NOT*
@@ -16,9 +16,10 @@ recommended, and you may break your server. Make sure you have backups
 and a provisioning script ready to go to wipe and restore your
 existing services if (when) your server goes down.
 
-These instructions are only for experts.  If you're not an experiecned
+These instructions are only for experts.  If you're not an experienced
 Linux sysadmin, you will have a much better experience if you get a
-dedicated VM to install Zulip on instead (or [use zulipchat.com](https://zulipchat.com).
+dedicated VM to install Zulip on instead (or [use
+zulip.com](https://zulip.com).
 
 ### Nginx
 
@@ -27,16 +28,16 @@ one created by Zulip into it:
 
 ```shell
 sudo cp /etc/nginx/nginx.conf /etc/nginx.conf.before-zulip-install
-wget -O /tmp/nginx.conf.zulip \
+sudo wget -O /etc/nginx/nginx.conf.zulip \
     https://raw.githubusercontent.com/zulip/zulip/master/puppet/zulip/files/nginx/nginx.conf
-sudo meld /etc/nginx/nginx.conf /tmp/nginx.conf.zulip  # be sure to merge to the right
+sudo meld /etc/nginx/nginx.conf /etc/nginx/nginx.conf.zulip  # be sure to merge to the right
 ```
 
 After the zulip installation completes, then you can overwrite (or
 merge) your new nginx.conf with the installed one:
 
 ```shell
-$ sudo meld /tmp/nginx.conf.zulip /etc/nginx/nginx.conf  # be sure to merge to the right
+$ sudo meld /etc/nginx/nginx.conf.zulip /etc/nginx/nginx.conf  # be sure to merge to the right
 $ sudo service nginx restart
 ```
 
@@ -61,9 +62,16 @@ $ sudo service puppet-agent stop
 $ sudo service puppet stop
 ```
 
-### Postgres
+### PostgreSQL
 
-If you have an existing postgres database, note that Zulip will use
+Zulip expects to install PostgreSQL 12, and find that listening on
+port 5432; any other version of PostgreSQL that is detected at install
+time will cause the install to abort.  If you already have PostgreSQL
+installed, you can pass `--postgres-version=` to the installer to have
+it use that version.  It will replace the package with the latest from
+the PostgreSQL apt repository, but existing data will be retained.
+
+If you have an existing PostgreSQL database, note that Zulip will use
 the default `main` as its database name; make sure you're not using
 that.
 
@@ -82,5 +90,5 @@ We don't provide a convenient way to uninstall a Zulip server.
 
 Most of the limitations are things we'd accept a pull request to fix;
 we welcome contributions to shrink this list of gotchas.  Chat with us
-in the [chat.zulip.org community](../contributing/chat-zulip-org.html) if you're
+in the [chat.zulip.org community](../contributing/chat-zulip-org.md) if you're
 interested in helping!

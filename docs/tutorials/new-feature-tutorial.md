@@ -8,20 +8,23 @@ data system in real-time to all browsers the user may have open.
 
 As you read this, you may find you need to learn about Zulip's
 real-time push system; the
-[real-time push and events](../subsystems/events-system.html)
+[real-time push and events](../subsystems/events-system.md)
 documentation has a detailed explanation of how everything works. You
 may also find it beneficial to read Zulip's
-[architectural overview](../overview/architecture-overview.html).
+[architectural overview](../overview/architecture-overview.md).
 Zulip is a web application built using the
 [Django framework](https://www.djangoproject.com/), and some of the
 processes listed in this tutorial, such as database migrations and
 tests, use Django's tooling.
 
-Zulip's [directory structure](../overview/directory-structure.html) will also be
-helpful to review when creating a new feature. Many aspects of the structure
-will be familiar to Django developers. Visit
-[Django's documentation](https://docs.djangoproject.com/en/1.11/#index-first-steps)
-for more information about how Django projects are typically organized.
+Zulip's [directory structure](../overview/directory-structure.md)
+will also be helpful to review when creating a new feature. Many
+aspects of the structure will be familiar to Django developers. Visit
+[Django's documentation](https://docs.djangoproject.com/en/2.2/#index-first-steps)
+for more information about how Django projects are typically
+organized.  And finally, the
+[message sending](../subsystems/sending-messages.md) documentation on
+the additional complexity involved in sending messages.
 
 ## General Process
 
@@ -31,7 +34,7 @@ This tutorial will walk through adding a new feature to a Realm (an
 organization in Zulip). The following files are involved in the process:
 
 **Backend**
-- `zerver/model.py`: Defines the database model.
+- `zerver/models.py`: Defines the database model.
 - `zerver/views/realm.py`: The view function that implements the API endpoint
   for editing realm objects.
 - `zerver/lib/actions.py`: Contains code for updating and interacting with the database.
@@ -39,7 +42,7 @@ organization in Zulip). The following files are involved in the process:
   consistent and correct.
 
 **Frontend**
-- `static/templates/settings/organization-permissions-admin.handlebars`: defines
+- `static/templates/settings/organization_permissions_admin.hbs`: defines
    the structure of the admin permissions page (checkboxes for each organization
    permission setting).
 - `static/js/settings_org.js`: handles organization setting form submission.
@@ -71,7 +74,7 @@ following commands:
 ```
 
 You can read our
-[database migration documentation](../subsystems/schema-migrations.html)
+[database migration documentation](../subsystems/schema-migrations.md)
 to learn more about creating and applying database migrations.
 
 **Test your changes:** Once you've run the migration, flush memcached
@@ -111,23 +114,23 @@ Realm setting, in `test_realm.py`).
 
 ### Frontend changes
 
-**JavaScript:** Zulip's JavaScript is located in the directory
-`static/js/`. The exact files you may need to change depend on your
-feature. If you've added a new event that is sent to clients, be sure to
-add a handler for it in `static/js/server_events_dispatch.js`.
+**JavaScript/TypeScript:** Zulip's JavaScript and TypeScript sources are
+located in the directory `static/js/`. The exact files you may need to change
+depend on your feature. If you've added a new event that is sent to clients,
+be sure to add a handler for it in `static/js/server_events_dispatch.js`.
 
 **CSS:** The primary CSS file is `static/styles/zulip.css`. If your new
 feature requires UI changes, you may need to add additional CSS to this
 file.
 
 **Templates:** The initial page structure is rendered via Jinja2
-templates located in `templates/zerver`. For JavaScript, Zulip uses
+templates located in `templates/zerver/app`. For JavaScript, Zulip uses
 Handlebars templates located in `static/templates`. Templates are
 precompiled as part of the build/deploy process.
 
 Zulip is fully internationalized, so when writing both HTML templates
-or JavaScript code that generates user-facing strings, be sure to
-[tag those strings for translation](../translating/translating.html).
+or JavaScript/TypeScript code that generates user-facing strings, be sure to
+[tag those strings for translation](../translating/translating.md).
 
 **Testing:** There are two types of frontend tests: node-based unit
 tests and blackbox end-to-end tests. The blackbox tests are run in a
@@ -135,14 +138,14 @@ headless browser using Casper.js and are located in
 `frontend_tests/casper_tests/`. The unit tests use Node's `assert`
 module are located in `frontend_tests/node_tests/`. For more
 information on writing and running tests, see the
-[testing documentation](../testing/testing.html).
+[testing documentation](../testing/testing.md).
 
 ### Documentation changes
 
 After implementing the new feature, you should
 document it and update any existing documentation that might be
 relevant to the new feature. For more information on the kinds of
-documentation Zulip has, see [Documentation](../subsystems/documentation.html).
+documentation Zulip has, see [Documentation](../documentation/overview.md).
 
 ## Example Feature
 
@@ -170,9 +173,9 @@ boolean field, `mandatory_topics`, to the Realm model in
 
 class Realm(models.Model):
     # ...
-    restricted_to_domain = models.BooleanField(default=True) # type: bool
-    invite_required = models.BooleanField(default=False) # type: bool
-+   mandatory_topics = models.BooleanField(default=False) # type: bool
+    emails_restricted_to_domains: bool = models.BooleanField(default=True)
+    invite_required: bool = models.BooleanField(default=False)
++   mandatory_topics: bool = models.BooleanField(default=False)
 ```
 
 The Realm model also contains an attribute, `property_types`, which
@@ -263,7 +266,7 @@ initial state. Subsequently, clients subscribe to "events," which can
 For the backend piece, we will need our action to make a call to `send_event`
 to send the event to clients that are active. We will also need to
 modify `fetch_initial_state_data` so that the new field is passed to
-clients. See [our event system docs](../subsystems/events-system.html) for all the
+clients. See [our event system docs](../subsystems/events-system.md) for all the
 gory details.
 
 Anyway, getting back to implementation details...
@@ -290,9 +293,10 @@ active users in a realm.
 
     # zerver/lib/actions.py
 
-    def do_set_realm_property(realm: Realm, name: str, value: bool) -> None:
-      """Takes in a realm object, the name of an attribute to update, and the
-      value to update.
+    def do_set_realm_property(realm: Realm, name: str, value: bool,
+                              acting_user: Optional[UserProfile]=None) -> None:
+      """Takes in a realm object, the name of an attribute to update, the
+         value to update and and the user who initiated the update.
       """
       property_type = Realm.property_types[name]
       assert isinstance(value, property_type), (
@@ -307,7 +311,7 @@ active users in a realm.
           property=name,
           value=value,
       )
-      send_event(event, active_user_ids(realm))
+      send_event(realm, event, active_user_ids(realm))
 
 If the new realm property being added does not fit into the
 `property_types` framework (such as the `authentication_methods`
@@ -327,7 +331,7 @@ field and send an event. For example:
             property='default',
             data=dict(authentication_methods=realm.authentication_methods_dict())
         )
-        send_event(event, active_user_ids(realm))
+        send_event(realm, event, active_user_ids(realm))
 
 ### Update application state
 
@@ -402,12 +406,15 @@ annotation).
 
 # zerver/views/realm.py
 
-def update_realm(request, user_profile, name=REQ(validator=check_string, default=None),
-             # ...,
-+            mandatory_topics=REQ(validator=check_bool, default=None),
-             # ...):
-+            # type: (HttpRequest, UserProfile, ..., Optional[bool], ...
-  # ...
+ def update_realm(
+     request: HttpRequest,
+     user_profile: UserProfile,
+     name: Optional[str] = REQ(validator=check_string, default=None),
+     # ...
++    mandatory_topics: Optional[bool] = REQ(validator=check_bool, default=None),
+     # ...
+ ):
+     # ...
 ```
 
 If this feature fits the `property_types` framework and does
@@ -447,7 +454,7 @@ with the new value. E.g., for `authentication_methods`, we created
     # ...
     # ...
     if authentication_methods is not None and realm.authentication_methods_dict() != authentication_methods:
-            do_set_realm_authentication_methods(realm, authentication_methods)
+            do_set_realm_authentication_methods(realm, authentication_methods, acting_user=user_profile)
             data['authentication_methods'] = authentication_methods
     # ...
 
@@ -472,7 +479,7 @@ controls the feature it is supposed to control, however (e.g. for this
 example feature, whether sending a message without a topic fails with
 the setting enabled).
 
-Visit Zulip's [Django testing](../testing/testing-with-django.html)
+Visit Zulip's [Django testing](../testing/testing-with-django.md)
 documentation to learn more about the backend testing framework.
 
 ### Update the front end
@@ -483,8 +490,9 @@ to be added to the admin page (and its value added to the data sent back
 to server when a realm is updated) and the change event needs to be
 handled on the client.
 
-To add the checkbox to the admin page, modify the relevant template,
-`static/templates/settings/organization-permissions-admin.handlebars`
+To add the checkbox to the admin page, modify the relevant template in
+`static/templates/settings/`, which can be
+`organization_permissions_admin.hbs` or `organization_settings_admin.hbs`
 (omitted here since it is relatively straightforward).
 
 Then add the new form control in `static/js/admin.js`.
@@ -497,7 +505,7 @@ function _setup_page() {
     var options = {
         realm_name: page_params.realm_name,
         realm_description: page_params.realm_description,
-        realm_restricted_to_domain: page_params.realm_restricted_to_domain,
+        realm_emails_restricted_to_domains: page_params.realm_emails_restricted_to_domains,
         realm_invite_required: page_params.realm_invite_required,
         // ...
 +       realm_mandatory_topics: page_params.mandatory_topics,
@@ -507,66 +515,81 @@ function _setup_page() {
 The JavaScript code for organization settings and permissions can be found in
 `static/js/settings_org.js`.
 
-There is a front-end version of `property_types`, which reduces the code
-needed on the front end for a new feature.
+In frontend, we have split the `property_types` into three objects:
 
-Add the new feature to the `property_types` object in `settings_org.js`.
-The key should be the setting name and the value should be an object with
-the following keys:
+- `org_profile`: This contains properties for the "organization
+    profile" settings page.
 
-* type
-* checked_msg (what message the user sees when they enable the setting)
-* unchecked_msg (what message the user sees when they disable the setting)
+- `org_settings`: This contains properties for the "organization
+    settings" page. Settings belonging to this section generally
+    decide what features should be available to a user like deleting a
+    message, message edit history etc.  Our `mandatory_topics` feature
+    belongs in this section.
+
+- `org_permissions`: This contains properties for the "organization
+    permissions" section. These properties control security controls
+    like who can join the organization and whether normal users can
+    create streams or upload custom emoji.
+
+Once you've determined whether the new setting belongs, the next step
+is to find the right subsection of that page to put the setting
+in. For example in this case of `mandatory_topics` it will lie in
+"Message feed" (`msg_feed`) subsection.
+
+*If you're not sure in which section your feature belongs, it's is
+better to discuss it in the [community](https://chat.zulip.org/)
+before implementing it.*
+
+When defining the property, you'll also need to specify the property
+field type (i.e. whether it's a `bool`, `integer` or `text`).
 
 ``` diff
 
 // static/js/settings_org.js
-
-var property_types = {
-    settings: {
+var org_settings = {
+    msg_editing: {
         // ...
     },
-    permissions: { // ...
+    msg_feed: {
+        // ...
 +       mandatory_topics: {
 +           type: 'bool',
-+           checked_msg: i18n.t("Topics are required in messages to streams"),
-+           unchecked_msg: i18n.t("Topics are not required in messages to streams"),
-        },
++       },
     },
 };
+
 ```
 
-Additionally, any code needed to update the UI when the setting is changed
-should be written in a function inside `settings_org.js`.
-For example, when a realm description is updated, that value change should
-occur in other windows where the description field is visible:
+Note that some settings, like `realm_msg_edit_limit_setting`,
+require special treatment, because they don't match the common
+pattern.  We can't extract the property name and compare the value of
+such input elements with those in `page_params`, so we have to
+manually handle such situations in a couple key functions:
 
-    # static/js/settings_org.js
+- `settings_org.get_property_value`: This processes the property name
+    when it doesn't match a corresponding key in `page_params`, and
+    returns the current value of that property, which we can use to
+    compare and set the values of corresponding DOM element.
 
-    exports.update_realm_description = function () {
-        if (!meta.loaded) {
-            return;
-        }
-
-        $('#id_realm_description').val(page_params.realm_description);
-    };
-
-
-This ensures the appropriate code will run even if the
-changes are made in another browser window.
-
-In the example of updating a `mandatory_topics` setting, most of the changes
-are on the backend, so no UI updates are required.
+- `settings_org.update_dependent_subsettings`: This handles settings
+    whose value and state depend on other elements.  For example,
+    `realm_waiting_period_threshold` is only shown for with the right
+    state of `realm_create_stream_policy`.
 
 Finally, update `server_events_dispatch.js` to handle related events coming from
 the server. There is an object, `realm_settings`, in the function
 `dispatch_normal_event`. The keys in this object are setting names and the
 values are the UI updating functions to run when an event has occurred.
 
-If there is no relevant UI change to make, the value should be `noop`
-(this is the case for `mandatory_topics`). However, if you had written
-a function in `settings_org.js` to update UI, that function should
-be the value in the `realm_settings` object.
+If there is no relevant UI change to make other than in settings page
+itself, the value should be `noop` (this is the case for
+`mandatory_topics`, since this setting only has an effect on the
+backend, so no UI updates are required.).
+
+However, if you had written a function to update the UI after a given
+setting has changed, your function should be referenced in the
+`realm_settings` of `server_events_dispatch.js`.  See for example
+`settings_emoji.update_custom_emoji_ui`.
 
 ``` diff
 
@@ -585,15 +608,40 @@ function dispatch_normal_event(event) {
       };
 ```
 
+Checkboxes and other common input elements handle the UI updates
+automatically through the logic in `settings_org.sync_realm_settings`.
+
 The rest of the `dispatch_normal_events` function updates the state of the
 application if an update event has occurred on a realm property and runs
 the associated function to update the application's UI, if necessary.
 
+Here are few important cases you should consider when testing your changes:
+
+- For organization settings where we have a "save/discard" model, make
+  sure both the "Save" and "Discard changes" buttons are working
+  properly.
+
+- If your setting is dependent on another setting, carefully check
+  that both are properly synchronized.  For example, the input element
+  for `realm_waiting_period_threshold` is shown only when we have
+  selected the custom time limit option in the
+  `realm_create_stream_policy` dropdown.
+
+- Do some manual testing for the real-time synchronization of input
+  elements across the browsers and just like "Discard changes" button,
+  check whether dependent settings are synchronized properly (this is
+  easy to do by opening two browser windows to the settings page, and
+  making changes in one while watching the other).
+
+- Each subsection has independent "Save" and "Discard changes"
+  buttons, so changes and saving in one subsection shouldn't affect
+  the others.
+
 ### Front End Tests
 
 A great next step is to write front end tests. There are two types of
-frontend tests: [node-based unit tests](../testing/testing-with-node.html) and
-[Casper end-to-end tests](../testing/testing-with-casper.html).
+frontend tests: [node-based unit tests](../testing/testing-with-node.md) and
+[Casper end-to-end tests](../testing/testing-with-casper.md).
 
 At the minimum, if you created a new function to update UI in
 `settings_org.js`, you will need to mock that function in
@@ -603,11 +651,8 @@ function you created to the following object with `noop` as the value:
     # frontend_tests/node_tests/dispatch.js
 
     set_global('settings_org', {
-        reset_realm_default_language: noop,
         update_email_change_display: noop,
         update_name_change_display: noop,
-        update_message_retention_days: noop,
-        update_realm_description: noop,
     });
 
 Beyond that, you should add any applicable tests that verify the
@@ -626,13 +671,4 @@ At the very least, this will involve adding (or modifying) a Markdown file
 documenting the feature to `templates/zerver/help/` in the main Zulip
 server repository, where the source for Zulip's user documentation is
 stored. For information on writing user documentation, see
-[Zulip's general user guide documentation](../subsystems/user-docs.html).
-
-For a more concrete example of writing documentation for a new
-feature, see [an example commit in the Zulip repo][example-commit]
-that documented a new realm feature, [the current source][example-current-source],
-and [the final rendered documentation][example-docs].
-
-[example-commit]: https://github.com/zulip/zulip/commit/5b4d9774e02a45e43465b0a28ffb3d9b373c9098
-[example-current-source]: https://github.com/zulip/zulip/blob/master/templates/zerver/help/only-allow-admins-to-invite-new-users.md
-[example-docs]: https://chat.zulip.org/help/only-allow-admins-to-invite-new-users
+[Zulip's general user guide documentation](../documentation/user.md).

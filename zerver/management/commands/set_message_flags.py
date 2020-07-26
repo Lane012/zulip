@@ -1,4 +1,3 @@
-
 import logging
 import sys
 from typing import Any, Iterable
@@ -7,8 +6,9 @@ from django.core.management.base import CommandParser
 from django.db import models
 
 from zerver.lib import utils
-from zerver.lib.management import ZulipBaseCommand
+from zerver.lib.management import CommandError, ZulipBaseCommand
 from zerver.models import UserMessage
+
 
 class Command(ZulipBaseCommand):
     help = """Sets user message flags. Used internally by actions.py. Marks all
@@ -44,8 +44,7 @@ class Command(ZulipBaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         if not options["flag"] or not options["op"] or not options["email"]:
-            print("Please specify an operation, a flag and an email")
-            exit(1)
+            raise CommandError("Please specify an operation, a flag and an email")
 
         op = options['op']
         flag = getattr(UserMessage.flags, options['flag'])
@@ -75,9 +74,9 @@ class Command(ZulipBaseCommand):
                 msgs.update(flags=models.F('flags').bitand(~flag))
 
         if not options["for_real"]:
-            logging.info("Updating %s by %s %s" % (mids, op, flag))
+            logging.info("Updating %s by %s %s", mids, op, flag)
             logging.info("Dry run completed. Run with --for-real to change message flags.")
-            exit(1)
+            raise CommandError
 
         utils.run_in_batches(mids, 400, do_update, sleep_time=3)
         exit(0)

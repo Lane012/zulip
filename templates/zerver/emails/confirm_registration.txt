@@ -1,11 +1,6 @@
-Hello there.
+{{ _('You recently signed up for Zulip. Awesome!') }}
 
-You recently signed up for Zulip. Awesome!
-
-To complete signup, visit this link below:
+{{ _('Click the link below to complete registration.') }}
     <{{ activate_url }}>
 
-Feel free to give us a shout at <{{ support_email }}> if you have any questions.
-
-Cheers,
-Team Zulip
+{% trans %}Contact us any time at {{ support_email }} if you run into trouble,have any feedback, or just want to chat!{% endtrans %}

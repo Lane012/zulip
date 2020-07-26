@@ -27,7 +27,7 @@ at `(venv)john@laptop:~$`:
 
 - `(venv)` informs the user that they're currently in a virtual environment
 (more on [Python virtual
-  environments](http://docs.python-guide.org/en/latest/dev/virtualenvs/))
+  environments](https://docs.python-guide.org/dev/virtualenvs/))
 - the `john` before `@` is the username
 - the `laptop` is the host machine name
 - the `~` after the colon informs the user they're currently in the home
@@ -316,7 +316,7 @@ cases, `#!/bin/bash` or `#!/bin/sh` is used.
 Frequently, you may find commands that you don't understand, or don't
 know what they do. You can use `man <command>` to see the **man**ual page for
 that specific command. Also, you may find useful
-[explainshell](http://explainshell.com/), a webpage that explains what most
+[explainshell](https://explainshell.com/), a webpage that explains what most
 commands do, part by part.
 Finally, [docopt](http://docopt.org/) can help you understand the syntax used
 by command-line tools to describe their interface, and make sense of strings like
@@ -339,7 +339,7 @@ At first it seems like magic, but once you get the basic concepts you find it
 extremely useful and even easy to use (at least the 99% of the time).
 
 To learn more about how to use it, read
-[our docs](../git/index.html) on Git and
+[our docs](../git/index.md) on Git and
 Github.
 
 [This cheatsheet][git-cheat-detailed]

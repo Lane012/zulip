@@ -1,25 +1,21 @@
 Get Zulip notifications for your Statuspage.io subscriptions!
 
-{!create-stream.md!}
+1. {!create-stream.md!}
 
-{!create-bot-construct-url.md!}
+1. {!create-bot-construct-url-indented.md!}
 
-If you'd like to subscribe to your own organization's Statuspage.io
-notifications, go to the **Settings** in **Notifications** tab and
-enable notifications delivery through **WEBHOOK**.
+1. Go to your Statuspage Dashboard, and click on **Notifications**
+   near the bottom-left corner. Select the **Webhook** tab. If webhook
+   notifications are disabled, click **reactivate webhook
+   notifications now** to enable them. Click on the
+   **gear** (<i class="fa fa-cog"></i>) icon next to
+   **Subscribers**, and select **Add subscriber**.
 
-![](/static/images/integrations/statuspage/001.png)
-
-In order to subscribe to another company's Statuspage.io
-notifications, you need to use a slightly different process:
-
-1. Go to the company's Statuspage.io site (for instance, `example.statuspage.io`).
-2. Click on **SUBSCRIBE TO UPDATES**
-3. Enter the webhook URL constructed above in the **Target Webhook** field.
-4. Click on **SUBSCRIBE TO NOTIFICATIONS**.
-
-![](/static/images/integrations/statuspage/002.png)
+1. Set **Subscriber type** to **Webhook**. Set **Endpoint URL** to
+   the URL constructed above, and provide an email address. Statuspage
+   will send email notifications to this address if the webhook endpoint
+   fails. Finally, click **Add Subscriber**.
 
 {!congrats.md!}
 
-![](/static/images/integrations/statuspage/003.png)
+![](/static/images/integrations/statuspage/001.png)

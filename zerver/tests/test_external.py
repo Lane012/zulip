@@ -1,28 +1,22 @@
-# -*- coding: utf-8 -*-
+import time
+from unittest import mock
+
+import DNS
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 
 from zerver.forms import email_is_not_mit_mailing_list
-
 from zerver.lib.rate_limiter import (
-    add_ratelimit_rule,
-    clear_history,
-    remove_ratelimit_rule,
     RateLimitedUser,
+    RateLimiterLockingException,
+    add_ratelimit_rule,
+    remove_ratelimit_rule,
 )
+from zerver.lib.test_classes import ZulipTestCase
+from zerver.lib.zephyr import compute_mit_user_fullname
+from zerver.models import UserProfile
 
-from zerver.lib.actions import compute_mit_user_fullname
-from zerver.lib.test_classes import (
-    ZulipTestCase,
-)
-
-import DNS
-import mock
-import time
-
-import urllib
-from typing import Text
 
 class MITNameTest(ZulipTestCase):
     def test_valid_hesiod(self) -> None:
@@ -50,6 +44,7 @@ class MITNameTest(ZulipTestCase):
 class RateLimitTests(ZulipTestCase):
 
     def setUp(self) -> None:
+        super().setUp()
         settings.RATE_LIMITING = True
         add_ratelimit_rule(1, 5)
 
@@ -57,43 +52,42 @@ class RateLimitTests(ZulipTestCase):
         settings.RATE_LIMITING = False
         remove_ratelimit_rule(1, 5)
 
-    def send_api_message(self, email: Text, content: Text) -> HttpResponse:
-        return self.api_post(email, "/api/v1/messages", {"type": "stream",
-                                                         "to": "Verona",
-                                                         "client": "test suite",
-                                                         "content": content,
-                                                         "subject": "Test subject"})
+        super().tearDown()
+
+    def send_api_message(self, user: UserProfile, content: str) -> HttpResponse:
+        return self.api_post(user, "/api/v1/messages", {"type": "stream",
+                                                        "to": "Verona",
+                                                        "client": "test suite",
+                                                        "content": content,
+                                                        "topic": "whatever"})
 
     def test_headers(self) -> None:
         user = self.example_user('hamlet')
-        email = user.email
-        clear_history(RateLimitedUser(user))
+        RateLimitedUser(user).clear_history()
 
-        result = self.send_api_message(email, "some stuff")
+        result = self.send_api_message(user, "some stuff")
         self.assertTrue('X-RateLimit-Remaining' in result)
         self.assertTrue('X-RateLimit-Limit' in result)
         self.assertTrue('X-RateLimit-Reset' in result)
 
     def test_ratelimit_decrease(self) -> None:
         user = self.example_user('hamlet')
-        email = user.email
-        clear_history(RateLimitedUser(user))
-        result = self.send_api_message(email, "some stuff")
+        RateLimitedUser(user).clear_history()
+        result = self.send_api_message(user, "some stuff")
         limit = int(result['X-RateLimit-Remaining'])
 
-        result = self.send_api_message(email, "some stuff 2")
+        result = self.send_api_message(user, "some stuff 2")
         newlimit = int(result['X-RateLimit-Remaining'])
         self.assertEqual(limit, newlimit + 1)
 
     def test_hit_ratelimits(self) -> None:
         user = self.example_user('cordelia')
-        email = user.email
-        clear_history(RateLimitedUser(user))
+        RateLimitedUser(user).clear_history()
 
         start_time = time.time()
         for i in range(6):
             with mock.patch('time.time', return_value=(start_time + i * 0.1)):
-                result = self.send_api_message(email, "some stuff %s" % (i,))
+                result = self.send_api_message(user, f"some stuff {i}")
 
         self.assertEqual(result.status_code, 429)
         json = result.json()
@@ -106,7 +100,21 @@ class RateLimitTests(ZulipTestCase):
         # We actually wait a second here, rather than force-clearing our history,
         # to make sure the rate-limiting code automatically forgives a user
         # after some time has passed.
-        with mock.patch('time.time', return_value=(start_time + 1.0)):
-            result = self.send_api_message(email, "Good message")
+        with mock.patch('time.time', return_value=(start_time + 1.01)):
+            result = self.send_api_message(user, "Good message")
 
             self.assert_json_success(result)
+
+    @mock.patch('zerver.lib.rate_limiter.logger.warning')
+    def test_hit_ratelimiterlockingexception(self, mock_warn: mock.MagicMock) -> None:
+        user = self.example_user('cordelia')
+        RateLimitedUser(user).clear_history()
+
+        with mock.patch('zerver.lib.rate_limiter.RedisRateLimiterBackend.incr_ratelimit',
+                        side_effect=RateLimiterLockingException):
+            result = self.send_api_message(user, "some stuff")
+            self.assertEqual(result.status_code, 429)
+            mock_warn.assert_called_with(
+                "Deadlock trying to incr_ratelimit for %s",
+                f"RateLimitedUser:{user.id}:api_by_user",
+            )

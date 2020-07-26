@@ -2,18 +2,23 @@
 
 {!admin-only.md!}
 
-Ordinary users can [change their own names](/help/change-your-name), but
-administrators can change users' names when users are
-unavailable. {!follow-steps.md!} change the name of a user.
+By default, users can [change their name](/help/change-your-name), though
+organization administrators can
+[restrict name changes](/help/restrict-name-and-email-changes).
 
-{!go-to-the.md!} [Users](/#organization/user-list-admin)
-{!admin.md!}
+Organization administrators can always change any user's name.
 
-2. Click on the pencil (<i class="icon-vector-pencil"></i>) icon next to
-the name of the user you want to change.
+### Change a user's name
 
-3. After clicking on the pencil icon, an input field labeled **Full name** will
-appear to allow you to change the user's name. Enter the user's new name in
-**Full name**.
+{start_tabs}
 
-{!save-changes.md!} account settings.
+{settings_tab|user-list-admin}
+
+1. Find the user you would like to manage. Click the **pencil**
+(<i class="fa fa-pencil"></i>) to the right of their name.
+
+1. Under **Full name**, enter a new name.
+
+{!save-changes.md!}
+
+{end_tabs}

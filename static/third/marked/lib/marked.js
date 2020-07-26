@@ -15,18 +15,18 @@ var block = {
   code: /^( {4}[^\n]+\n*)+/,
   fences: noop,
   hr: /^( *[-*_]){3,} *(?:\n+|$)/,
+  heading: /^ {0,3}(#{1,6}) +([^\n]*?)(?: +#+)? *(?:\n+|$)/,
   nptable: noop,
   blockquote: /^(?!( *>\s*($|\n))*($|\n))( *>[^\n]*(\n(?!def)[^\n]+)*\n*)+/,
   list: /^( *)(bull) [\s\S]+?(?:hr|def|\n{2,}(?! )(?!\1bull )\n*|\s*$)/,
   html: /^ *(?:comment *(?:\n|\s*$)|closed *(?:\n{2,}|\s*$)|closing *(?:\n{2,}|\s*$))/,
   def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)/,
   table: noop,
-  paragraph: /^((?:[^\n]+\n?(?!hr|blockquote|tag|def))+)\n*/,
+  paragraph: /^((?:[^\n]+\n?(?!hr|heading|blockquote|tag|def))+)\n*/,
   text: /^[^\n]+/
 };
 
-// Zulip modification: Remove numbers from this pattern.
-block.bullet = /(?:[*+-])/;
+block.bullet = /(?:[*+-]|\d{1,9}\.)/;
 block.item = /^( *)(bull) [^\n]*(?:\n(?!\1bull )[^\n]*)*/;
 block.item = replace(block.item, 'gm')
   (/bull/g, block.bullet)
@@ -56,6 +56,7 @@ block.html = replace(block.html)
 
 block.paragraph = replace(block.paragraph)
   ('hr', block.hr)
+  ('heading', ' {0,3}#{1,6} +')
   ('blockquote', block.blockquote)
   ('tag', '<' + block._tag)
   ('def', block.def)
@@ -165,9 +166,12 @@ Lexer.prototype.token = function(src, top, bq) {
     , bull
     , b
     , item
+    , listStart
+    , listItems
     , space
     , i
-    , l;
+    , l
+    , isordered;
 
   while (src) {
     // newline
@@ -200,6 +204,17 @@ Lexer.prototype.token = function(src, top, bq) {
         type: 'code',
         lang: cap[2],
         text: cap[3] || ''
+      });
+      continue;
+    }
+
+    // heading
+    if (cap = this.rules.heading.exec(src)) {
+      src = src.substring(cap[0].length);
+      this.tokens.push({
+        type: 'heading',
+        depth: cap[1].length,
+        text: cap[2]
       });
       continue;
     }
@@ -271,15 +286,21 @@ Lexer.prototype.token = function(src, top, bq) {
     if (cap = this.rules.list.exec(src)) {
       src = src.substring(cap[0].length);
       bull = cap[2];
+      isordered = bull.length > 1;
 
-      this.tokens.push({
+      listStart = {
         type: 'list_start',
-        ordered: bull.length > 1
-      });
+        ordered: isordered,
+        start: isordered ? +bull : '',
+        loose: false
+      };
+
+      this.tokens.push(listStart);
 
       // Get each top-level item.
       cap = cap[0].match(this.rules.item);
 
+      listItems = [];
       next = false;
       l = cap.length;
       i = 0;
@@ -290,7 +311,7 @@ Lexer.prototype.token = function(src, top, bq) {
         // Remove the list item's bullet
         // so it is seen as the next token.
         space = item.length;
-        item = item.replace(/^ *([*+-]|\d+\.) +/, '');
+        item = item.replace(/^ *([*+-]|\d+\.) */, '');
 
         // Outdent whatever the
         // list item contains. Hacky.
@@ -303,9 +324,10 @@ Lexer.prototype.token = function(src, top, bq) {
 
         // Determine whether the next list item belongs here.
         // Backpedal if it does not belong in this list.
-        if (this.options.smartLists && i !== l - 1) {
+        if (i !== l - 1) {
           b = block.bullet.exec(cap[i + 1])[0];
-          if (bull !== b && !(bull.length > 1 && b.length > 1)) {
+          if (bull.length > 1 ? b.length === 1
+            : (b.length > 1 || (this.options.smartLists && b !== bull))) {
             src = cap.slice(i + 1).join('\n') + src;
             i = l - 1;
           }
@@ -320,18 +342,32 @@ Lexer.prototype.token = function(src, top, bq) {
           if (!loose) loose = next;
         }
 
-        this.tokens.push({
-          type: loose
-            ? 'loose_item_start'
-            : 'list_item_start'
-        });
+        if (loose) {
+          listStart.loose = true;
+        }
+
+        var t = {
+          type: 'list_item_start',
+          loose: loose
+        };
+
+        listItems.push(t);
+        this.tokens.push(t);
 
         // Recurse.
-        this.token(item, false, bq);
+        this.token(item, false);
 
         this.tokens.push({
           type: 'list_item_end'
         });
+      }
+
+      if (listStart.loose) {
+        l = listItems.length;
+        i = 0;
+        for (; i < l; i++) {
+          listItems[i].loose = true;
+        }
       }
 
       this.tokens.push({
@@ -356,14 +392,7 @@ Lexer.prototype.token = function(src, top, bq) {
     }
 
     // def
-    if ((!bq && top) && (cap = this.rules.def.exec(src))) {
-      src = src.substring(cap[0].length);
-      this.tokens.links[cap[1].toLowerCase()] = {
-        href: cap[2],
-        title: cap[3]
-      };
-      continue;
-    }
+    // We disable definition style links in Zulip.
 
     // table (gfm)
     if (top && (cap = this.rules.table.exec(src))) {
@@ -453,9 +482,8 @@ var inline = {
   usermention: noop,
   groupmention: noop,
   stream: noop,
-  avatar: noop,
   tex: noop,
-  gravatar: noop,
+  timestamp: noop,
   realm_filters: [],
   text: /^[\s\S]+?(?=[\\<!\[_*`$]| {2,}\n|$)/
 };
@@ -516,12 +544,12 @@ inline.zulip = merge({}, inline.breaks, {
                        '\ud83d[\ude80-\udeff]|\ud83e[\udd00-\uddff]|' +
                        '[\u2000-\u206F]|[\u2300-\u27BF]|[\u2B00-\u2BFF]|' +
                        '[\u3000-\u303F]|[\u3200-\u32FF])'),
-  usermention: /^(@(?:\*\*([^\*]+)\*\*))/, // Match potentially multi-word string between @** **
+  usermention: /^(@(_?)(?:\*\*([^\*]+)\*\*))/, // Match potentially multi-word string between @** **
   groupmention: /^@\*([^\*]+)\*/, // Match multi-word string between @* *
+  stream_topic: /^#\*\*([^\*>]+)>([^\*]+)\*\*/,
   stream: /^#\*\*([^\*]+)\*\*/,
-  avatar: /^!avatar\(([^)]+)\)/,
-  gravatar: /^!gravatar\(([^)]+)\)/,
   tex: /^(\$\$([^\n_$](\\\$|[^\n$])*)\$\$(?!\$))\B/,
+  timestamp: /^<time:([^>]+)>/,
   realm_filters: [],
   text: replace(inline.breaks.text)
     ('|', '|(\ud83c[\udd00-\udfff]|\ud83d[\udc00-\ude4f]|' +
@@ -660,6 +688,13 @@ InlineLexer.prototype.output = function(src) {
       continue;
     }
 
+    // timestamp
+    if (cap = this.rules.timestamp.exec(src)) {
+      src = src.substring(cap[0].length);
+      out += this.timestamp(cap[1]);
+      continue;
+    }
+
     // tag
     if (cap = this.rules.tag.exec(src)) {
       if (!this.inLink && /^<a /i.test(cap[0])) {
@@ -708,21 +743,28 @@ InlineLexer.prototype.output = function(src) {
     // usermention (zulip)
     if (cap = this.rules.usermention.exec(src)) {
       src = src.substring(cap[0].length);
-      out += this.usermention(cap[2] || cap[3], cap[1]);
+      out += this.usermention(unescape(cap[3] || cap[4]), cap[1], cap[2]);
       continue;
     }
 
     // groupmention (zulip)
     if (cap = this.rules.groupmention.exec(src)) {
       src = src.substring(cap[0].length);
-      out += this.groupmention(cap[1], cap[0]);
+      out += this.groupmention(unescape(cap[1]), cap[0]);
+      continue;
+    }
+
+    // stream_topic (zulip)
+    if (cap = this.rules.stream_topic.exec(src)) {
+      src = src.substring(cap[0].length);
+      out += this.stream_topic(unescape(cap[1]), unescape(cap[2]), cap[0]);
       continue;
     }
 
     // stream (zulip)
     if (cap = this.rules.stream.exec(src)) {
       src = src.substring(cap[0].length);
-      out += this.stream(cap[1], cap[0]);
+      out += this.stream(unescape(cap[1]), cap[0]);
       continue;
     }
 
@@ -736,7 +778,7 @@ InlineLexer.prototype.output = function(src) {
     // em
     if (cap = this.rules.em.exec(src)) {
       src = src.substring(cap[0].length);
-      out += this.renderer.em(cap[1] + cap[2]);
+      out += this.renderer.em(this.output(cap[1] + cap[2]));
       continue;
     }
 
@@ -775,17 +817,10 @@ InlineLexer.prototype.output = function(src) {
       continue;
     }
 
-    // user avatar
-    if (cap = this.rules.avatar.exec(src)) {
+    // timestamp
+    if (cap = this.rules.timestamp.exec(src)) {
       src = src.substring(cap[0].length);
-      out += this.userAvatar(cap[1]);
-      continue;
-    }
-
-    // user gravatar
-    if (cap = this.rules.gravatar.exec(src)) {
-      src = src.substring(cap[0].length);
-      out += this.userGravatar(cap[1]);
+      out += this.timestamp(cap[1]);
       continue;
     }
 
@@ -795,6 +830,10 @@ InlineLexer.prototype.output = function(src) {
       out += this.tex(cap[2], cap[0]);
       continue;
     }
+
+    // WARNING: Do not place any parsing logic below this comment.
+    // Any parsing logic place after the `text` block below will most
+    // likely be silently never executed.
 
     // text
     if (cap = this.rules.text.exec(src)) {
@@ -825,6 +864,7 @@ InlineLexer.prototype.outputLink = function(cap, link) {
     : this.renderer.image(href, title, escape(cap[1]));
 };
 InlineLexer.prototype.emoji = function (name) {
+  name = escape(name)
   if (typeof this.options.emojiHandler !== 'function')
     return ':' + name + ':';
 
@@ -832,6 +872,7 @@ InlineLexer.prototype.emoji = function (name) {
 };
 
 InlineLexer.prototype.unicodeEmoji = function (name) {
+  name = escape(name)
   if (typeof this.options.unicodeEmojiHandler !== 'function')
     return name;
   return this.options.unicodeEmojiHandler(name);
@@ -843,16 +884,10 @@ InlineLexer.prototype.tex = function (tex, fullmatch) {
   return this.options.texHandler(tex, fullmatch);
 };
 
-InlineLexer.prototype.userAvatar = function (email) {
-  if (typeof this.options.avatarHandler !== 'function')
-    return '!avatar(' + email + ')';
-  return this.options.avatarHandler(email);
-};
-
-InlineLexer.prototype.userGravatar = function (email) {
-  if (typeof this.options.avatarHandler !== 'function')
-    return '!gravatar(' + email + ')';
-  return this.options.avatarHandler(email);
+InlineLexer.prototype.timestamp = function (time) {
+  if (typeof this.options.timestampHandler !== 'function')
+    return '&lt;time:' + time + '&gt;';
+  return this.options.timestampHandler(time);
 };
 
 InlineLexer.prototype.realm_filter = function (filter, matches, orig) {
@@ -862,13 +897,13 @@ InlineLexer.prototype.realm_filter = function (filter, matches, orig) {
   return this.options.realmFilterHandler(filter, matches);
 };
 
-InlineLexer.prototype.usermention = function (username, orig) {
+InlineLexer.prototype.usermention = function (username, orig, silent) {
+  orig = escape(orig);
   if (typeof this.options.userMentionHandler !== 'function')
   {
     return orig;
   }
-
-  var handled = this.options.userMentionHandler(username);
+  var handled = this.options.userMentionHandler(username, silent === '_');
   if (handled !== undefined) {
     return handled;
   }
@@ -877,6 +912,7 @@ InlineLexer.prototype.usermention = function (username, orig) {
 };
 
 InlineLexer.prototype.groupmention = function (groupname, orig) {
+  orig = escape(orig);
   if (typeof this.options.groupMentionHandler !== 'function')
   {
     return orig;
@@ -891,10 +927,23 @@ InlineLexer.prototype.groupmention = function (groupname, orig) {
 };
 
 InlineLexer.prototype.stream = function (streamName, orig) {
+  orig = escape(orig);
   if (typeof this.options.streamHandler !== 'function')
     return orig;
 
   var handled = this.options.streamHandler(streamName);
+  if (handled !== undefined) {
+    return handled;
+  }
+  return orig;
+};
+
+InlineLexer.prototype.stream_topic = function (streamName, topic, orig) {
+  orig = escape(orig);
+  if (typeof this.options.streamHandler !== 'function')
+    return orig;
+
+  var handled = this.options.streamTopicHandler(streamName, topic);
   if (handled !== undefined) {
     return handled;
   }
@@ -978,6 +1027,7 @@ Renderer.prototype.code = function(code, lang, escaped) {
 };
 
 Renderer.prototype.blockquote = function(quote) {
+  quote = this.options.silencedMentionHandler(quote);
   return '<blockquote>\n' + quote + '</blockquote>\n';
 };
 
@@ -985,13 +1035,19 @@ Renderer.prototype.html = function(html) {
   return html;
 };
 
+Renderer.prototype.heading = function(text, level, raw, slugger) {
+  // ignore IDs
+  return '<h' + level + '>' + text + '</h' + level + '>\n';
+};
+
 Renderer.prototype.hr = function() {
   return this.options.xhtml ? '<hr/>\n' : '<hr>\n';
 };
 
-Renderer.prototype.list = function(body, ordered) {
-  var type = ordered ? 'ol' : 'ul';
-  return '<' + type + '>\n' + body + '</' + type + '>\n';
+Renderer.prototype.list = function(body, ordered, start) {
+  var type = ordered ? 'ol' : 'ul',
+      startatt = (ordered && start !== 1) ? (' start="' + start + '"') : '';
+  return '<' + type + startatt + '>\n' + body + '</' + type + '>\n';
 };
 
 Renderer.prototype.listitem = function(text) {
@@ -1031,6 +1087,7 @@ Renderer.prototype.strong = function(text) {
 };
 
 Renderer.prototype.em = function(text) {
+  text = escape(text);
   return '<em>' + text + '</em>';
 };
 
@@ -1055,7 +1112,7 @@ Renderer.prototype.link = function(href, title, text) {
     } catch (e) {
       return '';
     }
-    if (prot.indexOf('javascript:') === 0 || prot.indexOf('vbscript:') === 0) {
+    if (prot.startsWith('javascript:') || prot.startsWith('vbscript:')) {
       return '';
     }
   }
@@ -1178,6 +1235,13 @@ Parser.prototype.tok = function() {
     case 'space': {
       return '';
     }
+    case 'heading': {
+      return this.renderer.heading(
+        this.inline.output(this.token.text),
+        this.token.depth,
+        unescape(this.token.text),
+        this.slugger);
+    }
     case 'hr': {
       return this.renderer.hr();
     }
@@ -1232,30 +1296,23 @@ Parser.prototype.tok = function() {
     }
     case 'list_start': {
       var body = ''
-        , ordered = this.token.ordered;
+        , ordered = this.token.ordered
+        , start = this.token.start;
 
       while (this.next().type !== 'list_end') {
         body += this.tok();
       }
 
-      return this.renderer.list(body, ordered);
+      return this.renderer.list(body, ordered, start);
     }
     case 'list_item_start': {
-      var body = '';
+      var body = ''
+        , loose = this.token.loose;
 
       while (this.next().type !== 'list_item_end') {
-        body += this.token.type === 'text'
+        body += !loose && this.token.type === 'text'
           ? this.parseText()
           : this.tok();
-      }
-
-      return this.renderer.listitem(body);
-    }
-    case 'loose_item_start': {
-      var body = '';
-
-      while (this.next().type !== 'list_item_end') {
-        body += this.tok();
       }
 
       return this.renderer.listitem(body);
@@ -1288,17 +1345,24 @@ function escape(html, encode) {
     .replace(/'/g, '&#39;');
 }
 
+var unescapeReplacements = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  colon: ':',
+};
+
 function unescape(html) {
   // explicitly match decimal, hex, and named HTML entities
-  return html.replace(/&(#(?:\d+)|(?:#x[0-9A-Fa-f]+)|(?:\w+));?/g, function(_, n) {
+  return html.replace(/&(#(?:\d+)|(?:#x[0-9A-Fa-f]+)|(?:[0-9A-Za-z]+));?/g, function(_, n) {
     n = n.toLowerCase();
-    if (n === 'colon') return ':';
     if (n.charAt(0) === '#') {
       return n.charAt(1) === 'x'
         ? String.fromCharCode(parseInt(n.substring(2), 16))
         : String.fromCharCode(+n.substring(1));
     }
-    return '';
+    return unescapeReplacements[n] || '';
   });
 }
 
@@ -1448,8 +1512,7 @@ marked.defaults = {
   gfm: true,
   emoji: false,
   unicodeemoji: false,
-  avatar: false,
-  gravatar: false,
+  timestamp: true,
   tables: true,
   breaks: false,
   pedantic: false,

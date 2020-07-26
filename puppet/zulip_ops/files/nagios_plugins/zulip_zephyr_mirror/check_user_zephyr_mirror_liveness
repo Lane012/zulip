@@ -10,9 +10,10 @@ import datetime
 import os
 import sys
 
-import sys
 sys.path.append('/home/zulip/deployments/current')
-import scripts.lib.setup_path_on_import
+from scripts.lib.setup_path import setup_path
+
+setup_path()
 
 import django
 from django.utils.timezone import now as timezone_now
@@ -23,34 +24,32 @@ sys.path.append('/home/zulip/deployments/current/zerver')
 
 django.setup()
 
+from typing import AbstractSet, Any, Dict
+
 from zerver.models import UserActivity
 
-if False:
-    from typing import Any, Dict, Set, Optional
-
-states = {
+states: Dict[str, int] = {
     "OK": 0,
     "WARNING": 1,
     "CRITICAL": 2,
-    "UNKNOWN": 3
-}  # type: Dict[str, int]
+    "UNKNOWN": 3,
+}
 
-def report(state, short_msg, too_old=None):
-    # type: (str, str, Optional[Set[Any]]) -> None
+def report(state: str, short_msg: str, too_old: AbstractSet[Any] = set()) -> None:
     too_old_data = ""
     if too_old:
         too_old_data = "\nLast call to get_message for recently out of date mirrors:\n" + "\n".join(
-            ["%16s: %s" % (user.user_profile.email,
-                           user.last_visit.strftime("%Y-%m-%d %H:%M %Z")
-                           ) for user in too_old]
+            ["{:>16}: {}".format(user.user_profile.email,
+                                 user.last_visit.strftime("%Y-%m-%d %H:%M %Z"),
+                                 ) for user in too_old],
         )
-    print("%s: %s%s" % (state, short_msg, too_old_data))
+    print(f"{state}: {short_msg}{too_old_data}")
 
     exit(states[state])
 
 now = timezone_now()
 
-all_users = UserActivity.objects.filter(query__in=["get_events_backend", "/api/v1/events"],
+all_users = UserActivity.objects.filter(query__in=["get_events", "/api/v1/events"],
                                         client__name="zephyr_mirror")
 new_inactive_users = [user for user in all_users if user.last_visit <
                       now - datetime.timedelta(minutes=10)]

@@ -26,9 +26,6 @@ Zulip friendly and usable.
 ## Terms(शर्तें)
 * Message - **संदेश**
 * Private message (PM) - **निजी संदेश**
-* Realm - **क्षेत्र**: the literal Hindi of realm is "राज्य",
-  which is not a term that's charged with computer
-  terminology. "क्षेत्र" is much clearer.
 * Stream - **धारा**: the use of the literal Hindi word for stream
   "प्रवाह" is very confusing and not the correct metaphor for Hindi
   speaking people. The correct term would be "धारा".
@@ -54,7 +51,7 @@ Zulip friendly and usable.
 * Deactivate/Reactivate - **निष्क्रिय करें / पुन: सक्रिय करें**
 * Search - **खोज करें/ढूंढे**
 * Pin - **ठीक करना**
-* Mention/@mention - **ज़िक्र करना / @ ज़िक्र करना**
+* Mention/@mention - **ज़िक्र करना / @ ज़िक्र करना**
 * Invalid - **अमान्य**
 * Customization - **अनुकूलन**
 * I want - **मुझे चाहिए**

@@ -177,13 +177,13 @@ you basically have to solve these problems:
 Zulip actually supports a bunch of integrations out-of-the-box that
 perform as **World Readers**.
 
-The [three different integration models](https://zulipchat.com/api/integration-guide#types-of-integrations)
+The [three different integration models](https://zulip.com/api/integrations-overview#sending-content-into-zulip)
 basically differ in where they perform the main functions of a
 **World Reader**.
 
-#### Webhook integrations
+#### Incoming webhook integrations
 
-In a **webhook** integration, the deployment model is usually this::
+In an **incoming webhook** integration, the deployment model is usually this::
 
 **3rd party hardware**:
 - detect event
@@ -307,7 +307,7 @@ We want to make it easier to deploy **Zulip Readers** on
 Zulip hardware.  The following document talks about how we want to enable this
 from a code structuring standpoint:
 
-[Writing contrib bots](https://github.com/zulip/python-zulip-api/blob/master/zulip_bots/README.md)
+[Writing contrib bots](https://github.com/zulip/python-zulip-api/blob/master/zulip_bots/README.md#zulip-bots)
 
 This document, on the other hand, is more about designing the Zulip backend
 system to support eventual deployment of reader apps on the Zulip server.

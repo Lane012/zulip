@@ -4,10 +4,8 @@ file output by the cron job is correct.
 """
 import sys
 import time
+from typing import Tuple
 
-# Avoid requiring the typing module to be installed
-if False:
-    from typing import Tuple
 
 def nagios_from_file(results_file: str, max_time_diff: int=60 * 2) -> 'Tuple[int, str]':
     """Returns a nagios-appropriate string and return code obtained by
@@ -18,7 +16,8 @@ def nagios_from_file(results_file: str, max_time_diff: int=60 * 2) -> 'Tuple[int
     This file is created by various nagios checking cron jobs such as
     check-rabbitmq-queues and check-rabbitmq-consumers"""
 
-    data = open(results_file).read().strip()
+    with open(results_file) as f:
+        data = f.read().strip()
     pieces = data.split('|')
 
     if not len(pieces) == 4:
@@ -38,7 +37,7 @@ def nagios_from_file(results_file: str, max_time_diff: int=60 * 2) -> 'Tuple[int
             state = pieces[2]
             data = pieces[3]
 
-    return (ret, "%s: %s" % (state, data))
+    return (ret, f"{state}: {data}")
 
 if __name__ == "__main__":
     RESULTS_FILE = sys.argv[1]

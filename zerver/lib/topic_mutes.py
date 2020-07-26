@@ -1,34 +1,29 @@
-from typing import Any, Callable, Dict, List, Optional, Text
+import datetime
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from zerver.models import (
-    get_stream_recipient,
-    get_stream,
-    MutedTopic,
-    UserProfile
-)
-from sqlalchemy.sql import (
-    and_,
-    column,
-    func,
-    not_,
-    or_,
-    Selectable
-)
+from django.utils.timezone import now as timezone_now
+from sqlalchemy.sql import Selectable, and_, column, not_, or_
 
-def get_topic_mutes(user_profile: UserProfile) -> List[List[Text]]:
+from zerver.lib.timestamp import datetime_to_timestamp
+from zerver.lib.topic import topic_match_sa
+from zerver.models import MutedTopic, UserProfile, get_stream
+
+
+def get_topic_mutes(user_profile: UserProfile) -> List[Tuple[str, str, float]]:
     rows = MutedTopic.objects.filter(
         user_profile=user_profile,
     ).values(
         'stream__name',
-        'topic_name'
+        'topic_name',
+        'date_muted',
     )
     return [
-        [row['stream__name'], row['topic_name']]
+        (row['stream__name'], row['topic_name'], datetime_to_timestamp(row['date_muted']))
         for row in rows
     ]
 
-def set_topic_mutes(user_profile: UserProfile, muted_topics: List[List[Text]]) -> None:
-
+def set_topic_mutes(user_profile: UserProfile, muted_topics: List[List[str]],
+                    date_muted: Optional[datetime.datetime]=None) -> None:
     '''
     This is only used in tests.
     '''
@@ -37,34 +32,41 @@ def set_topic_mutes(user_profile: UserProfile, muted_topics: List[List[Text]]) -
         user_profile=user_profile,
     ).delete()
 
+    if date_muted is None:
+        date_muted = timezone_now()
     for stream_name, topic_name in muted_topics:
         stream = get_stream(stream_name, user_profile.realm)
-        recipient = get_stream_recipient(stream.id)
+        recipient_id = stream.recipient_id
 
         add_topic_mute(
             user_profile=user_profile,
             stream_id=stream.id,
-            recipient_id=recipient.id,
+            recipient_id=recipient_id,
             topic_name=topic_name,
+            date_muted=date_muted,
         )
 
-def add_topic_mute(user_profile: UserProfile, stream_id: int, recipient_id: int, topic_name: str) -> None:
+def add_topic_mute(user_profile: UserProfile, stream_id: int, recipient_id: int, topic_name: str,
+                   date_muted: Optional[datetime.datetime]=None) -> None:
+    if date_muted is None:
+        date_muted = timezone_now()
     MutedTopic.objects.create(
         user_profile=user_profile,
         stream_id=stream_id,
         recipient_id=recipient_id,
         topic_name=topic_name,
+        date_muted=date_muted,
     )
 
 def remove_topic_mute(user_profile: UserProfile, stream_id: int, topic_name: str) -> None:
     row = MutedTopic.objects.get(
         user_profile=user_profile,
         stream_id=stream_id,
-        topic_name__iexact=topic_name
+        topic_name__iexact=topic_name,
     )
     row.delete()
 
-def topic_is_muted(user_profile: UserProfile, stream_id: int, topic_name: Text) -> bool:
+def topic_is_muted(user_profile: UserProfile, stream_id: int, topic_name: str) -> bool:
     is_muted = MutedTopic.objects.filter(
         user_profile=user_profile,
         stream_id=stream_id,
@@ -86,7 +88,7 @@ def exclude_topic_mutes(conditions: List[Selectable],
 
     query = query.values(
         'recipient_id',
-        'topic_name'
+        'topic_name',
     )
     rows = list(query)
 
@@ -97,18 +99,18 @@ def exclude_topic_mutes(conditions: List[Selectable],
         recipient_id = row['recipient_id']
         topic_name = row['topic_name']
         stream_cond = column("recipient_id") == recipient_id
-        topic_cond = func.upper(column("subject")) == func.upper(topic_name)
+        topic_cond = topic_match_sa(topic_name)
         return and_(stream_cond, topic_cond)
 
     condition = not_(or_(*list(map(mute_cond, rows))))
     return conditions + [condition]
 
-def build_topic_mute_checker(user_profile: UserProfile) -> Callable[[int, Text], bool]:
+def build_topic_mute_checker(user_profile: UserProfile) -> Callable[[int, str], bool]:
     rows = MutedTopic.objects.filter(
         user_profile=user_profile,
     ).values(
         'recipient_id',
-        'topic_name'
+        'topic_name',
     )
     rows = list(rows)
 
@@ -118,7 +120,7 @@ def build_topic_mute_checker(user_profile: UserProfile) -> Callable[[int, Text],
         topic_name = row['topic_name']
         tups.add((recipient_id, topic_name.lower()))
 
-    def is_muted(recipient_id: int, topic: Text) -> bool:
+    def is_muted(recipient_id: int, topic: str) -> bool:
         return (recipient_id, topic.lower()) in tups
 
     return is_muted

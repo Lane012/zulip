@@ -1,48 +1,29 @@
-from __future__ import print_function
-from __future__ import absolute_import
+import argparse
+from typing import List
 
-import subprocess
+from zulint.linters import run_pyflakes
 
-from .printer import print_err, colors
 
-from typing import Any, Dict, List
+def check_pyflakes(files: List[str], options: argparse.Namespace) -> bool:
+    suppress_patterns = [
+        ("scripts/lib/pythonrc.py", "imported but unused"),
+        # Intentionally imported by zerver/lib/webhooks/common.py
+        ('', "'zerver.lib.exceptions.UnexpectedWebhookEventType' imported but unused"),
 
-suppress_patterns = [
-    (b'', b'imported but unused'),
-    (b'', b'redefinition of unused'),
 
-    # Our ipython startup pythonrc file intentionally imports *
-    (b"scripts/lib/pythonrc.py",
-     b" import *' used; unable to detect undefined names"),
+        # Our ipython startup pythonrc file intentionally imports *
+        ("scripts/lib/pythonrc.py",
+         " import *' used; unable to detect undefined names"),
 
-    # Special dev_settings.py import
-    (b'', b"from .prod_settings_template import *"),
+        ("zerver/views/realm.py", "local variable 'message_retention_days' is assigned to but never used"),
+        ("settings.py", "settings import *' used; unable to detect undefined names"),
+        ("settings.py", "'from .prod_settings_template import *' used; unable to detect undefined names"),
+        ("settings.py", "settings.*' imported but unused"),
+        ("settings.py", "'.prod_settings_template.*' imported but unused"),
 
-    (b"settings.py", b"settings import *' used; unable to detect undefined names"),
-    (b"settings.py", b"may be undefined, or defined from star imports"),
-
-    # Sphinx adds `tags` specially to the environment when running conf.py.
-    (b"docs/conf.py", b"undefined name 'tags'"),
-]
-
-def suppress_line(line: str) -> bool:
-    for file_pattern, line_pattern in suppress_patterns:
-        if file_pattern in line and line_pattern in line:
-            return True
-    return False
-
-def check_pyflakes(options, by_lang):
-    # type: (Any, Dict[str, List[str]]) -> bool
-    if len(by_lang['py']) == 0:
-        return False
-    failed = False
-    color = next(colors)
-    pyflakes = subprocess.Popen(['pyflakes'] + by_lang['py'],
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-    assert pyflakes.stdout is not None  # Implied by use of subprocess.PIPE
-    for ln in pyflakes.stdout.readlines() + pyflakes.stderr.readlines():
-        if options.full or not suppress_line(ln):
-            print_err('pyflakes', color, ln)
-            failed = True
-    return failed
+        # Sphinx adds `tags` specially to the environment when running conf.py.
+        ("docs/conf.py", "undefined name 'tags'"),
+    ]
+    if options.full:
+        suppress_patterns = []
+    return run_pyflakes(files, options, suppress_patterns)

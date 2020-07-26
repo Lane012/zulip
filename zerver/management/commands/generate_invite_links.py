@@ -1,13 +1,13 @@
-
 from argparse import ArgumentParser
 from typing import Any
 
 from django.core.management.base import CommandError
 
 from confirmation.models import Confirmation, create_confirmation_link
+from zerver.lib.email_validation import email_allowed_for_realm
 from zerver.lib.management import ZulipBaseCommand
-from zerver.models import PreregistrationUser, email_allowed_for_realm, \
-    email_allowed_for_realm, DomainNotAllowedForRealmError
+from zerver.models import DomainNotAllowedForRealmError, PreregistrationUser
+
 
 class Command(ZulipBaseCommand):
     help = "Generate activation links for users and print them to stdout."
@@ -29,7 +29,7 @@ class Command(ZulipBaseCommand):
 
         if not options['emails']:
             self.print_help("./manage.py", "generate_invite_links")
-            exit(1)
+            raise CommandError
 
         for email in options['emails']:
             try:
@@ -48,12 +48,11 @@ class Command(ZulipBaseCommand):
                 email_allowed_for_realm(email, realm)
             except DomainNotAllowedForRealmError:
                 if not options["force"]:
-                    print("You've asked to add an external user '%s' to a closed realm '%s'." % (
-                        email, realm.string_id))
-                    print("Are you sure? To do this, pass --force.")
-                    exit(1)
+                    raise CommandError("You've asked to add an external user '{}' to a "
+                                       "closed realm '{}'.\nAre you sure? To do this, "
+                                       "pass --force.".format(email, realm.string_id))
 
             prereg_user = PreregistrationUser(email=email, realm=realm)
             prereg_user.save()
-            print(email + ": " + create_confirmation_link(prereg_user, realm.host,
+            print(email + ": " + create_confirmation_link(prereg_user,
                                                           Confirmation.INVITATION))

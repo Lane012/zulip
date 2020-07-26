@@ -1,10 +1,7 @@
-# -*- coding: utf-8 -*-
-
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
-import zerver.lib.str_utils
 
 class Migration(migrations.Migration):
 
@@ -21,10 +18,10 @@ class Migration(migrations.Migration):
                 ('message', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='zerver.Message')),
                 ('emoji_name', models.TextField()),
             ],
-            bases=(zerver.lib.str_utils.ModelReprMixin, models.Model),
+            bases=(models.Model,),
         ),
         migrations.AlterUniqueTogether(
             name='reaction',
-            unique_together=set([('user_profile', 'message', 'emoji_name')]),
+            unique_together={('user_profile', 'message', 'emoji_name')},
         ),
     ]

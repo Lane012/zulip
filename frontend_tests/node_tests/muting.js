@@ -1,60 +1,117 @@
-zrequire('muting');
+zrequire("timerender");
+zrequire("muting");
+zrequire("stream_data");
+set_global("XDate", zrequire("XDate", "xdate"));
+set_global("page_params", {});
 
-(function test_edge_cases() {
+run_test("edge_cases", () => {
     // private messages
     assert(!muting.is_topic_muted(undefined, undefined));
+});
 
-    // defensive
-    assert(!muting.is_topic_muted('nonexistent', undefined));
-}());
+const design = {
+    stream_id: 100,
+    name: "design",
+};
 
-(function test_basics() {
-    assert(!muting.is_topic_muted('devel', 'java'));
-    muting.add_muted_topic('devel', 'java');
-    assert(muting.is_topic_muted('devel', 'java'));
+const devel = {
+    stream_id: 101,
+    name: "devel",
+};
+
+const office = {
+    stream_id: 102,
+    name: "office",
+};
+
+const social = {
+    stream_id: 103,
+    name: "social",
+};
+
+const unknown = {
+    stream_id: 999,
+    name: "whatever",
+};
+
+stream_data.add_sub(design);
+stream_data.add_sub(devel);
+stream_data.add_sub(office);
+stream_data.add_sub(social);
+
+run_test("basics", () => {
+    assert(!muting.is_topic_muted(devel.stream_id, "java"));
+    muting.add_muted_topic(devel.stream_id, "java");
+    assert(muting.is_topic_muted(devel.stream_id, "java"));
 
     // test idempotentcy
-    muting.add_muted_topic('devel', 'java');
-    assert(muting.is_topic_muted('devel', 'java'));
+    muting.add_muted_topic(devel.stream_id, "java");
+    assert(muting.is_topic_muted(devel.stream_id, "java"));
 
-    muting.remove_muted_topic('devel', 'java');
-    assert(!muting.is_topic_muted('devel', 'java'));
+    muting.remove_muted_topic(devel.stream_id, "java");
+    assert(!muting.is_topic_muted(devel.stream_id, "java"));
 
     // test idempotentcy
-    muting.remove_muted_topic('devel', 'java');
-    assert(!muting.is_topic_muted('devel', 'java'));
+    muting.remove_muted_topic(devel.stream_id, "java");
+    assert(!muting.is_topic_muted(devel.stream_id, "java"));
 
     // test unknown stream is harmless too
-    muting.remove_muted_topic('unknown', 'java');
-    assert(!muting.is_topic_muted('unknown', 'java'));
-}());
+    muting.remove_muted_topic(unknown.stream_id, "java");
+    assert(!muting.is_topic_muted(unknown.stream_id, "java"));
+});
 
-(function test_get_and_set_muted_topics() {
+run_test("get_and_set_muted_topics", () => {
     assert.deepEqual(muting.get_muted_topics(), []);
-    muting.add_muted_topic('office', 'gossip');
-    muting.add_muted_topic('devel', 'java');
+    muting.add_muted_topic(office.stream_id, "gossip", 1577836800);
+    muting.add_muted_topic(devel.stream_id, "java", 1577836800);
     assert.deepEqual(muting.get_muted_topics().sort(), [
-        ['devel', 'java'],
-        ['office', 'gossip'],
+        {
+            date_muted: 1577836800000,
+            date_muted_str: "Jan 01",
+            stream: devel.name,
+            stream_id: devel.stream_id,
+            topic: "java",
+        },
+        {
+            date_muted: 1577836800000,
+            date_muted_str: "Jan 01",
+            stream: office.name,
+            stream_id: office.stream_id,
+            topic: "gossip",
+        },
     ]);
 
-    muting.set_muted_topics([
-        ['social', 'breakfast'],
-        ['design', 'typography'],
-    ]);
-    assert.deepEqual(muting.get_muted_topics().sort(), [
-        ['design', 'typography'],
-        ['social', 'breakfast'],
-    ]);
-}());
+    blueslip.expect("warn", "Unknown stream in set_muted_topics: BOGUS STREAM");
 
-(function test_case_insensitivity() {
+    page_params.muted_topics = [
+        ["social", "breakfast", 1577836800],
+        ["design", "typography", 1577836800],
+        ["BOGUS STREAM", "whatever", 1577836800],
+    ];
+    muting.initialize();
+
+    assert.deepEqual(muting.get_muted_topics().sort(), [
+        {
+            date_muted: 1577836800000,
+            date_muted_str: "Jan 01",
+            stream: social.name,
+            stream_id: social.stream_id,
+            topic: "breakfast",
+        },
+        {
+            date_muted: 1577836800000,
+            date_muted_str: "Jan 01",
+            stream: design.name,
+            stream_id: design.stream_id,
+            topic: "typography",
+        },
+    ]);
+});
+
+run_test("case_insensitivity", () => {
     muting.set_muted_topics([]);
-    assert(!muting.is_topic_muted('SOCial', 'breakfast'));
-    muting.set_muted_topics([
-        ['SOCial', 'breakfast'],
-    ]);
-    assert(muting.is_topic_muted('SOCial', 'breakfast'));
-    assert(muting.is_topic_muted('social', 'breakfast'));
-    assert(muting.is_topic_muted('social', 'breakFAST'));
-}());
+    assert(!muting.is_topic_muted(social.stream_id, "breakfast"));
+    muting.set_muted_topics([["SOCial", "breakfast"]]);
+    assert(muting.is_topic_muted(social.stream_id, "breakfast"));
+    assert(muting.is_topic_muted(social.stream_id, "breakFAST"));
+});

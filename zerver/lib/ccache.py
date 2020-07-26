@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Optional, Text
+import base64
+import struct
+from typing import Any, Dict, List, Optional, Union
 
 # This file is adapted from samples/shellinabox/ssh-krb-wrapper in
 # https://github.com/davidben/webathena, which has the following
@@ -26,9 +28,15 @@ from typing import Any, Dict, List, Optional, Text
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from zerver.lib.str_utils import force_bytes
-import base64
-import struct
+
+def force_bytes(s: Union[str, bytes], encoding: str='utf-8') -> bytes:
+    """converts a string to binary string"""
+    if isinstance(s, bytes):
+        return s
+    elif isinstance(s, str):
+        return s.encode(encoding)
+    else:
+        raise TypeError("force_bytes expects a string type")
 
 # Some DER encoding stuff. Bleh. This is because the ccache contains a
 # DER-encoded krb5 Ticket structure, whereas Webathena deserializes
@@ -82,8 +90,8 @@ def der_encode_uint32(val: int) -> bytes:
         raise ValueError("Bad value")
     return der_encode_integer(val)
 
-def der_encode_string(val: Text) -> bytes:
-    if not isinstance(val, Text):
+def der_encode_string(val: str) -> bytes:
+    if not isinstance(val, str):
         raise TypeError("unicode")
     return der_encode_tlv(0x1b, val.encode("utf-8"))
 
@@ -92,7 +100,7 @@ def der_encode_octet_string(val: bytes) -> bytes:
         raise TypeError("bytes")
     return der_encode_tlv(0x04, val)
 
-def der_encode_sequence(tlvs: List[Optional[bytes]], tagged: Optional[bool]=True) -> bytes:
+def der_encode_sequence(tlvs: List[Optional[bytes]], tagged: bool=True) -> bytes:
     body = []
     for i, tlv in enumerate(tlvs):
         # Missing optional elements represented as None.
@@ -124,7 +132,7 @@ def der_encode_ticket(tkt: Dict[str, Any]) -> bytes:
                       base64.b64decode(tkt["encPart"]["cipher"]))])]))
 
 # Kerberos ccache writing code. Using format documentation from here:
-# http://www.gnu.org/software/shishi/manual/html_node/The-Credential-Cache-Binary-File-Format.html
+# https://www.gnu.org/software/shishi/manual/html_node/The-Credential-Cache-Binary-File-Format.html
 
 def ccache_counted_octet_string(data: bytes) -> bytes:
     if not isinstance(data, bytes):

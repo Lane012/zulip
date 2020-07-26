@@ -13,7 +13,8 @@ user, or anything else. Make sure to read the
 before posting. The Zulip community is also governed by a
 [code of conduct](https://zulip.readthedocs.io/en/latest/code-of-conduct.html).
 
-You can subscribe to zulip-devel@googlegroups.com for a lower traffic (~1
+You can subscribe to zulip-devel-announce@googlegroups.com or our
+[Twitter](https://twitter.com/zulip) account for a lower traffic (~1
 email/month) way to hear about things like mentorship opportunities with Google
 Code-in, in-person sprints at conferences, and other opportunities to
 contribute.
@@ -28,11 +29,11 @@ needs doing:
   [backend](https://github.com/zulip/zulip), web
   [frontend](https://github.com/zulip/zulip), React Native
   [mobile app](https://github.com/zulip/zulip-mobile), or Electron
-  [desktop app](https://github.com/zulip/zulip-electron).
+  [desktop app](https://github.com/zulip/zulip-desktop).
 * Building out our
   [Python API and bots](https://github.com/zulip/python-zulip-api) framework.
-* [Writing an integration](https://zulipchat.com/api/integration-guide).
-* Improving our [user](https://zulipchat.com/help/) or
+* [Writing an integration](https://zulip.com/api/integrations-overview).
+* Improving our [user](https://zulip.com/help/) or
   [developer](https://zulip.readthedocs.io/en/latest/) documentation.
 * [Reviewing code](https://zulip.readthedocs.io/en/latest/contributing/code-reviewing.html)
   and manually testing pull requests.
@@ -46,7 +47,7 @@ don't require touching the codebase at all. We list a few of them below:
 * [Translating](https://zulip.readthedocs.io/en/latest/translating/translating.html)
   Zulip.
 * [Outreach](#zulip-outreach): Star us on GitHub, upvote us
-  on product comparison sites, or write for [the Zulip blog](http://blog.zulip.org/).
+  on product comparison sites, or write for [the Zulip blog](https://blog.zulip.org/).
 
 ## Your first (codebase) contribution
 
@@ -58,23 +59,22 @@ to help.
   [Zulip community server](https://zulip.readthedocs.io/en/latest/contributing/chat-zulip-org.html),
   paying special attention to the community norms. If you'd like, introduce
   yourself in
-  [#new members](https://chat.zulip.org/#narrow/stream/new.20members), using
+  [#new members](https://chat.zulip.org/#narrow/stream/95-new-members), using
   your name as the topic. Bonus: tell us about your first impressions of
   Zulip, and anything that felt confusing/broken as you started using the
   product.
 * Read [What makes a great Zulip contributor](#what-makes-a-great-zulip-contributor).
 * [Install the development environment](https://zulip.readthedocs.io/en/latest/development/overview.html),
   getting help in
-  [#development help](https://chat.zulip.org/#narrow/stream/development.20help)
+  [#development help](https://chat.zulip.org/#narrow/stream/49-development-help)
   if you run into any troubles.
 * Read the
   [Zulip guide to Git](https://zulip.readthedocs.io/en/latest/git/index.html)
-  and do the Git tutorial (coming soon) if you are unfamiliar with Git,
-  getting help in
-  [#git help](https://chat.zulip.org/#narrow/stream/git.20help) if you run
-  into any troubles.
-* Sign the
-  [Dropbox Contributor License Agreement](https://opensource.dropbox.com/cla/).
+  and do the Git tutorial (coming soon) if you are unfamiliar with
+  Git, getting help in
+  [#git help](https://chat.zulip.org/#narrow/stream/44-git-help) if
+  you run into any troubles.  Be sure to check out the
+  [extremely useful Zulip-specific tools page](https://zulip.readthedocs.io/en/latest/git/zulip-tools.html).
 
 ### Picking an issue
 
@@ -84,43 +84,53 @@ on.
 
 * If you're interested in
   [mobile](https://github.com/zulip/zulip-mobile/issues?q=is%3Aopen+is%3Aissue),
-  [desktop](https://github.com/zulip/zulip-electron/issues?q=is%3Aopen+is%3Aissue),
+  [desktop](https://github.com/zulip/zulip-desktop/issues?q=is%3Aopen+is%3Aissue),
   or
   [bots](https://github.com/zulip/python-zulip-api/issues?q=is%3Aopen+is%3Aissue)
   development, check the respective links for open issues, or post in
-  [#mobile](https://chat.zulip.org/#narrow/stream/mobile),
-  [#electron](https://chat.zulip.org/#narrow/stream/electron), or
-  [#bots](https://chat.zulip.org/#narrow/stream/bots).
-* For the main server and web repository, start by looking through issues
-  with the label
-  [good first issue](https://github.com/zulip/zulip/issues?q=is%3Aopen+is%3Aissue+label%3A"good+first+issue").
-  These are smaller projects particularly suitable for a first contribution.
+  [#mobile](https://chat.zulip.org/#narrow/stream/48-mobile),
+  [#desktop](https://chat.zulip.org/#narrow/stream/16-desktop), or
+  [#integration](https://chat.zulip.org/#narrow/stream/127-integrations).
+* For the main server and web repository, we recommend browsing
+  recently opened issues to look for issues you are confident you can
+  fix correctly in a way that clearly communicates why your changes
+  are the correct fix.  Our GitHub workflow bot, zulipbot, limits
+  users who have 0 commits merged to claiming a single issue labeled
+  with "good first issue" or "help wanted".
 * We also partition all of our issues in the main repo into areas like
   admin, compose, emoji, hotkeys, i18n, onboarding, search, etc. Look
   through our [list of labels](https://github.com/zulip/zulip/labels), and
   click on some of the `area:` labels to see all the issues related to your
   areas of interest.
 * If the lists of issues are overwhelming, post in
-  [#new members](https://chat.zulip.org/#narrow/stream/new.20members) with a
+  [#new members](https://chat.zulip.org/#narrow/stream/95-new-members) with a
   bit about your background and interests, and we'll help you out. The most
   important thing to say is whether you're looking for a backend (Python),
-  frontend (JavaScript), mobile (React Native), desktop (Electron),
-  documentation (English) or visual design (JavaScript + CSS) issue, and a
+  frontend (JavaScript and TypeScript), mobile (React Native), desktop (Electron),
+  documentation (English) or visual design (JavaScript/TypeScript + CSS) issue, and a
   bit about your programming experience and available time.
 
 We also welcome suggestions of features that you feel would be valuable or
 changes that you feel would make Zulip a better open source project. If you
 have a new feature you'd like to add, we recommend you start by posting in
-[#new members](https://chat.zulip.org/#narrow/stream/new.20members) with the
+[#new members](https://chat.zulip.org/#narrow/stream/95-new-members) with the
 feature idea and the problem that you're hoping to solve.
 
 Other notes:
 * For a first pull request, it's better to aim for a smaller contribution
   than a bigger one. Many first contributions have fewer than 10 lines of
   changes (not counting changes to tests).
-* The full list of issues looking for a contributor can be found with the
+* The full list of issues explicitly looking for a contributor can be
+  found with the
+  [good first issue](https://github.com/zulip/zulip/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+  and
   [help wanted](https://github.com/zulip/zulip/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22)
-  label.
+  labels.  Avoid issues with the "difficult" label unless you
+  understand why it is difficult and are confident you can resolve the
+  issue correctly and completely.  Issues without one of these labels
+  are fair game if Tim has written a clear technical design proposal
+  in the issue, or it is a bug that you can reproduce and you are
+  confident you can fix the issue correctly.
 * For most new contributors, there's a lot to learn while making your first
   pull request. It's OK if it takes you a while; that's normal! You'll be
   able to work a lot faster as you build experience.
@@ -132,6 +142,12 @@ the issue thread. [Zulipbot](https://github.com/zulip/zulipbot) is a GitHub
 workflow bot; it will assign you to the issue and label the issue as "in
 progress". Some additional notes:
 
+* You can only claim issues with the
+  [good first issue](https://github.com/zulip/zulip/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+  or
+  [help wanted](https://github.com/zulip/zulip/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22)
+  labels. Zulipbot will give you an error if you try to claim an issue
+  without one of those labels.
 * You're encouraged to ask questions on how to best implement or debug your
   changes -- the Zulip maintainers are excited to answer questions to help
   you stay unblocked and working efficiently. You can ask questions on
@@ -154,9 +170,8 @@ labels.
 
 ## What makes a great Zulip contributor?
 
-Zulip runs a lot of [internship programs](#internship-programs), so we have
-a lot of experience with new contributors. In our experience, these are the
-best predictors of success:
+Zulip has a lot of experience working with new contributors.  In our
+experience, these are the best predictors of success:
 
 * Posting good questions. This generally means explaining your current
   understanding, saying what you've done or tried so far, and including
@@ -176,8 +191,8 @@ best predictors of success:
   able to address things within a few days.
 * Being helpful and friendly on chat.zulip.org.
 
-These are also the main criteria we use to select interns for all of our
-internship programs.
+These are also the main criteria we use to select candidates for all
+of our outreach programs.
 
 ## Reporting issues
 
@@ -186,9 +201,9 @@ bugs, feel free to just open an issue on the relevant project on GitHub.
 
 If you have a feature request or are not yet sure what the underlying bug
 is, the best place to post issues is
-[#issues](https://chat.zulip.org/#narrow/stream/issues) (or
-[#mobile](https://chat.zulip.org/#narrow/stream/mobile) or
-[#electron](https://chat.zulip.org/#narrow/stream/electron)) on the
+[#issues](https://chat.zulip.org/#narrow/stream/9-issues) (or
+[#mobile](https://chat.zulip.org/#narrow/stream/48-mobile) or
+[#desktop](https://chat.zulip.org/#narrow/stream/16-desktop)) on the
 [Zulip community server](https://zulip.readthedocs.io/en/latest/contributing/chat-zulip-org.html).
 This allows us to interactively figure out what is going on, let you know if
 a similar issue has already been opened, and collect any other information
@@ -198,8 +213,9 @@ and how to reproduce it if known, your browser/OS if relevant, and a
 if appropriate.
 
 **Reporting security issues**. Please do not report security issues
-  publicly, including on public streams on chat.zulip.org. You can email
-  zulip-security@googlegroups.com. We create a CVE for every security issue.
+  publicly, including on public streams on chat.zulip.org. You can
+  email security@zulip.com.  We create a CVE for every security
+  issue in our released software.
 
 ## User feedback
 
@@ -214,7 +230,7 @@ to:
 * Pros and cons: What are the pros and cons of Zulip for your organization,
   and the pros and cons of other products you are evaluating?
 * Features: What are the features that are most important for your
-  organization? In the best case scenario, what would your chat solution do
+  organization? In the best-case scenario, what would your chat solution do
   for you?
 * Onboarding: If you remember it, what was your impression during your first
   few minutes of using Zulip? What did you notice, and how did you feel? Was
@@ -222,21 +238,20 @@ to:
 * Organization: What does your organization do? How big is the organization?
   A link to your organization's website?
 
-## Internship programs
+## Outreach programs
 
-Zulip runs internship programs with
-[Outreachy](https://www.outreachy.org/),
-[Google Summer of Code (GSoC)](https://developers.google.com/open-source/gsoc/)
-[1], and the
-[MIT Externship program](https://alum.mit.edu/students/NetworkwithAlumni/ExternshipProgram),
-and has in the past taken summer interns from Harvard, MIT, and
-Stanford.
+Zulip participates in [Google Summer of Code
+(GSoC)](https://developers.google.com/open-source/gsoc/) every year.
+In the past, we've also participated in
+[Outreachy](https://www.outreachy.org/), [Google
+Code-In](https://developers.google.com/open-source/gci/), and hosted
+summer interns from Harvard, MIT, and Stanford.
 
 While each third-party program has its own rules and requirements, the
 Zulip community's approaches all of these programs with these ideas in
 mind:
 * We try to make the application process as valuable for the applicant as
-  possible. Expect high quality code reviews, a supportive community, and
+  possible. Expect high-quality code reviews, a supportive community, and
   publicly viewable patches you can link to from your resume, regardless of
   whether you are selected.
 * To apply, you'll have to submit at least one pull request to a Zulip
@@ -250,26 +265,22 @@ mind:
   application to makes mistakes in your first few PRs as long as your
   work improves.
 
-Zulip also participates in
-[Google Code-In](https://developers.google.com/open-source/gci/). Our
-selection criteria for Finalists and Grand Prize Winners is the same as our
-selection criteria for interns above.
-
-Most of our interns end up sticking around the project long-term, and many
-quickly become core team members. We hope you apply!
+Most of our outreach program participants end up sticking around the
+project long-term, and many have become core team members, maintaining
+important parts of the project. We hope you apply!
 
 ### Google Summer of Code
 
-GSoC is by far the largest of our internship programs (we had 14 GSoC
-students in summer 2017).  While we don't control how many slots
-Google allocates to Zulip, we hope to mentor a similar number of
-students in 2018.
+The largest outreach program Zulip participates in is GSoC (14
+students in 2017; 11 in 2018; 17 in 2019).  While we don't control how
+many slots Google allocates to Zulip, we hope to mentor a similar
+number of students in future summers.
 
 If you're reading this well before the application deadline and want
 to make your application strong, we recommend getting involved in the
 community and fixing issues in Zulip now. Having good contributions
-and building a reputation for doing good work is best way to have a
-strong application.  About half of Zulip's GSoC students for Summer
+and building a reputation for doing good work is the best way to have
+a strong application.  About half of Zulip's GSoC students for Summer
 2017 had made significant contributions to the project by February
 2017, and about half had not.  Our
 [GSoC project ideas page][gsoc-guide] has lots more details on how
@@ -288,10 +299,6 @@ for ZSoC, we'll contact you when the GSoC results are announced.
 [gsoc-guide]: https://zulip.readthedocs.io/en/latest/overview/gsoc-ideas.html
 [gsoc-faq]: https://developers.google.com/open-source/gsoc/faq
 
-[1] Formally, [GSoC isn't an internship][gsoc-faq], but it is similar
-enough that we're treating it as such for the purposes of this
-documentation.
-
 ## Zulip Outreach
 
 **Upvoting Zulip**. Upvotes and reviews make a big difference in the public
@@ -301,7 +308,7 @@ list typically takes about 15 minutes.
 * Star us on GitHub. There are four main repositories:
   [server/web](https://github.com/zulip/zulip),
   [mobile](https://github.com/zulip/zulip-mobile),
-  [desktop](https://github.com/zulip/zulip-electron), and
+  [desktop](https://github.com/zulip/zulip-desktop), and
   [Python API](https://github.com/zulip/python-zulip-api).
 * [Follow us](https://twitter.com/zulip) on Twitter.
 
@@ -326,7 +333,7 @@ have been using Zulip for a while and want to contribute more.
 about a technical aspect of Zulip can be a great way to spread the word
 about Zulip.
 
-We also occasionally [publish](http://blog.zulip.org/) longer form
+We also occasionally [publish](https://blog.zulip.org/) long-form
 articles related to Zulip. Our posts typically get tens of thousands
 of views, and we always have good ideas for blog posts that we can
 outline but don't have time to write. If you are an experienced writer

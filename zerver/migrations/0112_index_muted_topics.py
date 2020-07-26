@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
-
 from django.db import migrations
+
 
 class Migration(migrations.Migration):
 
@@ -15,6 +14,6 @@ class Migration(migrations.Migration):
             ON zerver_mutedtopic
             (stream_id, upper(topic_name))
             ''',
-            reverse_sql='DROP INDEX zerver_mutedtopic_stream_topic;'
+            reverse_sql='DROP INDEX zerver_mutedtopic_stream_topic;',
         ),
     ]

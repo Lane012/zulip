@@ -1,15 +1,15 @@
-
 import argparse
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 import requests
 import ujson
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils.timezone import now as timezone_now
 
 from zerver.models import UserProfile
+
 
 class Command(BaseCommand):
     help = """Add users to a MailChimp mailing list."""
@@ -29,31 +29,29 @@ class Command(BaseCommand):
                             default=datetime.isoformat(timezone_now().replace(microsecond=0)),
                             help='Opt-in time of the users.')
 
-    def handle(self, *args: Any, **options: str) -> None:
-        if options['api_key'] is None:
+    def handle(self, *args: Any, **options: Optional[str]) -> None:
+        api_key = options['api_key']
+        if api_key is None:
             try:
                 if settings.MAILCHIMP_API_KEY is None:
-                    print('MAILCHIMP_API_KEY is None. Check your server settings file.')
-                    exit(1)
-                options['api_key'] = settings.MAILCHIMP_API_KEY
+                    raise CommandError('MAILCHIMP_API_KEY is None. Check your server settings file.')
+                api_key = settings.MAILCHIMP_API_KEY
             except AttributeError:
-                print('Please supply a MailChimp API key to --api-key, or add a '
-                      'MAILCHIMP_API_KEY to your server settings file.')
-                exit(1)
+                raise CommandError('Please supply a MailChimp API key to --api-key, or add a '
+                                   'MAILCHIMP_API_KEY to your server settings file.')
 
         if options['list_id'] is None:
             try:
                 if settings.ZULIP_FRIENDS_LIST_ID is None:
-                    print('ZULIP_FRIENDS_LIST_ID is None. Check your server settings file.')
-                    exit(1)
+                    raise CommandError('ZULIP_FRIENDS_LIST_ID is None. Check your server settings file.')
                 options['list_id'] = settings.ZULIP_FRIENDS_LIST_ID
             except AttributeError:
-                print('Please supply a MailChimp List ID to --list-id, or add a '
-                      'ZULIP_FRIENDS_LIST_ID to your server settings file.')
-                exit(1)
+                raise CommandError('Please supply a MailChimp List ID to --list-id, or add a '
+                                   'ZULIP_FRIENDS_LIST_ID to your server settings file.')
 
-        endpoint = "https://%s.api.mailchimp.com/3.0/lists/%s/members" % \
-                   (options['api_key'].split('-')[1], options['list_id'])
+        endpoint = "https://{}.api.mailchimp.com/3.0/lists/{}/members".format(
+            api_key.split('-')[1], options['list_id'],
+        )
 
         for user in UserProfile.objects.filter(is_bot=False, is_active=True) \
                                        .values('email', 'full_name', 'realm_id'):
@@ -67,8 +65,8 @@ class Command(BaseCommand):
                     'OPTIN_TIME': options['optin_time'],
                 },
             }
-            r = requests.post(endpoint, auth=('apikey', options['api_key']), json=data, timeout=10)
+            r = requests.post(endpoint, auth=('apikey', api_key), json=data, timeout=10)
             if r.status_code == 400 and ujson.loads(r.text)['title'] == 'Member Exists':
-                print("%s is already a part of the list." % (data['email_address'],))
+                print("{} is already a part of the list.".format(data['email_address']))
             elif r.status_code >= 400:
                 print(r.text)

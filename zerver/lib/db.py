@@ -1,20 +1,20 @@
-
 import time
-from psycopg2.extensions import cursor, connection
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, TypeVar, Union
 
-from typing import Callable, Optional, Iterable, Any, Dict, List, Union, TypeVar, \
-    Mapping, Text
-from zerver.lib.str_utils import NonBinaryStr
+from psycopg2.extensions import connection, cursor
+from psycopg2.sql import Composable
 
 CursorObj = TypeVar('CursorObj', bound=cursor)
-ParamsT = Union[Iterable[Any], Mapping[Text, Any]]
+Query = Union[str, Composable]
+Params = Union[Sequence[object], Mapping[str, object]]
+ParamsT = TypeVar('ParamsT')
 
 # Similar to the tracking done in Django's CursorDebugWrapper, but done at the
 # psycopg2 cursor level so it works with SQLAlchemy.
 def wrapper_execute(self: CursorObj,
-                    action: Callable[[NonBinaryStr, Optional[ParamsT]], CursorObj],
-                    sql: NonBinaryStr,
-                    params: Optional[ParamsT]=()) -> CursorObj:
+                    action: Callable[[Query, ParamsT], CursorObj],
+                    sql: Query,
+                    params: ParamsT) -> CursorObj:
     start = time.time()
     try:
         return action(sql, params)
@@ -22,25 +22,25 @@ def wrapper_execute(self: CursorObj,
         stop = time.time()
         duration = stop - start
         self.connection.queries.append({
-            'time': "%.3f" % duration,
+            'time': f"{duration:.3f}",
         })
 
 class TimeTrackingCursor(cursor):
     """A psycopg2 cursor class that tracks the time spent executing queries."""
 
-    def execute(self, query: NonBinaryStr,
-                vars: Optional[ParamsT]=None) -> 'TimeTrackingCursor':
+    def execute(self, query: Query,
+                vars: Optional[Params]=None) -> 'TimeTrackingCursor':
         return wrapper_execute(self, super().execute, query, vars)
 
-    def executemany(self, query: NonBinaryStr,
-                    vars: Iterable[Any]) -> 'TimeTrackingCursor':
+    def executemany(self, query: Query,
+                    vars: Iterable[Params]) -> 'TimeTrackingCursor':  # nocoverage
         return wrapper_execute(self, super().executemany, query, vars)
 
 class TimeTrackingConnection(connection):
     """A psycopg2 connection class that uses TimeTrackingCursors."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self.queries = []  # type: List[Dict[str, str]]
+        self.queries: List[Dict[str, str]] = []
         super().__init__(*args, **kwargs)
 
     def cursor(self, *args: Any, **kwargs: Any) -> TimeTrackingCursor:

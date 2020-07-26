@@ -12,8 +12,9 @@ Some examples are:
   (subscription etc.)
 * `/#streams/11/announce`: Streams overlay with stream ID 11 (called
   "announce") selected.
-* `/#narrow/stream/android/subject/fun`: Message feed showing stream
-  "android" and topic "fun".
+* `/#narrow/stream/42-android/topic/fun`: Message feed showing stream
+  "android" and topic "fun".  (The `42` represents the id of the
+   stream.
 
 The main module in the frontend that manages this all is
 `static/js/hashchange.js` (plus `hash_util.js` for all the parsing
@@ -53,27 +54,27 @@ all of this (would be a good project to add them to the
 [Casper suite][testing-with-casper]) and there's enough complexity
 that it's easy to accidentally break something.
 
-Here's some notes on how we handle these cases:
+The main external API is below:
+
+* `hashchange.update_browser_history` is used to update the browser
+  history, and it should be called when the app code is taking care
+  of updating the UI directly
+* `hashchange.go_to_location` is used when you want the `hashchange`
+  module to actually dispatch building the next page
+
+Internally you have these functions:
 
 * `hashchange.hashchanged` is the function used to handle the hash,
-  when it's changed by the browser (e.g. by clicking on a link to
-  a hash or using the back button).
-* `hashchange.should_ignore` is the function `hashchange.hashchanged`
-  calls to make it possible for clicking on links within a given
-  overlay to just be managed by code within that overlay, without
-  reloading the overlay.  It primarily checks whether the "main hash"
-  (i.e. the first piece like `settings` for `#settings/your-account`) is an overlay.
-* `hashchange.do_hashchange` is what is called when the user reloads the
-  browser.  If the hash is nonempty, it ensures the relevant overlay
-  is opened or the user is narrowed as part of the page load process.
-  It is also is called by `hashchange.hashchanged` when the hash
-  changes outside the `should_ignore` boundaries, since the logic for
-  that case is identical.
-* `reload.preserve_state` is called when a server-initiated browser
-  reload happens, and encodes a bunch of data like the current scroll
-  position into the hash.
-* `reload.initialize` handles restoring the preserved state after a
-  reload where the hash starts with `/#reload`.
+  whether it's changed by the browser (e.g. by clicking on a link to
+  a hash or using the back button) or triggered internally.
+* `hashchange.do_hashchange_normal` handles most cases, like loading the main
+  page (but maybe with a specific URL if you are narrowed to a
+  stream or topic or PMs, etc.).
+* `hashchange.do_hashchange_overlay` handles overlay cases.  Overlays have
+  some minor complexity related to remembering the page from
+  which the overlay was launched, as well as optimizing in-page
+  transitions (i.e. don't close/re-open the overlay if you can
+  easily avoid it).
 
 ## Server-initiated reloads
 
@@ -103,6 +104,14 @@ reload itself:
   desynchronize when browsers start attempting them randomly, in
   order to avoid a thundering herd situation bringing down the server.
 
+Here are some key functions in the reload system:
+
+* `reload.preserve_state` is called when a server-initiated browser
+  reload happens, and encodes a bunch of data like the current scroll
+  position into the hash.
+* `reload.initialize` handles restoring the preserved state after a
+  reload where the hash starts with `/#reload`.
+
 ## All reloads
 
 In addition to saving state as described above when reloading the
@@ -110,6 +119,6 @@ browser, Zulip also does a few bookkeeping things on page reload (like
 cleaning up its event queue, and saving any text in an open compose
 box as a draft).
 
-[testing-with-casper]: ../testing/testing-with-casper.html
+[testing-with-casper]: ../testing/testing-with-casper.md
 [self-server-reloads]: #server-initiated-reloads
-[events-system]: ../subsystems/events-system.html
+[events-system]: ../subsystems/events-system.md

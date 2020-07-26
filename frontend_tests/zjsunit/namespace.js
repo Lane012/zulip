@@ -1,55 +1,68 @@
-var namespace = (function () {
-
-var _ = require('node_modules/underscore/underscore.js');
-var exports = {};
-
-var dependencies = [];
-var requires = [];
-var old_builtins = {};
+const requires = [];
+const new_globals = new Set();
+let old_globals = {};
 
 exports.set_global = function (name, val) {
-    global[name] = val;
-    dependencies.push(name);
-    return val;
-};
-
-exports.patch_builtin = function (name, val) {
-    old_builtins[name] = global[name];
+    if (!(name in old_globals)) {
+        if (!(name in global)) {
+            new_globals.add(name);
+        }
+        old_globals[name] = global[name];
+    }
     global[name] = val;
     return val;
 };
 
 exports.zrequire = function (name, fn) {
     if (fn === undefined) {
-        fn = 'js/' + name;
+        fn = "../../static/js/" + name;
+    } else if (/^generated\/|^js\/|^shared\/|^third\//.test(fn)) {
+        // FIXME: Stealing part of the NPM namespace is confusing.
+        fn = "../../static/" + fn;
     }
     delete require.cache[require.resolve(fn)];
-    var obj = require(fn);
     requires.push(fn);
-    set_global(name, obj);
-    return obj;
+    return require(fn);
+};
+
+exports.clear_zulip_refs = function () {
+    /*
+        This is a big hammer to make sure
+        we are not "borrowing" a transitively
+        required module from a previous test.
+        This kind of leak can make it seems
+        like we've written the second test
+        correctly, but it will fail if we
+        run it standalone.
+    */
+    _.each(require.cache, (_, fn) => {
+        if (fn.indexOf("static/") >= 0) {
+            if (fn.indexOf("static/templates") < 0) {
+                delete require.cache[fn];
+            }
+        }
+    });
 };
 
 exports.restore = function () {
-    dependencies.forEach(function (name) {
-        delete global[name];
-    });
-    requires.forEach(function (fn) {
+    requires.forEach((fn) => {
         delete require.cache[require.resolve(fn)];
     });
-    dependencies = [];
-    _.extend(global, old_builtins);
-    old_builtins = {};
+    Object.assign(global, old_globals);
+    old_globals = {};
+    for (const name of new_globals) {
+        delete global[name];
+    }
+    new_globals.clear();
 };
 
 exports.stub_out_jquery = function () {
-    set_global('$', function () {
-        return {
-            on: function () {},
-            trigger: function () {},
-            hide: function () {},
-        };
-    });
+    set_global("$", () => ({
+        on() {},
+        trigger() {},
+        hide() {},
+        removeClass() {},
+    }));
     $.fn = {};
     $.now = function () {};
 };
@@ -58,37 +71,43 @@ exports.with_overrides = function (test_function) {
     // This function calls test_function() and passes in
     // a way to override the namespace temporarily.
 
-    var clobber_callbacks = [];
+    const restore_callbacks = [];
+    const unused_funcs = new Map();
 
-    var override = function (name, f) {
-        var parts = name.split('.');
-        var module = parts[0];
-        var func_name = parts[1];
-
-        if (!_.has(global, module)) {
-            set_global(module, {});
+    const override = function (name, f) {
+        if (typeof f !== "function") {
+            throw new Error("You can only override with a function.");
         }
 
-        global[module][func_name] = f;
+        unused_funcs.set(name, true);
 
-        clobber_callbacks.push(function () {
-            // If you get a failure from this, you probably just
-            // need to have your test do its own overrides and
-            // not cherry-pick off of the prior test's setup.
-            global[module][func_name] =
-                'ATTEMPTED TO REUSE OVERRIDDEN VALUE FROM PRIOR TEST';
+        const parts = name.split(".");
+        const module = parts[0];
+        const func_name = parts[1];
+
+        if (!Object.prototype.hasOwnProperty.call(global, module)) {
+            throw new Error("you must first use set_global/zrequire for " + module);
+        }
+
+        const old_f = global[module][func_name];
+        global[module][func_name] = function (...args) {
+            unused_funcs.delete(name);
+            return f.apply(this, args);
+        };
+
+        restore_callbacks.push(() => {
+            global[module][func_name] = old_f;
         });
     };
 
     test_function(override);
 
-    _.each(clobber_callbacks, function (f) {
-        f();
-    });
+    restore_callbacks.reverse();
+    for (const restore_callback of restore_callbacks) {
+        restore_callback();
+    }
+
+    for (const unused_name of unused_funcs.keys()) {
+        throw new Error(unused_name + " never got invoked!");
+    }
 };
-
-
-
-return exports;
-}());
-module.exports = namespace;

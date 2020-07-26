@@ -1,14 +1,20 @@
-# -*- coding: utf-8 -*-
-
 from typing import Any, Dict, List
 
 from django.core.management.base import BaseCommand
 
-from zerver.lib.actions import bulk_add_subscriptions, \
-    ensure_stream, do_add_reaction_legacy, do_change_avatar_fields, \
-    do_create_user, do_send_messages, internal_prep_stream_message
+from zerver.lib.actions import (
+    bulk_add_subscriptions,
+    do_add_reaction,
+    do_change_avatar_fields,
+    do_create_user,
+    do_send_messages,
+    ensure_stream,
+    internal_prep_stream_message,
+)
+from zerver.lib.emoji import emoji_name_to_emoji_code
 from zerver.lib.upload import upload_avatar_image
 from zerver.models import Message, UserProfile, get_realm
+
 
 class Command(BaseCommand):
     help = """Add a mock conversation to the development environment.
@@ -32,30 +38,30 @@ From image editing program:
 
     def set_avatar(self, user: UserProfile, filename: str) -> None:
         upload_avatar_image(open(filename, 'rb'), user, user)
-        do_change_avatar_fields(user, UserProfile.AVATAR_FROM_USER)
+        do_change_avatar_fields(user, UserProfile.AVATAR_FROM_USER, acting_user=None)
 
     def add_message_formatting_conversation(self) -> None:
         realm = get_realm('zulip')
-        stream = ensure_stream(realm, 'zulip features')
+        stream = ensure_stream(realm, 'zulip features', acting_user=None)
 
         UserProfile.objects.filter(email__contains='stage').delete()
-        starr = do_create_user('1@stage.example.com', 'password', realm, 'Ada Starr', '')
-        self.set_avatar(starr, 'static/images/features/starr.png')
-        fisher = do_create_user('2@stage.example.com', 'password', realm, 'Bel Fisher', '')
-        self.set_avatar(fisher, 'static/images/features/fisher.png')
-        twitter_bot = do_create_user('3@stage.example.com', 'password', realm, 'Twitter Bot', '',
-                                     bot_type=UserProfile.DEFAULT_BOT)
+        starr = do_create_user('1@stage.example.com', 'password', realm, 'Ada Starr', acting_user=None)
+        self.set_avatar(starr, 'static/images/characters/starr.png')
+        fisher = do_create_user('2@stage.example.com', 'password', realm, 'Bel Fisher', acting_user=None)
+        self.set_avatar(fisher, 'static/images/characters/fisher.png')
+        twitter_bot = do_create_user('3@stage.example.com', 'password', realm, 'Twitter Bot',
+                                     bot_type=UserProfile.DEFAULT_BOT, acting_user=None)
         self.set_avatar(twitter_bot, 'static/images/features/twitter.png')
 
         bulk_add_subscriptions([stream], list(UserProfile.objects.filter(realm=realm)))
 
-        staged_messages = [
+        staged_messages: List[Dict[str, Any]] = [
             {'sender': starr,
              'content': "Hey @**Bel Fisher**, check out Zulip's Markdown formatting! "
              "You can have:\n* bulleted lists\n  * with sub-bullets too\n"
              "* **bold**, *italic*, and ~~strikethrough~~ text\n"
              "* LaTeX for mathematical formulas, both inline -- $$O(n^2)$$ -- and displayed:\n"
-             "```math\n\\int_a^b f(t)\, dt=F(b)-F(a)\n```"},
+             "```math\n\\int_a^b f(t)\\, dt=F(b)-F(a)\n```"},
             {'sender': fisher,
              'content': "My favorite is the syntax highlighting for code blocks\n"
              "```python\ndef fib(n: int) -> int:\n    # returns the n-th Fibonacci number\n"
@@ -75,16 +81,18 @@ From image editing program:
              'content': 'https://twitter.com/gvanrossum/status/786661035637772288'},
             {'sender': fisher,
              'content': "Oops, the Twitter bot I set up shouldn't be posting here. Let me go fix that."},
-        ]  # type: List[Dict[str, Any]]
+        ]
 
         messages = [internal_prep_stream_message(
-            realm, message['sender'], stream.name, 'message formatting', message['content']
+            realm, message['sender'], stream,
+            'message formatting', message['content'],
         ) for message in staged_messages]
 
         message_ids = do_send_messages(messages)
 
         preview_message = Message.objects.get(id__in=message_ids, content__icontains='image previews')
-        do_add_reaction_legacy(starr, preview_message, 'whale')
+        (emoji_code, reaction_type) = emoji_name_to_emoji_code(realm, 'whale')
+        do_add_reaction(starr, preview_message, 'whale', emoji_code, reaction_type)
 
         twitter_message = Message.objects.get(id__in=message_ids, content__icontains='gvanrossum')
         # Setting up a twitter integration in dev is a decent amount of work. If you need
@@ -102,7 +110,8 @@ From image editing program:
 
         # Put a short pause between the whale reaction and this, so that the
         # thumbs_up shows up second
-        do_add_reaction_legacy(starr, preview_message, 'thumbs_up')
+        (emoji_code, reaction_type) = emoji_name_to_emoji_code(realm, 'thumbs_up')
+        do_add_reaction(starr, preview_message, 'thumbs_up', emoji_code, reaction_type)
 
     def handle(self, *args: Any, **options: str) -> None:
         self.add_message_formatting_conversation()

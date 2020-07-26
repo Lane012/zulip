@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
+from typing import List
 
-from typing import List, Text
 # check for the venv
 from lib import sanity_check
+
 sanity_check.check_venv(__file__)
 
 import argparse
 import json
 import os
-import sys
 import subprocess
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from scripts.lib.zulip_tools import WARNING, FAIL, ENDC
+from scripts.lib.zulip_tools import ENDC, FAIL, WARNING
 
-def find_handlebars(translatable_strings):
-    # type: (List[Text]) -> List[Text]
+
+def find_handlebars(translatable_strings: List[str]) -> List[str]:
     errored = []
     for string in translatable_strings:
         if '{{' in string:
@@ -33,7 +34,7 @@ if __name__ == '__main__':
         subprocess.call(['./manage.py', 'makemessages', '--locale', 'en'],
                         stderr=subprocess.STDOUT)
 
-    with open('static/locale/en/translations.json') as f:
+    with open('locale/en/translations.json') as f:
         data = json.load(f)
 
     found = find_handlebars(list(data.keys()))

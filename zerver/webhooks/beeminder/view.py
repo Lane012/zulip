@@ -1,12 +1,18 @@
 # Webhooks for external integrations.
-from typing import Text, Dict, Any
+import time
+from typing import Any, Dict
+
 from django.http import HttpRequest, HttpResponse
+
 from zerver.decorator import api_key_only_webhook_view
 from zerver.lib.request import REQ, has_request_variables
 from zerver.lib.response import json_success
 from zerver.lib.webhooks.common import check_send_webhook_message
 from zerver.models import UserProfile
-import time
+
+MESSAGE_TEMPLATE = ("You are going to derail from goal **{goal_name}** in **{time:0.1f} hours**. "
+                    "You need **{limsum}** to avoid derailing.\n"
+                    "* Pledge: **{pledge}$** {expression}\n")
 
 def get_time(payload: Dict[str, Any]) -> Any:
     losedate = payload["goal"]["losedate"]
@@ -28,9 +34,13 @@ def api_beeminder_webhook(request: HttpRequest, user_profile: UserProfile,
     else:
         expression = ':relieved:'
 
-    topic = u'beekeeper'
-    body = u"You are going to derail from goal **{}** in **{:0.1f} hours**\n \
-You need **{}** to avoid derailing\n * Pledge: **{}$** {}"
-    body = body.format(goal_name, time_remain, limsum, pledge, expression)
+    topic = 'beekeeper'
+    body = MESSAGE_TEMPLATE.format(
+        goal_name=goal_name,
+        time=time_remain,
+        limsum=limsum,
+        pledge=pledge,
+        expression=expression,
+    )
     check_send_webhook_message(request, user_profile, topic, body)
     return json_success()

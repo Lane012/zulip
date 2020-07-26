@@ -4,7 +4,7 @@ Zulip's "events system" is the server-to-client push system that
 powers our real-time sync.  This document explains how it works; to
 read an example of how a complete feature using this system works,
 check out the
-[new application feature tutorial](../tutorials/new-feature-tutorial.html).
+[new application feature tutorial](../tutorials/new-feature-tutorial.md).
 
 Any single-page web application like Zulip needs a story for how
 changes made by one client are synced to other clients, though having
@@ -51,15 +51,16 @@ problems in a scalable, correct, and predictable way.
 ## Generation system
 
 Zulip's generation system is built around a Python function,
-`send_event(event, users)`.  It accepts an event data structure (just
-a Python dictionary with some keys and value; `type` is always one of
-the keys but the rest depends on the specific event) and a list of
-user IDs for the users whose clients should receive the event.  In
-special cases such as message delivery, the list of users will instead
-be a list of dicts mapping user IDs to user-specific data like whether
-that user was mentioned in that message.  The data passed to
-`send_event` are simply marshalled as JSON and placed in the
-`notify_tornado` RabbitMQ queue to be consumed by the delivery system.
+`send_event(realm, event, users)`.  It accepts the realm (used for
+sharding), the event data structure (just a Python dictionary with
+some keys and value; `type` is always one of the keys but the rest
+depends on the specific event) and a list of user IDs for the users
+whose clients should receive the event.  In special cases such as
+message delivery, the list of users will instead be a list of dicts
+mapping user IDs to user-specific data like whether that user was
+mentioned in that message.  The data passed to `send_event` are simply
+marshalled as JSON and placed in the `notify_tornado` RabbitMQ queue
+to be consumed by the delivery system.
 
 Usually, this list of users is one of 3 things:
 
@@ -85,9 +86,9 @@ wide range of possible clients, and make it easy for developers.
 Zulip's event delivery (real-time push) system is based on Tornado,
 which is ideal for handling a large number of open requests.  Details
 on Tornado are available in the
-[architecture overview](../overview/architecture-overview.html), but in short it
+[architecture overview](../overview/architecture-overview.md), but in short it
 is good at holding open a large number of connections for a long time.
-The complete system is about 1500 lines of code in `zerver/tornado/`,
+The complete system is about 2000 lines of code in `zerver/tornado/`,
 primarily `zerver/tornado/event_queue.py`.
 
 Zulip's event delivery system is based on "long-polling"; basically
@@ -210,28 +211,40 @@ request; the logic is in `zerver/views/events_register.py` and
 * Finally, Django "applies" the events (see the `apply_events`
   function) to the initial state that it fetched.  E.g. for a name
   change event, it finds the user data in the `realm_user` data
-  struture, and updates it to have the new name.
+  structure, and updates it to have the new name.
 
-This achieves everything we desire, at the cost that we need to write
-the `apply_events` function.  This is a difficult function to
-implement correctly, because the situations that it tests for almost
-never happen (being race conditions).  So we have a special test
-class, `EventsRegisterTest`, that is specifically designed to test
-this function by ensuring the possible race condition always happens.
-In particular, it does the following:
+### Testing
+
+The design above achieves everything we desire, at the cost that we
+need to write a correct `apply_events` function.  This is a difficult
+function to implement correctly, because the situations that it tests
+for almost never happen (being race conditions).  So we have a special
+helper test class, `BaseAction`, that is specifically designed to
+test this function by ensuring the possible race condition always
+happens.  In particular, it does the following:
 
 * Call `fetch_initial_state_data` to get the current state.
 * Call a state change function that issues an event,
 e.g. `do_change_full_name`, and capture any events that are generated.
-* Call `apply_events(state, events)`, and compare the result to
-  calling `fetch_initial_state_data` again now.
+* Call `apply_events(state, events)`, and compare the resulting
+  "hybrid state" to what one would get from calling
+  `fetch_initial_state_data` again now.
 
 The `apply_events` code is correct if those two results are identical.
+The `BaseAction` tests in `test_events` will print a diff
+between the "hybrid state" and the "normal state" obtained from
+calling `fetch_initial_state_data` after the changes.  Those tests
+also inspect the events generated to ensure they have the expected
+format.  Also, `verify_action` has the `state_change_expected` and `num_events`
+arguments that configure how many events that it asserts were
+generated and whether it expects the state after applying the events
+to differ what what it was before (which help catch common classes of
+bugs).
 
 The final detail we need to ensure that `apply_events` always works
-correctly is to make sure that we have `EventsRegisterTest` tests for
+correctly is to make sure that we have relevant tests for
 every event type that can be generated by Zulip.  This can be tested
-manually using `test-backend --coverage EventsRegisterTest` and then
+manually using `test-backend --coverage BaseAction` and then
 checking that all the calls to `send_event` are covered.  Someday
 we'll add automation that verifies this directly by inspecting the
 coverage data.
@@ -247,3 +260,6 @@ separate AJAX call after the rest of the site is loaded, we don't need
 them to be included in the initial state data.  To handle those
 correctly, clients are responsible for discarding events related to
 messages that the client has not yet fetched.
+
+Additionally, see
+[the master documentation on sending messages](../subsystems/sending-messages.md)

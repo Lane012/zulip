@@ -1,98 +1,154 @@
-
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Text, Tuple, Type, Union
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple, Type
+from unittest import mock
 
 import ujson
 from django.apps import apps
 from django.db import models
 from django.db.models import Sum
-from django.test import TestCase
 from django.utils.timezone import now as timezone_now
-from django.utils.timezone import utc as timezone_utc
+from psycopg2.sql import SQL, Literal
 
-from analytics.lib.counts import COUNT_STATS, CountStat, DataCollector, \
-    DependentCountStat, LoggingCountStat, do_aggregate_to_summary_table, \
-    do_drop_all_analytics_tables, do_drop_single_stat, \
-    do_fill_count_stat_at_hour, do_increment_logging_stat, \
-    process_count_stat, sql_data_collector
-from analytics.models import Anomaly, BaseCount, \
-    FillState, InstallationCount, RealmCount, StreamCount, \
-    UserCount, installation_epoch, last_successful_fill
-from zerver.lib.actions import do_activate_user, do_create_user, \
-    do_deactivate_user, do_reactivate_user, update_user_activity_interval, \
-    do_invite_users, do_revoke_user_invite, do_resend_user_invite_email, \
-    InvitationError
+from analytics.lib.counts import (
+    COUNT_STATS,
+    CountStat,
+    DependentCountStat,
+    LoggingCountStat,
+    do_aggregate_to_summary_table,
+    do_drop_all_analytics_tables,
+    do_drop_single_stat,
+    do_fill_count_stat_at_hour,
+    do_increment_logging_stat,
+    get_count_stats,
+    process_count_stat,
+    sql_data_collector,
+)
+from analytics.models import (
+    BaseCount,
+    FillState,
+    InstallationCount,
+    RealmCount,
+    StreamCount,
+    UserCount,
+    installation_epoch,
+)
+from zerver.lib.actions import (
+    InvitationError,
+    do_activate_user,
+    do_create_user,
+    do_deactivate_user,
+    do_invite_users,
+    do_mark_all_as_read,
+    do_mark_stream_messages_as_read,
+    do_reactivate_user,
+    do_resend_user_invite_email,
+    do_revoke_user_invite,
+    do_update_message_flags,
+    update_user_activity_interval,
+)
+from zerver.lib.create_user import create_user
+from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.timestamp import TimezoneNotUTCException, floor_to_day
-from zerver.models import Client, Huddle, Message, Realm, \
-    RealmAuditLog, Recipient, Stream, UserActivityInterval, \
-    UserProfile, get_client, get_user, PreregistrationUser
+from zerver.lib.topic import DB_TOPIC_NAME
+from zerver.models import (
+    Client,
+    Huddle,
+    Message,
+    PreregistrationUser,
+    Realm,
+    RealmAuditLog,
+    Recipient,
+    Stream,
+    UserActivityInterval,
+    UserProfile,
+    get_client,
+    get_user,
+)
 
-class AnalyticsTestCase(TestCase):
+
+class AnalyticsTestCase(ZulipTestCase):
     MINUTE = timedelta(seconds = 60)
     HOUR = MINUTE * 60
     DAY = HOUR * 24
-    TIME_ZERO = datetime(1988, 3, 14).replace(tzinfo=timezone_utc)
+    TIME_ZERO = datetime(1988, 3, 14, tzinfo=timezone.utc)
     TIME_LAST_HOUR = TIME_ZERO - HOUR
 
     def setUp(self) -> None:
+        super().setUp()
         self.default_realm = Realm.objects.create(
             string_id='realmtest', name='Realm Test', date_created=self.TIME_ZERO - 2*self.DAY)
         # used to generate unique names in self.create_*
         self.name_counter = 100
         # used as defaults in self.assertCountEquals
-        self.current_property = None  # type: Optional[str]
+        self.current_property: Optional[str] = None
 
     # Lightweight creation of users, streams, and messages
     def create_user(self, **kwargs: Any) -> UserProfile:
         self.name_counter += 1
         defaults = {
-            'email': 'user%s@domain.tld' % (self.name_counter,),
+            'email': f'user{self.name_counter}@domain.tld',
             'date_joined': self.TIME_LAST_HOUR,
             'full_name': 'full_name',
-            'short_name': 'short_name',
-            'pointer': -1,
-            'last_pointer_updater': 'seems unused?',
-            'realm': self.default_realm,
-            'api_key': '42'}
+            'is_active': True,
+            'is_bot': False,
+            'realm': self.default_realm}
         for key, value in defaults.items():
             kwargs[key] = kwargs.get(key, value)
-        return UserProfile.objects.create(**kwargs)
+        kwargs['delivery_email'] = kwargs['email']
+        with mock.patch("zerver.lib.create_user.timezone_now", return_value=kwargs['date_joined']):
+            pass_kwargs: Dict[str, Any] = {}
+            if kwargs['is_bot']:
+                pass_kwargs['bot_type'] = UserProfile.DEFAULT_BOT
+                pass_kwargs['bot_owner'] = None
+            return create_user(
+                kwargs['email'],
+                'password',
+                kwargs['realm'],
+                active=kwargs['is_active'],
+                full_name=kwargs['full_name'],
+                role=UserProfile.ROLE_REALM_ADMINISTRATOR,
+                **pass_kwargs
+            )
 
     def create_stream_with_recipient(self, **kwargs: Any) -> Tuple[Stream, Recipient]:
         self.name_counter += 1
-        defaults = {'name': 'stream name %s' % (self.name_counter,),
+        defaults = {'name': f'stream name {self.name_counter}',
                     'realm': self.default_realm,
                     'date_created': self.TIME_LAST_HOUR}
         for key, value in defaults.items():
             kwargs[key] = kwargs.get(key, value)
         stream = Stream.objects.create(**kwargs)
         recipient = Recipient.objects.create(type_id=stream.id, type=Recipient.STREAM)
+        stream.recipient = recipient
+        stream.save(update_fields=["recipient"])
         return stream, recipient
 
     def create_huddle_with_recipient(self, **kwargs: Any) -> Tuple[Huddle, Recipient]:
         self.name_counter += 1
-        defaults = {'huddle_hash': 'hash%s' % (self.name_counter,)}
+        defaults = {'huddle_hash': f'hash{self.name_counter}'}
         for key, value in defaults.items():
             kwargs[key] = kwargs.get(key, value)
         huddle = Huddle.objects.create(**kwargs)
         recipient = Recipient.objects.create(type_id=huddle.id, type=Recipient.HUDDLE)
+        huddle.recipient = recipient
+        huddle.save(update_fields=["recipient"])
         return huddle, recipient
 
     def create_message(self, sender: UserProfile, recipient: Recipient, **kwargs: Any) -> Message:
         defaults = {
             'sender': sender,
             'recipient': recipient,
-            'subject': 'subject',
+            DB_TOPIC_NAME: 'subject',
             'content': 'hi',
-            'pub_date': self.TIME_LAST_HOUR,
+            'date_sent': self.TIME_LAST_HOUR,
             'sending_client': get_client("website")}
         for key, value in defaults.items():
             kwargs[key] = kwargs.get(key, value)
         return Message.objects.create(**kwargs)
 
     # kwargs should only ever be a UserProfile or Stream.
-    def assertCountEquals(self, table: Type[BaseCount], value: int, property: Optional[Text]=None,
-                          subgroup: Optional[Text]=None, end_time: datetime=TIME_ZERO,
+    def assertCountEquals(self, table: Type[BaseCount], value: int, property: Optional[str]=None,
+                          subgroup: Optional[str]=None, end_time: datetime=TIME_ZERO,
                           realm: Optional[Realm]=None, **kwargs: models.Model) -> None:
         if property is None:
             property = self.current_property
@@ -134,7 +190,7 @@ class AnalyticsTestCase(TestCase):
             'end_time': self.TIME_ZERO,
             'value': 1}
         for values in arg_values:
-            kwargs = {}  # type: Dict[str, Any]
+            kwargs: Dict[str, Any] = {}
             for i in range(len(values)):
                 kwargs[arg_keys[i]] = values[i]
             for key, value in defaults.items():
@@ -152,8 +208,13 @@ class AnalyticsTestCase(TestCase):
 
 class TestProcessCountStat(AnalyticsTestCase):
     def make_dummy_count_stat(self, property: str) -> CountStat:
-        query = """INSERT INTO analytics_realmcount (realm_id, value, property, end_time)
-                   VALUES (%s, 1, '%s', %%%%(time_end)s)""" % (self.default_realm.id, property)
+        query = lambda kwargs: SQL("""
+            INSERT INTO analytics_realmcount (realm_id, value, property, end_time)
+            VALUES ({default_realm_id}, 1, {property}, %(time_end)s)
+        """).format(
+            default_realm_id=Literal(self.default_realm.id),
+            property=Literal(property),
+        )
         return CountStat(property, sql_data_collector(RealmCount, query, None), CountStat.HOUR)
 
     def assertFillStateEquals(self, stat: CountStat, end_time: datetime,
@@ -251,8 +312,13 @@ class TestProcessCountStat(AnalyticsTestCase):
     def test_process_dependent_stat(self) -> None:
         stat1 = self.make_dummy_count_stat('stat1')
         stat2 = self.make_dummy_count_stat('stat2')
-        query = """INSERT INTO analytics_realmcount (realm_id, value, property, end_time)
-                   VALUES (%s, 1, '%s', %%%%(time_end)s)""" % (self.default_realm.id, 'stat3')
+        query = lambda kwargs: SQL("""
+            INSERT INTO analytics_realmcount (realm_id, value, property, end_time)
+            VALUES ({default_realm_id}, 1, {property}, %(time_end)s)
+        """).format(
+            default_realm_id=Literal(self.default_realm.id),
+            property=Literal('stat3'),
+        )
         stat3 = DependentCountStat('stat3', sql_data_collector(RealmCount, query, None),
                                    CountStat.HOUR,
                                    dependencies=['stat1', 'stat2'])
@@ -285,8 +351,13 @@ class TestProcessCountStat(AnalyticsTestCase):
         self.assertFillStateEquals(stat3, hour[2])
 
         # test daily dependent stat with hourly dependencies
-        query = """INSERT INTO analytics_realmcount (realm_id, value, property, end_time)
-                   VALUES (%s, 1, '%s', %%%%(time_end)s)""" % (self.default_realm.id, 'stat4')
+        query = lambda kwargs: SQL("""
+            INSERT INTO analytics_realmcount (realm_id, value, property, end_time)
+            VALUES ({default_realm_id}, 1, {property}, %(time_end)s)
+        """).format(
+            default_realm_id=Literal(self.default_realm.id),
+            property=Literal('stat4'),
+        )
         stat4 = DependentCountStat('stat4', sql_data_collector(RealmCount, query, None),
                                    CountStat.DAY,
                                    dependencies=['stat1', 'stat2'])
@@ -309,12 +380,12 @@ class TestCountStats(AnalyticsTestCase):
             date_created=self.TIME_ZERO-2*self.DAY)
         for minutes_ago in [0, 1, 61, 60*24+1]:
             creation_time = self.TIME_ZERO - minutes_ago*self.MINUTE
-            user = self.create_user(email='user-%s@second.analytics' % (minutes_ago,),
+            user = self.create_user(email=f'user-{minutes_ago}@second.analytics',
                                     realm=self.second_realm, date_joined=creation_time)
             recipient = self.create_stream_with_recipient(
-                name='stream %s' % (minutes_ago,), realm=self.second_realm,
+                name=f'stream {minutes_ago}', realm=self.second_realm,
                 date_created=creation_time)[1]
-            self.create_message(user, recipient, pub_date=creation_time)
+            self.create_message(user, recipient, date_sent=creation_time)
         self.hourly_user = get_user('user-1@second.analytics', self.second_realm)
         self.daily_user = get_user('user-61@second.analytics', self.second_realm)
 
@@ -352,6 +423,29 @@ class TestCountStats(AnalyticsTestCase):
         self.assertTableState(UserCount, [], [])
         self.assertTableState(StreamCount, [], [])
 
+    def test_active_users_by_is_bot_for_realm_constraint(self) -> None:
+        # For single Realm
+
+        COUNT_STATS = get_count_stats(self.default_realm)
+        stat = COUNT_STATS['active_users:is_bot:day']
+        self.current_property = stat.property
+
+        # To be included
+        self.create_user(is_bot=True, date_joined=self.TIME_ZERO-25*self.HOUR)
+        self.create_user(is_bot=False)
+
+        # To be excluded
+        self.create_user(email='test@second.analytics',
+                         realm=self.second_realm, date_joined=self.TIME_ZERO-2*self.DAY)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO, self.default_realm)
+        self.assertTableState(RealmCount, ['value', 'subgroup'],
+                              [[1, 'true'], [1, 'false']])
+        # No aggregation to InstallationCount with realm constraint
+        self.assertTableState(InstallationCount, ['value', 'subgroup'], [])
+        self.assertTableState(UserCount, [], [])
+        self.assertTableState(StreamCount, [], [])
+
     def test_messages_sent_by_is_bot(self) -> None:
         stat = COUNT_STATS['messages_sent:is_bot:hour']
         self.current_property = stat.property
@@ -359,8 +453,8 @@ class TestCountStats(AnalyticsTestCase):
         bot = self.create_user(is_bot=True)
         human1 = self.create_user()
         human2 = self.create_user()
-        recipient_human1 = Recipient.objects.create(type_id=human1.id,
-                                                    type=Recipient.PERSONAL)
+        recipient_human1 = Recipient.objects.get(type_id=human1.id,
+                                                 type=Recipient.PERSONAL)
 
         recipient_stream = self.create_stream_with_recipient()[1]
         recipient_huddle = self.create_huddle_with_recipient()[1]
@@ -379,6 +473,46 @@ class TestCountStats(AnalyticsTestCase):
         self.assertTableState(RealmCount, ['value', 'subgroup', 'realm'],
                               [[2, 'false'], [3, 'true'], [1, 'false', self.second_realm]])
         self.assertTableState(InstallationCount, ['value', 'subgroup'], [[3, 'false'], [3, 'true']])
+        self.assertTableState(StreamCount, [], [])
+
+    def test_messages_sent_by_is_bot_realm_constraint(self) -> None:
+        # For single Realm
+
+        COUNT_STATS = get_count_stats(self.default_realm)
+        stat = COUNT_STATS['messages_sent:is_bot:hour']
+        self.current_property = stat.property
+
+        bot = self.create_user(is_bot=True)
+        human1 = self.create_user()
+        human2 = self.create_user()
+        recipient_human1 = Recipient.objects.get(type_id=human1.id,
+                                                 type=Recipient.PERSONAL)
+
+        recipient_stream = self.create_stream_with_recipient()[1]
+        recipient_huddle = self.create_huddle_with_recipient()[1]
+
+        # To be included
+        self.create_message(bot, recipient_human1)
+        self.create_message(bot, recipient_stream)
+        self.create_message(bot, recipient_huddle)
+        self.create_message(human1, recipient_human1)
+        self.create_message(human2, recipient_human1)
+
+        # To be excluded
+        self.create_message(self.hourly_user, recipient_human1)
+        self.create_message(self.hourly_user, recipient_stream)
+        self.create_message(self.hourly_user, recipient_huddle)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO, self.default_realm)
+
+        self.assertTableState(UserCount, ['value', 'subgroup', 'user'],
+                              [[1, 'false', human1], [1, 'false', human2],
+                               [3, 'true', bot]])
+        self.assertTableState(RealmCount, ['value', 'subgroup', 'realm'],
+                              [[2, 'false', self.default_realm],
+                               [3, 'true', self.default_realm]])
+        # No aggregation to InstallationCount with realm constraint
+        self.assertTableState(InstallationCount, ['value', 'subgroup'], [])
         self.assertTableState(StreamCount, [], [])
 
     def test_messages_sent_by_message_type(self) -> None:
@@ -414,9 +548,9 @@ class TestCountStats(AnalyticsTestCase):
         self.create_message(user2, recipient_huddle2)
 
         # private messages
-        recipient_user1 = Recipient.objects.create(type_id=user1.id, type=Recipient.PERSONAL)
-        recipient_user2 = Recipient.objects.create(type_id=user2.id, type=Recipient.PERSONAL)
-        recipient_user3 = Recipient.objects.create(type_id=user3.id, type=Recipient.PERSONAL)
+        recipient_user1 = Recipient.objects.get(type_id=user1.id, type=Recipient.PERSONAL)
+        recipient_user2 = Recipient.objects.get(type_id=user2.id, type=Recipient.PERSONAL)
+        recipient_user3 = Recipient.objects.get(type_id=user3.id, type=Recipient.PERSONAL)
         self.create_message(user1, recipient_user2)
         self.create_message(user2, recipient_user1)
         self.create_message(user3, recipient_user3)
@@ -443,12 +577,49 @@ class TestCountStats(AnalyticsTestCase):
                                [2, 'huddle_message']])
         self.assertTableState(StreamCount, [], [])
 
+    def test_messages_sent_by_message_type_realm_constraint(self) -> None:
+        # For single Realm
+
+        COUNT_STATS = get_count_stats(self.default_realm)
+        stat = COUNT_STATS['messages_sent:message_type:day']
+        self.current_property = stat.property
+
+        user = self.create_user()
+        user_recipient = Recipient.objects.get(type_id=user.id, type=Recipient.PERSONAL)
+        private_stream_recipient = self.create_stream_with_recipient(invite_only=True)[1]
+        stream_recipient = self.create_stream_with_recipient()[1]
+        huddle_recipient = self.create_huddle_with_recipient()[1]
+
+        # To be included
+        self.create_message(user, user_recipient)
+        self.create_message(user, private_stream_recipient)
+        self.create_message(user, stream_recipient)
+        self.create_message(user, huddle_recipient)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO, self.default_realm)
+
+        # To be excluded
+        self.create_message(self.hourly_user, user_recipient)
+        self.create_message(self.hourly_user, private_stream_recipient)
+        self.create_message(self.hourly_user, stream_recipient)
+        self.create_message(self.hourly_user, huddle_recipient)
+
+        self.assertTableState(UserCount, ['value', 'subgroup', 'user'],
+                              [[1, 'private_message', user], [1, 'private_stream', user],
+                               [1, 'huddle_message', user], [1, 'public_stream', user]])
+        self.assertTableState(RealmCount, ['value', 'subgroup'],
+                              [[1, 'private_message'], [1, 'private_stream'],
+                               [1, 'public_stream'], [1, 'huddle_message']])
+        # No aggregation to InstallationCount with realm constraint
+        self.assertTableState(InstallationCount, ['value', 'subgroup'], [])
+        self.assertTableState(StreamCount, [], [])
+
     def test_messages_sent_to_recipients_with_same_id(self) -> None:
         stat = COUNT_STATS['messages_sent:message_type:day']
         self.current_property = stat.property
 
         user = self.create_user(id=1000)
-        user_recipient = Recipient.objects.create(type_id=user.id, type=Recipient.PERSONAL)
+        user_recipient = Recipient.objects.get(type_id=user.id, type=Recipient.PERSONAL)
         stream_recipient = self.create_stream_with_recipient(id=1000)[1]
         huddle_recipient = self.create_huddle_with_recipient(id=1000)[1]
 
@@ -468,7 +639,7 @@ class TestCountStats(AnalyticsTestCase):
 
         user1 = self.create_user(is_bot=True)
         user2 = self.create_user()
-        recipient_user2 = Recipient.objects.create(type_id=user2.id, type=Recipient.PERSONAL)
+        recipient_user2 = Recipient.objects.get(type_id=user2.id, type=Recipient.PERSONAL)
 
         recipient_stream = self.create_stream_with_recipient()[1]
         recipient_huddle = self.create_huddle_with_recipient()[1]
@@ -497,6 +668,42 @@ class TestCountStats(AnalyticsTestCase):
                               [[4, website_client_id], [3, client2_id]])
         self.assertTableState(StreamCount, [], [])
 
+    def test_messages_sent_by_client_realm_constraint(self) -> None:
+        # For single Realm
+
+        COUNT_STATS = get_count_stats(self.default_realm)
+        stat = COUNT_STATS['messages_sent:client:day']
+        self.current_property = stat.property
+
+        user1 = self.create_user(is_bot=True)
+        user2 = self.create_user()
+        recipient_user2 = Recipient.objects.get(type_id=user2.id, type=Recipient.PERSONAL)
+
+        client2 = Client.objects.create(name='client2')
+
+        # TO be included
+        self.create_message(user1, recipient_user2, sending_client=client2)
+        self.create_message(user2, recipient_user2, sending_client=client2)
+        self.create_message(user2, recipient_user2)
+
+        # To be excluded
+        self.create_message(self.hourly_user, recipient_user2, sending_client=client2)
+        self.create_message(self.hourly_user, recipient_user2, sending_client=client2)
+        self.create_message(self.hourly_user, recipient_user2)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO, self.default_realm)
+
+        client2_id = str(client2.id)
+        website_client_id = str(get_client('website').id)  # default for self.create_message
+        self.assertTableState(UserCount, ['value', 'subgroup', 'user'],
+                              [[1, client2_id, user1], [1, client2_id, user2],
+                               [1, website_client_id, user2]])
+        self.assertTableState(RealmCount, ['value', 'subgroup'],
+                              [[1, website_client_id], [2, client2_id]])
+        # No aggregation to InstallationCount with realm constraint
+        self.assertTableState(InstallationCount, ['value', 'subgroup'], [])
+        self.assertTableState(StreamCount, [], [])
+
     def test_messages_sent_to_stream_by_is_bot(self) -> None:
         stat = COUNT_STATS['messages_in_stream:is_bot:day']
         self.current_property = stat.property
@@ -504,7 +711,7 @@ class TestCountStats(AnalyticsTestCase):
         bot = self.create_user(is_bot=True)
         human1 = self.create_user()
         human2 = self.create_user()
-        recipient_human1 = Recipient.objects.create(type_id=human1.id, type=Recipient.PERSONAL)
+        recipient_human1 = Recipient.objects.get(type_id=human1.id, type=Recipient.PERSONAL)
 
         stream1, recipient_stream1 = self.create_stream_with_recipient()
         stream2, recipient_stream2 = self.create_stream_with_recipient()
@@ -534,11 +741,115 @@ class TestCountStats(AnalyticsTestCase):
         self.assertTableState(InstallationCount, ['value', 'subgroup'], [[5, 'false'], [2, 'true']])
         self.assertTableState(UserCount, [], [])
 
+    def test_messages_sent_to_stream_by_is_bot_realm_constraint(self) -> None:
+        # For single Realm
+
+        COUNT_STATS = get_count_stats(self.default_realm)
+        stat = COUNT_STATS['messages_in_stream:is_bot:day']
+        self.current_property = stat.property
+
+        human1 = self.create_user()
+        bot = self.create_user(is_bot=True)
+
+        realm = {'realm': self.second_realm}
+        stream1, recipient_stream1 = self.create_stream_with_recipient()
+        stream2, recipient_stream2 = self.create_stream_with_recipient(**realm)
+
+        # To be included
+        self.create_message(human1, recipient_stream1)
+        self.create_message(bot, recipient_stream1)
+
+        # To be excluded
+        self.create_message(self.hourly_user, recipient_stream2)
+        self.create_message(self.daily_user, recipient_stream2)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO, self.default_realm)
+
+        self.assertTableState(StreamCount, ['value', 'subgroup', 'stream'],
+                              [[1, 'false', stream1],
+                               [1, 'true', stream1]])
+        self.assertTableState(RealmCount, ['value', 'subgroup', 'realm'],
+                              [[1, 'false'], [1, 'true']])
+        # No aggregation to InstallationCount with realm constraint
+        self.assertTableState(InstallationCount, ['value', 'subgroup'], [])
+        self.assertTableState(UserCount, [], [])
+
     def create_interval(self, user: UserProfile, start_offset: timedelta,
                         end_offset: timedelta) -> None:
         UserActivityInterval.objects.create(
             user_profile=user, start=self.TIME_ZERO-start_offset,
             end=self.TIME_ZERO-end_offset)
+
+    def test_1day_actives(self) -> None:
+        stat = COUNT_STATS['1day_actives::day']
+        self.current_property = stat.property
+
+        _1day = 1*self.DAY - UserActivityInterval.MIN_INTERVAL_LENGTH
+
+        # Outside time range, should not appear. Also tests upper boundary.
+        user1 = self.create_user()
+        self.create_interval(user1, _1day + self.DAY, _1day + timedelta(seconds=1))
+        self.create_interval(user1, timedelta(0), -self.HOUR)
+
+        # On lower boundary, should appear
+        user2 = self.create_user()
+        self.create_interval(user2, _1day + self.DAY, _1day)
+
+        # Multiple intervals, including one outside boundary
+        user3 = self.create_user()
+        self.create_interval(user3, 2*self.DAY, 1*self.DAY)
+        self.create_interval(user3, 20*self.HOUR, 19*self.HOUR)
+        self.create_interval(user3, 20*self.MINUTE, 19*self.MINUTE)
+
+        # Intervals crossing boundary
+        user4 = self.create_user()
+        self.create_interval(user4, 1.5*self.DAY, 0.5*self.DAY)
+        user5 = self.create_user()
+        self.create_interval(user5, self.MINUTE, -self.MINUTE)
+
+        # Interval subsuming time range
+        user6 = self.create_user()
+        self.create_interval(user6, 2*self.DAY, -2*self.DAY)
+
+        # Second realm
+        user7 = self.create_user(realm=self.second_realm)
+        self.create_interval(user7, 20*self.MINUTE, 19*self.MINUTE)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO)
+        self.assertTableState(UserCount, ['value', 'user'],
+                              [[1, user2], [1, user3], [1, user4], [1, user5], [1, user6], [1, user7]])
+        self.assertTableState(RealmCount, ['value', 'realm'],
+                              [[5, self.default_realm], [1, self.second_realm]])
+        self.assertTableState(InstallationCount, ['value'], [[6]])
+        self.assertTableState(StreamCount, [], [])
+
+    def test_1day_actives_realm_constraint(self) -> None:
+        # For single Realm
+
+        COUNT_STATS = get_count_stats(self.default_realm)
+        stat = COUNT_STATS['1day_actives::day']
+        self.current_property = stat.property
+
+        _1day = 1*self.DAY - UserActivityInterval.MIN_INTERVAL_LENGTH
+        user1 = self.create_user()
+        user2 = self.create_user()
+
+        # To be included
+        self.create_interval(user1, 20*self.HOUR, 19*self.HOUR)
+        self.create_interval(user2, _1day + self.DAY, _1day)
+
+        # To be excluded
+        user3 = self.create_user(realm=self.second_realm)
+        self.create_interval(user3, 20*self.MINUTE, 19*self.MINUTE)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO, self.default_realm)
+        self.assertTableState(UserCount, ['value', 'user'],
+                              [[1, user2], [1, user2]])
+        self.assertTableState(RealmCount, ['value', 'realm'],
+                              [[2, self.default_realm]])
+        # No aggregation to InstallationCount with realm constraint
+        self.assertTableState(InstallationCount, ['value'], [])
+        self.assertTableState(StreamCount, [], [])
 
     def test_15day_actives(self) -> None:
         stat = COUNT_STATS['15day_actives::day']
@@ -583,6 +894,36 @@ class TestCountStats(AnalyticsTestCase):
         self.assertTableState(InstallationCount, ['value'], [[6]])
         self.assertTableState(StreamCount, [], [])
 
+    def test_15day_actives_realm_constraint(self) -> None:
+        # For single Realm
+
+        COUNT_STATS = get_count_stats(self.default_realm)
+        stat = COUNT_STATS['15day_actives::day']
+        self.current_property = stat.property
+
+        _15day = 15*self.DAY - UserActivityInterval.MIN_INTERVAL_LENGTH
+
+        user1 = self.create_user()
+        user2 = self.create_user()
+        user3 = self.create_user(realm=self.second_realm)
+
+        # To be included
+        self.create_interval(user1, _15day + self.DAY, _15day)
+        self.create_interval(user2, 20*self.HOUR, 19*self.HOUR)
+
+        # To be excluded
+        self.create_interval(user3, 20*self.HOUR, 19*self.HOUR)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO, self.default_realm)
+
+        self.assertTableState(UserCount, ['value', 'user'],
+                              [[1, user1], [1, user2]])
+        self.assertTableState(RealmCount, ['value', 'realm'],
+                              [[2, self.default_realm]])
+        # No aggregation to InstallationCount with realm constraint
+        self.assertTableState(InstallationCount, ['value'], [])
+        self.assertTableState(StreamCount, [], [])
+
     def test_minutes_active(self) -> None:
         stat = COUNT_STATS['minutes_active::day']
         self.current_property = stat.property
@@ -623,6 +964,35 @@ class TestCountStats(AnalyticsTestCase):
         self.assertTableState(RealmCount, ['value', 'realm'],
                               [[61 + 121 + 24*60, self.default_realm], [1, self.second_realm]])
         self.assertTableState(InstallationCount, ['value'], [[61 + 121 + 24*60 + 1]])
+        self.assertTableState(StreamCount, [], [])
+
+    def test_minutes_active_realm_constraint(self) -> None:
+        # For single Realm
+
+        COUNT_STATS = get_count_stats(self.default_realm)
+        stat = COUNT_STATS['minutes_active::day']
+        self.current_property = stat.property
+
+        # Outside time range, should not appear. Also testing for intervals
+        # starting and ending on boundary
+        user1 = self.create_user()
+        user2 = self.create_user()
+        user3 = self.create_user(realm=self.second_realm)
+
+        # To be included
+        self.create_interval(user1, 20*self.HOUR, 19*self.HOUR)
+        self.create_interval(user2, 20*self.MINUTE, 19*self.MINUTE)
+
+        # To be excluded
+        self.create_interval(user3, 20*self.MINUTE, 19*self.MINUTE)
+
+        do_fill_count_stat_at_hour(stat, self.TIME_ZERO, self.default_realm)
+        self.assertTableState(UserCount, ['value', 'user'],
+                              [[60, user1], [1, user2]])
+        self.assertTableState(RealmCount, ['value', 'realm'],
+                              [[60 + 1, self.default_realm]])
+        # No aggregation to InstallationCount with realm constraint
+        self.assertTableState(InstallationCount, ['value'], [])
         self.assertTableState(StreamCount, [], [])
 
 class TestDoAggregateToSummaryTable(AnalyticsTestCase):
@@ -691,12 +1061,12 @@ class TestDoIncrementLoggingStat(AnalyticsTestCase):
         self.current_property = 'test'
         self.assertTableState(RealmCount, ['value', 'subgroup', 'end_time'],
                               [[1, 'subgroup1', self.TIME_ZERO], [1, 'subgroup2', self.TIME_ZERO],
-                              [1, 'subgroup1', self.TIME_LAST_HOUR]])
+                               [1, 'subgroup1', self.TIME_LAST_HOUR]])
         # This should trigger the get part of get_or_create
         do_increment_logging_stat(self.default_realm, stat, 'subgroup1', self.TIME_ZERO)
         self.assertTableState(RealmCount, ['value', 'subgroup', 'end_time'],
                               [[2, 'subgroup1', self.TIME_ZERO], [1, 'subgroup2', self.TIME_ZERO],
-                              [1, 'subgroup1', self.TIME_LAST_HOUR]])
+                               [1, 'subgroup1', self.TIME_LAST_HOUR]])
 
     def test_increment(self) -> None:
         stat = LoggingCountStat('test', RealmCount, CountStat.DAY)
@@ -733,7 +1103,7 @@ class TestLoggingCountStats(AnalyticsTestCase):
 
     def test_active_users_log_by_is_bot(self) -> None:
         property = 'active_users_log:is_bot:day'
-        user = do_create_user('email', 'password', self.default_realm, 'full_name', 'short_name')
+        user = do_create_user('email', 'password', self.default_realm, 'full_name')
         self.assertEqual(1, RealmCount.objects.filter(property=property, subgroup=False)
                          .aggregate(Sum('value'))['value__sum'])
         do_deactivate_user(user)
@@ -788,6 +1158,39 @@ class TestLoggingCountStats(AnalyticsTestCase):
         do_resend_user_invite_email(PreregistrationUser.objects.first())
         assertInviteCountEquals(6)
 
+    def test_messages_read_hour(self) -> None:
+        read_count_property = 'messages_read::hour'
+        interactions_property = 'messages_read_interactions::hour'
+
+        user1 = self.create_user()
+        user2 = self.create_user()
+        stream, recipient = self.create_stream_with_recipient()
+        self.subscribe(user1, stream.name)
+        self.subscribe(user2, stream.name)
+
+        self.send_personal_message(user1, user2)
+        client = get_client("website")
+        do_mark_all_as_read(user2, client)
+        self.assertEqual(1, UserCount.objects.filter(property=read_count_property)
+                         .aggregate(Sum('value'))['value__sum'])
+        self.assertEqual(1, UserCount.objects.filter(property=interactions_property)
+                         .aggregate(Sum('value'))['value__sum'])
+
+        self.send_stream_message(user1, stream.name)
+        self.send_stream_message(user1, stream.name)
+        do_mark_stream_messages_as_read(user2, client, stream)
+        self.assertEqual(3, UserCount.objects.filter(property=read_count_property)
+                         .aggregate(Sum('value'))['value__sum'])
+        self.assertEqual(2, UserCount.objects.filter(property=interactions_property)
+                         .aggregate(Sum('value'))['value__sum'])
+
+        message = self.send_stream_message(user2, stream.name)
+        do_update_message_flags(user1, client, 'add', 'read', [message])
+        self.assertEqual(4, UserCount.objects.filter(property=read_count_property)
+                         .aggregate(Sum('value'))['value__sum'])
+        self.assertEqual(3, UserCount.objects.filter(property=interactions_property)
+                         .aggregate(Sum('value'))['value__sum'])
+
 class TestDeleteStats(AnalyticsTestCase):
     def test_do_drop_all_analytics_tables(self) -> None:
         user = self.create_user()
@@ -799,7 +1202,6 @@ class TestDeleteStats(AnalyticsTestCase):
         RealmCount.objects.create(realm=user.realm, **count_args)
         InstallationCount.objects.create(**count_args)
         FillState.objects.create(property='test', end_time=self.TIME_ZERO, state=FillState.DONE)
-        Anomaly.objects.create(info='test anomaly')
 
         analytics = apps.get_app_config('analytics')
         for table in list(analytics.models.values()):
@@ -822,7 +1224,6 @@ class TestDeleteStats(AnalyticsTestCase):
             InstallationCount.objects.create(**count_args)
         FillState.objects.create(property='to_delete', end_time=self.TIME_ZERO, state=FillState.DONE)
         FillState.objects.create(property='to_save', end_time=self.TIME_ZERO, state=FillState.DONE)
-        Anomaly.objects.create(info='test anomaly')
 
         analytics = apps.get_app_config('analytics')
         for table in list(analytics.models.values()):
@@ -830,11 +1231,8 @@ class TestDeleteStats(AnalyticsTestCase):
 
         do_drop_single_stat('to_delete')
         for table in list(analytics.models.values()):
-            if table._meta.db_table == 'analytics_anomaly':
-                self.assertTrue(table.objects.exists())
-            else:
-                self.assertFalse(table.objects.filter(property='to_delete').exists())
-                self.assertTrue(table.objects.filter(property='to_save').exists())
+            self.assertFalse(table.objects.filter(property='to_delete').exists())
+            self.assertTrue(table.objects.filter(property='to_save').exists())
 
 class TestActiveUsersAudit(AnalyticsTestCase):
     def setUp(self) -> None:
@@ -843,7 +1241,7 @@ class TestActiveUsersAudit(AnalyticsTestCase):
         self.stat = COUNT_STATS['active_users_audit:is_bot:day']
         self.current_property = self.stat.property
 
-    def add_event(self, event_type: str, days_offset: float,
+    def add_event(self, event_type: int, days_offset: float,
                   user: Optional[UserProfile]=None) -> None:
         hours_offset = int(24*days_offset)
         if user is None:
@@ -853,49 +1251,49 @@ class TestActiveUsersAudit(AnalyticsTestCase):
             event_time=self.TIME_ZERO - hours_offset*self.HOUR)
 
     def test_user_deactivated_in_future(self) -> None:
-        self.add_event('user_created', 1)
-        self.add_event('user_deactivated', 0)
+        self.add_event(RealmAuditLog.USER_CREATED, 1)
+        self.add_event(RealmAuditLog.USER_DEACTIVATED, 0)
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['subgroup'], [['false']])
 
     def test_user_reactivated_in_future(self) -> None:
-        self.add_event('user_deactivated', 1)
-        self.add_event('user_reactivated', 0)
+        self.add_event(RealmAuditLog.USER_DEACTIVATED, 1)
+        self.add_event(RealmAuditLog.USER_REACTIVATED, 0)
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, [], [])
 
     def test_user_active_then_deactivated_same_day(self) -> None:
-        self.add_event('user_created', 1)
-        self.add_event('user_deactivated', .5)
+        self.add_event(RealmAuditLog.USER_CREATED, 1)
+        self.add_event(RealmAuditLog.USER_DEACTIVATED, .5)
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, [], [])
 
     def test_user_unactive_then_activated_same_day(self) -> None:
-        self.add_event('user_deactivated', 1)
-        self.add_event('user_reactivated', .5)
+        self.add_event(RealmAuditLog.USER_DEACTIVATED, 1)
+        self.add_event(RealmAuditLog.USER_REACTIVATED, .5)
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['subgroup'], [['false']])
 
     # Arguably these next two tests are duplicates of the _in_future tests, but are
     # a guard against future refactorings where they may no longer be duplicates
     def test_user_active_then_deactivated_with_day_gap(self) -> None:
-        self.add_event('user_created', 2)
-        self.add_event('user_deactivated', 1)
+        self.add_event(RealmAuditLog.USER_CREATED, 2)
+        self.add_event(RealmAuditLog.USER_DEACTIVATED, 1)
         process_count_stat(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['subgroup', 'end_time'],
                               [['false', self.TIME_ZERO - self.DAY]])
 
     def test_user_deactivated_then_reactivated_with_day_gap(self) -> None:
-        self.add_event('user_deactivated', 2)
-        self.add_event('user_reactivated', 1)
+        self.add_event(RealmAuditLog.USER_DEACTIVATED, 2)
+        self.add_event(RealmAuditLog.USER_REACTIVATED, 1)
         process_count_stat(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['subgroup'], [['false']])
 
     def test_event_types(self) -> None:
-        self.add_event('user_created', 4)
-        self.add_event('user_deactivated', 3)
-        self.add_event('user_activated', 2)
-        self.add_event('user_reactivated', 1)
+        self.add_event(RealmAuditLog.USER_CREATED, 4)
+        self.add_event(RealmAuditLog.USER_DEACTIVATED, 3)
+        self.add_event(RealmAuditLog.USER_ACTIVATED, 2)
+        self.add_event(RealmAuditLog.USER_REACTIVATED, 1)
         for i in range(4):
             do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO - i*self.DAY)
         self.assertTableState(UserCount, ['subgroup', 'end_time'],
@@ -910,7 +1308,7 @@ class TestActiveUsersAudit(AnalyticsTestCase):
         user3 = self.create_user(realm=second_realm)
         user4 = self.create_user(realm=second_realm, is_bot=True)
         for user in [user1, user2, user3, user4]:
-            self.add_event('user_created', 1, user=user)
+            self.add_event(RealmAuditLog.USER_CREATED, 1, user=user)
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['subgroup', 'user'],
                               [['false', user1], ['false', user2], ['false', user3], ['true', user4]])
@@ -928,7 +1326,7 @@ class TestActiveUsersAudit(AnalyticsTestCase):
     # CountStat.HOUR from CountStat.DAY, this will fail, while many of the
     # tests above will not.
     def test_update_from_two_days_ago(self) -> None:
-        self.add_event('user_created', 2)
+        self.add_event(RealmAuditLog.USER_CREATED, 2)
         process_count_stat(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['subgroup', 'end_time'],
                               [['false', self.TIME_ZERO], ['false', self.TIME_ZERO-self.DAY]])
@@ -937,22 +1335,22 @@ class TestActiveUsersAudit(AnalyticsTestCase):
     # doesn't go through do_create_user. Mainly just want to make sure that
     # that situation doesn't throw an error.
     def test_empty_realm_or_user_with_no_relevant_activity(self) -> None:
-        self.add_event('unrelated', 1)
+        self.add_event(RealmAuditLog.USER_SOFT_ACTIVATED, 1)
         self.create_user()  # also test a user with no RealmAuditLog entries
         Realm.objects.create(string_id='moo', name='moo')
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, [], [])
 
     def test_max_audit_entry_is_unrelated(self) -> None:
-        self.add_event('user_created', 1)
-        self.add_event('unrelated', .5)
+        self.add_event(RealmAuditLog.USER_CREATED, 1)
+        self.add_event(RealmAuditLog.USER_SOFT_ACTIVATED, .5)
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['subgroup'], [['false']])
 
     # Simultaneous related audit entries should not be allowed, and so not testing for that.
     def test_simultaneous_unrelated_audit_entry(self) -> None:
-        self.add_event('user_created', 1)
-        self.add_event('unrelated', 1)
+        self.add_event(RealmAuditLog.USER_CREATED, 1)
+        self.add_event(RealmAuditLog.USER_SOFT_ACTIVATED, 1)
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['subgroup'], [['false']])
 
@@ -960,19 +1358,19 @@ class TestActiveUsersAudit(AnalyticsTestCase):
         user1 = self.create_user()
         user2 = self.create_user()
         user3 = self.create_user()
-        self.add_event('user_created', .5, user=user1)
-        self.add_event('user_created', .5, user=user2)
-        self.add_event('user_created', 1, user=user3)
-        self.add_event('user_deactivated', .5, user=user3)
+        self.add_event(RealmAuditLog.USER_CREATED, .5, user=user1)
+        self.add_event(RealmAuditLog.USER_CREATED, .5, user=user2)
+        self.add_event(RealmAuditLog.USER_CREATED, 1, user=user3)
+        self.add_event(RealmAuditLog.USER_DEACTIVATED, .5, user=user3)
         do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO)
         self.assertTableState(UserCount, ['user', 'subgroup'],
                               [[user1, 'false'], [user2, 'false']])
 
     def test_end_to_end_with_actions_dot_py(self) -> None:
-        user1 = do_create_user('email1', 'password', self.default_realm, 'full_name', 'short_name')
-        user2 = do_create_user('email2', 'password', self.default_realm, 'full_name', 'short_name')
-        user3 = do_create_user('email3', 'password', self.default_realm, 'full_name', 'short_name')
-        user4 = do_create_user('email4', 'password', self.default_realm, 'full_name', 'short_name')
+        user1 = do_create_user('email1', 'password', self.default_realm, 'full_name')
+        user2 = do_create_user('email2', 'password', self.default_realm, 'full_name')
+        user3 = do_create_user('email3', 'password', self.default_realm, 'full_name')
+        user4 = do_create_user('email4', 'password', self.default_realm, 'full_name')
         do_deactivate_user(user2)
         do_activate_user(user3)
         do_reactivate_user(user4)
@@ -982,7 +1380,7 @@ class TestActiveUsersAudit(AnalyticsTestCase):
             self.assertTrue(UserCount.objects.filter(
                 user=user, property=self.current_property, subgroup='false',
                 end_time=end_time, value=1).exists())
-        self.assertFalse(UserCount.objects.filter(user=user2).exists())
+        self.assertFalse(UserCount.objects.filter(user=user2, end_time=end_time).exists())
 
 class TestRealmActiveHumans(AnalyticsTestCase):
     def setUp(self) -> None:
@@ -1054,6 +1452,7 @@ class TestRealmActiveHumans(AnalyticsTestCase):
         self.create_user(realm=third_realm)
 
         RealmCount.objects.all().delete()
+        InstallationCount.objects.all().delete()
         for i in [-1, 0, 1]:
             do_fill_count_stat_at_hour(self.stat, self.TIME_ZERO + i*self.DAY)
         self.assertTableState(RealmCount, ['value', 'realm', 'end_time'],
@@ -1063,9 +1462,9 @@ class TestRealmActiveHumans(AnalyticsTestCase):
                                [2, second_realm, self.TIME_ZERO - self.DAY]])
 
     def test_end_to_end(self) -> None:
-        user1 = do_create_user('email1', 'password', self.default_realm, 'full_name', 'short_name')
-        user2 = do_create_user('email2', 'password', self.default_realm, 'full_name', 'short_name')
-        do_create_user('email3', 'password', self.default_realm, 'full_name', 'short_name')
+        user1 = do_create_user('email1', 'password', self.default_realm, 'full_name')
+        user2 = do_create_user('email2', 'password', self.default_realm, 'full_name')
+        do_create_user('email3', 'password', self.default_realm, 'full_name')
         time_zero = floor_to_day(timezone_now()) + self.DAY
         update_user_activity_interval(user1, time_zero)
         update_user_activity_interval(user2, time_zero)

@@ -1,23 +1,27 @@
-# -*- coding: utf-8 -*-
-
+import ujson
 from django.core.exceptions import ValidationError
 from django.db.utils import IntegrityError
-from typing import Optional, Text
 
-from zerver.lib.actions import do_change_is_admin, \
-    do_change_realm_domain, do_create_realm, \
-    do_remove_realm_domain
+from zerver.lib.actions import (
+    do_change_realm_domain,
+    do_change_user_role,
+    do_create_realm,
+    do_remove_realm_domain,
+    do_set_realm_property,
+)
 from zerver.lib.domains import validate_domain
+from zerver.lib.email_validation import email_allowed_for_realm
 from zerver.lib.test_classes import ZulipTestCase
-from zerver.models import email_allowed_for_realm, get_realm, \
-    RealmDomain, DomainNotAllowedForRealmError
-
-import ujson
+from zerver.models import DomainNotAllowedForRealmError, RealmDomain, UserProfile, get_realm
 
 
 class RealmDomainTest(ZulipTestCase):
+    def setUp(self) -> None:
+        realm = get_realm('zulip')
+        do_set_realm_property(realm, 'emails_restricted_to_domains', True)
+
     def test_list_realm_domains(self) -> None:
-        self.login(self.example_email("iago"))
+        self.login('iago')
         realm = get_realm('zulip')
         RealmDomain.objects.create(realm=realm, domain='acme.com', allow_subdomains=True)
         result = self.client_get("/json/realm/domains")
@@ -29,7 +33,7 @@ class RealmDomainTest(ZulipTestCase):
         self.assertEqual(received, expected)
 
     def test_not_realm_admin(self) -> None:
-        self.login(self.example_email("hamlet"))
+        self.login('hamlet')
         result = self.client_post("/json/realm/domains")
         self.assert_json_error(result, 'Must be an organization administrator')
         result = self.client_patch("/json/realm/domains/15")
@@ -38,7 +42,7 @@ class RealmDomainTest(ZulipTestCase):
         self.assert_json_error(result, 'Must be an organization administrator')
 
     def test_create_realm_domain(self) -> None:
-        self.login(self.example_email("iago"))
+        self.login('iago')
         data = {'domain': ujson.dumps(''),
                 'allow_subdomains': ujson.dumps(True)}
         result = self.client_post("/json/realm/domains", info=data)
@@ -55,16 +59,16 @@ class RealmDomainTest(ZulipTestCase):
         self.assert_json_error(result, 'The domain acme.com is already a part of your organization.')
 
         mit_user_profile = self.mit_user("sipbtest")
-        self.login(mit_user_profile.email, realm=get_realm("zephyr"))
+        self.login_user(mit_user_profile)
 
-        do_change_is_admin(mit_user_profile, True)
+        do_change_user_role(mit_user_profile, UserProfile.ROLE_REALM_ADMINISTRATOR)
 
         result = self.client_post("/json/realm/domains", info=data,
                                   HTTP_HOST=mit_user_profile.realm.host)
         self.assert_json_success(result)
 
     def test_patch_realm_domain(self) -> None:
-        self.login(self.example_email("iago"))
+        self.login('iago')
         realm = get_realm('zulip')
         RealmDomain.objects.create(realm=realm, domain='acme.com',
                                    allow_subdomains=False)
@@ -83,7 +87,7 @@ class RealmDomainTest(ZulipTestCase):
         self.assert_json_error(result, 'No entry found for domain non-existent.com.')
 
     def test_delete_realm_domain(self) -> None:
-        self.login(self.example_email("iago"))
+        self.login('iago')
         realm = get_realm('zulip')
         RealmDomain.objects.create(realm=realm, domain='acme.com')
         result = self.client_delete("/json/realm/domains/non-existent.com")
@@ -93,25 +97,25 @@ class RealmDomainTest(ZulipTestCase):
         result = self.client_delete("/json/realm/domains/acme.com")
         self.assert_json_success(result)
         self.assertFalse(RealmDomain.objects.filter(domain='acme.com').exists())
-        self.assertTrue(realm.restricted_to_domain)
+        self.assertTrue(realm.emails_restricted_to_domains)
 
     def test_delete_all_realm_domains(self) -> None:
-        self.login(self.example_email("iago"))
+        self.login('iago')
         realm = get_realm('zulip')
         query = RealmDomain.objects.filter(realm=realm)
 
-        self.assertTrue(realm.restricted_to_domain)
+        self.assertTrue(realm.emails_restricted_to_domains)
         for realm_domain in query.all():
             do_remove_realm_domain(realm_domain)
         self.assertEqual(query.count(), 0)
-        # Deleting last realm_domain should set `restricted_to_domain` to False.
+        # Deleting last realm_domain should set `emails_restricted_to_domains` to False.
         # This should be tested on a fresh instance, since the cached objects
         # would not be updated.
-        self.assertFalse(get_realm('zulip').restricted_to_domain)
+        self.assertFalse(get_realm('zulip').emails_restricted_to_domains)
 
     def test_email_allowed_for_realm(self) -> None:
-        realm1 = do_create_realm('testrealm1', 'Test Realm 1', restricted_to_domain=True)
-        realm2 = do_create_realm('testrealm2', 'Test Realm 2', restricted_to_domain=True)
+        realm1 = do_create_realm('testrealm1', 'Test Realm 1', emails_restricted_to_domains=True)
+        realm2 = do_create_realm('testrealm2', 'Test Realm 2', emails_restricted_to_domains=True)
 
         realm_domain = RealmDomain.objects.create(realm=realm1, domain='test1.com', allow_subdomains=False)
         RealmDomain.objects.create(realm=realm2, domain='test2.test1.com', allow_subdomains=True)
@@ -137,7 +141,7 @@ class RealmDomainTest(ZulipTestCase):
 
     def test_validate_domain(self) -> None:
         invalid_domains = ['', 'test', 't.', 'test.', '.com', '-test', 'test...com',
-                           'test-', 'test_domain.com', 'test.-domain.com']
+                           'test-', 'test_domain.com', 'test.-domain.com', 'a' * 255 + ".com"]
         for domain in invalid_domains:
             with self.assertRaises(ValidationError):
                 validate_domain(domain)

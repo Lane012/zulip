@@ -1,81 +1,83 @@
 # Logging in
 
-Zulip offers three ways to log in: e-mail and password, Google
-credentials, and GitHub credentials. Your organization's administrator
-may choose to enable or disable any of these options. So don't worry
-if your login page doesn't have some of the options described here!
+By default, Zulip allows logging in via email/password as well as
+various social authentication providers like Google, GitHub, GitLab,
+and Apple.
 
-## Logging in with your email address
+Organization administrators can
+[add other authentication methods](/help/configure-authentication-methods),
+including the SAML and LDAP integrations, or disable any of the methods above.
 
-You can log into your Zulip organization using your email address by
-following a few simple steps.
+You can log in with any method allowed by your organization, regardless of
+how you signed up. E.g. if you originally signed up using your Google
+account, you can later log in using GitHub, as long as your Google account
+and GitHub account use the same email address.
 
-1. In the field labeled **Email**, enter the email address that you
-   used to sign up for Zulip. Please note that the **Email** field is
-   case-sensitive.
 
-    !!! tip ""
-        If you've forgotten which email you used to sign up for
-        Zulip, you can try searching your email accounts for the
-        e-mail you received when you first signed up. The subject line
-        is "Welcome to Zulip".
+### Log in to a Zulip organization for the first time
 
-2. In the field labeled **Password**, enter your password. Please note
-   that the **Password** field is case-sensitive.
+{start_tabs}
 
-    !!! tip ""
-        If you've forgotten your password, see the
-        [Change your password](/help/change-your-password) page for
-        instructions on how to reset it.
+{tab|desktop}
 
-## Logging in with your Google account
+1. Open the **left sidebar** (`Ctrl+Shift+s`).
 
-If your organization has enabled Google authentication, you can log
-into Zulip using your Google account by following a few simple steps.
+1. Set your [proxy settings](/help/connect-through-a-proxy) or add a
+   [custom certificate](/help/custom-certificates) if needed (rare).
 
-1. Click the **Log in with Google** button located under the
-   **Login** button and **Forgot your password?** link.
+1. Click the **plus** (+) icon.
 
-    ![Zulip log in Google](/static/images/help/login-with-google.png)
+1. Enter your Zulip URL, and click **Connect**.
 
-2. If you are not signed into a Google account, Google will ask you to
-   enter the credentials to your Google account.
+1. Follow the on-screen instructions.
 
-    ![Zulip log in Google login](/static/images/help/google-login.png)
+{tab|mobile}
 
-3. If you're logging into Zulip with a Google account for the first
-   time, you will be taken to a page titled **Request for
-   permission**.
+1. From the home screen, tap your **profile picture** in the lower right.
 
-    ![Zulip log in Google Request Permission](/static/images/help/google-request.png)
+1. Tap **Switch account**.
 
-    Zulip requires knowledge of your email address and basic profile
-    info, such as your name, for login purposes.
+1. Tap **Add new account**.
 
-4. Click the **Allow** button to finish your Google login.
+1. Enter your Zulip URL, and tap **Enter**.
 
-    If you click the **Deny** button, Zulip cannot finish logging you
-    in, and you will be redirected to the Zulip login page.
+1. Follow the on-screen instructions.
 
-## Logging in with your GitHub account
+{tab|web}
 
-If your organization has enabled GitHub authentication, you can log into
-Zulip using your GitHub account by following a few simple steps.
+1. Go to your organization's **Zulip URL**.
 
-1. Click the **Log in with GitHub** button located under the **Log in with Google** button.
+1. Follow the on-screen instructions.
 
-    ![Zulip log in GitHub](/static/images/help/login-with-github.png)
+{end_tabs}
 
-2. If you are not logged into a GitHub account, GitHub will ask you to
-   enter the credentials for your GitHub account.
+For subsequent logins, see [switching between organizations](/help/switching-between-organizations).
 
-    ![Zulip log in GitHub login](/static/images/help/github-login.png)
+## Troubleshooting
 
-3. If you're logging into Zulip with a GitHub account for the first
-   time, you will be taken to a page titled **Authorize application**.
+### I don't know my Zulip URL
 
-    ![Zulip log in GitHub Request Permission](/static/images/help/github-request.png)
+Some ideas:
 
-    Zulip requires user data such as your email address and name for login purposes.
+* If you know your organization is hosted on
+  [zulip.com](https://zulip.com), go to [find my
+  account](https://zulip.com/accounts/find/) and enter the email
+  address that you signed up with.
 
-4. Click the green **Authorize application** button to finish your GitHub login.
+* Try guessing the URL. Zulip URLs often look like `<name>.zulipchat.com`,
+ `zulip.<name>.com`, or `chat.<name>.com` (replace `<name>` with the name of your
+  organization).
+
+* Ask your organization administrators for your Zulip URL.
+
+### I signed up with Google/GitHub auth and never set a password
+
+If you signed up using passwordless authentication and want to start logging
+in via email/password, you can
+[reset your password](/help/change-your-password).
+
+### I forgot my password
+
+You can [reset your password](/help/change-your-password). This requires
+access to the email address you currently have on file. We recommend
+[keeping your email address up to date](change-your-email-address).

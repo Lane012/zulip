@@ -2,29 +2,22 @@
 
 {!admin-only.md!}
 
-By default, new users can join a Zulip organization with or without an email
-invitation.
+By default, users need an invitation to join. You can open your Zulip
+up so that anyone can join without an invitation.
 
-However, if you are an organization administrator that wants to limit
-the membership of your organization, you can choose to limit new
-members to those with email invitations.
+{start_tabs}
 
-## Limiting new membership to users invited by organization members
+1. Set [default streams](/help/set-default-streams-for-new-users) for new users.
 
-{!go-to-the.md!} [Organization permissions](/#organization/organization-permissions)
-{!admin.md!}
+{settings_tab|organization-permissions}
 
-4. Locate the **Users need an invitation to join** checkbox under the
-**Joining the organization** section.
+1. Find the section **Joining the organization**.
 
-    To limit new members of your organization to those who have been
-    invited to do so, click the **Users need an invitation to join** checkbox.
+1. Set **Are invitations required for joining the organization** to **No**.
 
-    New users will now require an email invitation sent by a user in your Zulip
-organization to join your organization.
+1. Set **Restrict email domains of new users?** to either
+   **Don't allow disposable email addresses** (recommended) or **No**.
 
-    * If you wish to further limit new membership to your organization, you can
-    [only allow administrators](/help/only-allow-admins-to-invite-new-users) in
-    your organization to send email invitations to new users.
+1. Click **Save changes**.
 
-{!save-changes.md!} organization settings.
+{end_tabs}

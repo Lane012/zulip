@@ -1,4 +1,5 @@
 {% extends "zerver/base.html" %}
+{% set entrypoint = "email-log" %}
 {% block content %}
 <div class="container">
     <div style="position: fixed">
@@ -9,7 +10,7 @@
         </div>
         <div style="text-align:right">
             <label>
-                <input type="checkbox" id="toggle"/>
+                <input type="checkbox" autocomplete="off" id="toggle"/>
                 <strong>Show text only version</strong>
             </label>
             <a href="#" data-toggle="modal" data-target="#forward_email_modal">
@@ -26,7 +27,7 @@
                 <form id="smtp_form">
                     {{ csrf_input }}
                     <div class="alert alert-info"
-                        id="smtp_form_status" style="display:none;">
+                      id="smtp_form_status" style="display:none;">
                         Updated successfully.
                     </div>
                     <label for="forward">
@@ -45,10 +46,10 @@
                         <label for="forward_address"><strong>Address to which emails should be forwarded</strong></label>
                         <input type="text" id="address" name="forward_address" placeholder="eg: your-email@example.com" value="{{forward_address}}"/>
                     </div>
-                    <br/>
+                    <br>
                     <div class="alert alert-info">
                         You must setup SMTP as described
-                        <a target="_blank" href="https://zulip.readthedocs.io/en/latest/subsystems/email.html#development-and-testing">
+                        <a target="_blank" rel="noopener noreferrer" href="https://zulip.readthedocs.io/en/latest/subsystems/email.html#development-and-testing">
                         here</a> first before enabling this.
                     </div>
                 </form>
@@ -59,43 +60,5 @@
             <button data-dismiss="modal">Close</button>
         </div>
     </div>
-    <script type="text/javascript">
-    $('#toggle').change(function() {
-        if($('.email-text').css('display') == 'none') {
-            $(".email-text").each(function() {
-                $(this).css("display", "block");
-            });
-            $(".email-html").each(function() {
-                $(this).css("display", "none");
-            });
-        }
-        else {
-            $(".email-text").each(function() {
-                $(this).css("display", "none");
-            });
-            $(".email-html").each(function() {
-                $(this).css("display", "block");
-            });
-        }
-    });
-    $('input[type=radio][name=forward]').on('change', function() {
-        if ($(this).val() == "enabled") {
-            $("#forward_address_sections").show();
-        } else {
-            $("#forward_address_sections").hide();
-        }
-    });
-    $("#save_smptp_details").on("click", function() {
-        var address = $('input[name=forward]:checked').val() == "enabled" ? $("#address").val(): "";
-        var csrf_token = $('input[name="csrfmiddlewaretoken"]').attr('value');
-        var data = {"forward_address": address, "csrfmiddlewaretoken": csrf_token};
-        $.post("/emails/", data, function() {
-            $("#smtp_form_status").show();
-            setTimeout(function() {
-                $("#smtp_form_status").hide();
-            }, 3000);
-        });
-    });
-    </script>
 </div>
 {% endblock %}

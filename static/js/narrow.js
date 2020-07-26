@@ -1,63 +1,77 @@
-var narrow = (function () {
+const util = require("./util");
 
-var exports = {};
+let unnarrow_times;
 
-var unnarrow_times;
+const LARGER_THAN_MAX_MESSAGE_ID = 10000000000000000;
 
 function report_narrow_time(initial_core_time, initial_free_time, network_time) {
     channel.post({
-        url: '/json/report/narrow_times',
-        data: {initial_core: initial_core_time.toString(),
-               initial_free: initial_free_time.toString(),
-               network: network_time.toString()},
+        url: "/json/report/narrow_times",
+        data: {
+            initial_core: initial_core_time.toString(),
+            initial_free: initial_free_time.toString(),
+            network: network_time.toString(),
+        },
     });
 }
 
 function maybe_report_narrow_time(msg_list) {
-    if (msg_list.network_time === undefined || msg_list.initial_core_time === undefined ||
-        msg_list.initial_free_time === undefined) {
+    if (
+        msg_list.network_time === undefined ||
+        msg_list.initial_core_time === undefined ||
+        msg_list.initial_free_time === undefined
+    ) {
         return;
     }
-    report_narrow_time(msg_list.initial_core_time - msg_list.start_time,
-                       msg_list.initial_free_time - msg_list.start_time,
-                       msg_list.network_time - msg_list.start_time);
-
+    report_narrow_time(
+        msg_list.initial_core_time - msg_list.start_time,
+        msg_list.initial_free_time - msg_list.start_time,
+        msg_list.network_time - msg_list.start_time,
+    );
 }
 
 function report_unnarrow_time() {
-    if (unnarrow_times === undefined ||
+    if (
+        unnarrow_times === undefined ||
         unnarrow_times.start_time === undefined ||
         unnarrow_times.initial_core_time === undefined ||
-        unnarrow_times.initial_free_time === undefined) {
+        unnarrow_times.initial_free_time === undefined
+    ) {
         return;
     }
 
-    var initial_core_time = unnarrow_times.initial_core_time - unnarrow_times.start_time;
-    var initial_free_time = unnarrow_times.initial_free_time - unnarrow_times.start_time;
+    const initial_core_time = unnarrow_times.initial_core_time - unnarrow_times.start_time;
+    const initial_free_time = unnarrow_times.initial_free_time - unnarrow_times.start_time;
 
     channel.post({
-        url: '/json/report/unnarrow_times',
-        data: {initial_core: initial_core_time.toString(),
-               initial_free: initial_free_time.toString()},
+        url: "/json/report/unnarrow_times",
+        data: {
+            initial_core: initial_core_time.toString(),
+            initial_free: initial_free_time.toString(),
+        },
     });
 
     unnarrow_times = {};
 }
 
-exports.narrow_title = "home";
-exports.activate = function (raw_operators, opts) {
-    var start_time = new Date();
-    var was_narrowed_already = narrow_state.active();
-    // most users aren't going to send a bunch of a out-of-narrow messages
-    // and expect to visit a list of narrows, so let's get these out of the way.
-    notifications.clear_compose_notifications();
-
-    if (raw_operators.length === 0) {
-        return exports.deactivate();
+exports.save_pre_narrow_offset_for_reload = function () {
+    if (current_msg_list.selected_id() !== -1) {
+        if (current_msg_list.selected_row().length === 0) {
+            blueslip.debug("narrow.activate missing selected row", {
+                selected_id: current_msg_list.selected_id(),
+                selected_idx: current_msg_list.selected_idx(),
+                selected_idx_exact: current_msg_list
+                    .all_messages()
+                    .indexOf(current_msg_list.get(current_msg_list.selected_id())),
+                render_start: current_msg_list.view._render_win_start,
+                render_end: current_msg_list.view._render_win_end,
+            });
+        }
+        current_msg_list.pre_narrow_offset = current_msg_list.selected_row().offset().top;
     }
-    var filter = new Filter(raw_operators);
-    var operators = filter.operators();
+};
 
+function update_narrow_title(filter) {
     // Take the most detailed part of the narrow to use as the title.
     // If the operator is something other than "stream", "topic", or
     // "is", we shouldn't update the narrow title
@@ -68,98 +82,175 @@ exports.activate = function (raw_operators, opts) {
             exports.narrow_title = filter.operands("stream")[0];
         }
     } else if (filter.has_operator("is")) {
-        exports.narrow_title = filter.operands("is")[0];
-    } else if (filter.has_operator("pm-with")) {
-        exports.narrow_title = "private";
-    } else if (filter.has_operator("group-pm-with")) {
-        exports.narrow_title = "private group";
+        let title = filter.operands("is")[0];
+        title = title.charAt(0).toUpperCase() + title.slice(1) + " messages";
+        exports.narrow_title = title;
+    } else if (filter.has_operator("pm-with") || filter.has_operator("group-pm-with")) {
+        const emails = filter.public_operators()[0].operand;
+        const user_ids = people.emails_strings_to_user_ids_string(emails);
+        if (user_ids !== undefined) {
+            const names = people.get_recipients(user_ids);
+            if (filter.has_operator("pm-with")) {
+                exports.narrow_title = names;
+            } else {
+                exports.narrow_title = names + " and others";
+            }
+        } else {
+            if (emails.includes(",")) {
+                exports.narrow_title = "Invalid users";
+            } else {
+                exports.narrow_title = "Invalid user";
+            }
+        }
     }
-
     notifications.redraw_title();
+}
 
-    blueslip.debug("Narrowed", {operators: _.map(operators,
-                                                 function (e) { return e.operator; }),
-                                trigger: opts ? opts.trigger : undefined,
-                                previous_id: current_msg_list.selected_id()});
+exports.narrow_title = "home";
+exports.activate = function (raw_operators, opts) {
+    /* Main entrypoint for switching to a new view / message list.
+       Note that for historical reasons related to the current
+       client-side caching structure, the "All messages"/home_msg_list
+       view is reached via `narrow.deactivate()`.
 
-    opts = _.defaults({}, opts, {
-        then_select_id: home_msg_list.selected_id(),
-        select_first_unread: false,
-        use_initial_narrow_pointer: false,
-        change_hash: true,
-        trigger: 'unknown',
+       The name is based on "narrowing to a subset of the user's
+       messages.".  Supported parameters:
+
+       raw_operators: Narrowing/search operators; used to construct
+       a Filter object that decides which messages belong in the
+       view.  Required (See the above note on how `home_msg_list` works)
+
+       All other options are encoded via the `opts` dictionary:
+
+       * trigger: Optional parameter used mainly for logging and some
+         custom UI behavior for certain buttons.  Generally aim to
+         have this be unique for each UI widget that can trigger narrowing.
+
+       * change_hash: Whether this narrow should change the URL
+         fragment ("hash") in the URL bar.  Should be true unless the
+         URL is already correct (E.g. because the hashchange logic
+         itself is triggering the change of view).
+
+       * then_select_id: If the caller wants us to do the narrow
+         centered on a specific message ID ("anchor" in the API
+         parlance), specify that here.  Useful e.g. when the user
+         clicks on a specific message; implied by a `near:` operator.
+
+       * then_select_offset: Offset from the top of the page in pixels
+         at which to place the then_select_id message following
+         rendering.  Important to avoid what would otherwise feel like
+         visual glitches after clicking on a specific message's headig
+         or rerendering due to server-side changes.
+    */
+
+    const start_time = new Date();
+    const was_narrowed_already = narrow_state.active();
+    // most users aren't going to send a bunch of a out-of-narrow messages
+    // and expect to visit a list of narrows, so let's get these out of the way.
+    notifications.clear_compose_notifications();
+
+    // Open tooltips are only interesting for current narrow,
+    // so hide them when activating a new one.
+    $(".tooltip").hide();
+
+    if (raw_operators.length === 0) {
+        return exports.deactivate();
+    }
+    const filter = new Filter(raw_operators);
+    const operators = filter.operators();
+
+    update_narrow_title(filter);
+    message_scroll.hide_top_of_narrow_notices();
+    message_scroll.hide_indicators();
+
+    blueslip.debug("Narrowed", {
+        operators: operators.map((e) => e.operator),
+        trigger: opts ? opts.trigger : undefined,
+        previous_id: current_msg_list.selected_id(),
     });
+
+    opts = {
+        then_select_id: -1,
+        then_select_offset: undefined,
+        change_hash: true,
+        trigger: "unknown",
+        ...opts,
+    };
+
+    const id_info = {
+        target_id: undefined,
+        local_select_id: undefined,
+        final_select_id: undefined,
+    };
 
     // These two narrowing operators specify what message should be
     // selected and should be the center of the narrow.
     if (filter.has_operator("near")) {
-        opts.then_select_id = parseInt(filter.operands("near")[0], 10);
-        opts.select_first_unread = false;
+        id_info.target_id = parseInt(filter.operands("near")[0], 10);
     }
     if (filter.has_operator("id")) {
-        opts.then_select_id = parseInt(filter.operands("id")[0], 10);
-        opts.select_first_unread = false;
+        id_info.target_id = parseInt(filter.operands("id")[0], 10);
     }
 
-    // This block is for a case of loading a browser window for the
-    // first time in a narrow.
-    // According to old comments, this shouldn't happen anymore;
-    // more investigation is needed.
-    if (opts.then_select_id === -1 && !opts.use_initial_narrow_pointer) {
-        blueslip.warn("Setting then_select_id to page_params.pointer.");
-        opts.then_select_id = page_params.pointer;
-        opts.select_first_unread = false;
+    if (opts.then_select_id > 0) {
+        // We override target_id in this case, since the user could be
+        // having a near: narrow auto-reloaded.
+        id_info.target_id = opts.then_select_id;
+        if (opts.then_select_offset === undefined) {
+            const row = current_msg_list.get_row(opts.then_select_id);
+            if (row.length > 0) {
+                opts.then_select_offset = row.offset().top;
+            }
+        }
     }
-
-    var then_select_id = opts.then_select_id;
-    var then_select_offset;
 
     if (!was_narrowed_already) {
-        unread.messages_read_in_narrow = false;
+        unread.set_messages_read_in_narrow(false);
     }
 
-    if (!opts.select_first_unread && current_msg_list.get_row(then_select_id).length > 0) {
-        then_select_offset = current_msg_list.get_row(then_select_id).offset().top;
-    }
-
-    // For legacy reasons, we need to set current_filter before calling
-    // muting_enabled.
+    // IMPORTANT!  At this point we are heavily committed to
+    // populating the new narrow, so we update our narrow_state.
+    // From here on down, any calls to the narrow_state API will
+    // reflect the upcoming narrow.
     narrow_state.set_current_filter(filter);
-    var muting_enabled = narrow_state.muting_enabled();
+
+    const muting_enabled = narrow_state.muting_enabled();
 
     // Save how far from the pointer the top of the message list was.
-    if (current_msg_list.selected_id() !== -1) {
-        if (current_msg_list.selected_row().length === 0) {
-            blueslip.debug("narrow.activate missing selected row", {
-                selected_id: current_msg_list.selected_id(),
-                selected_idx: current_msg_list.selected_idx(),
-                selected_idx_exact: current_msg_list._items.indexOf(
-                                        current_msg_list.get(current_msg_list.selected_id())),
-                render_start: current_msg_list.view._render_win_start,
-                render_end: current_msg_list.view._render_win_end,
-            });
-        }
-        current_msg_list.pre_narrow_offset = current_msg_list.selected_row().offset().top;
+    exports.save_pre_narrow_offset_for_reload();
+
+    let msg_data = new MessageListData({
+        filter: narrow_state.filter(),
+        muting_enabled,
+    });
+
+    // Populate the message list if we can apply our filter locally (i.e.
+    // with no backend help) and we have the message we want to select.
+    // Also update id_info accordingly.
+    // original back.
+    exports.maybe_add_local_messages({
+        id_info,
+        msg_data,
+    });
+
+    if (!id_info.local_select_id) {
+        // If we're not actually read to select an ID, we need to
+        // trash the `MessageListData` object that we just constructed
+        // and pass an empty one to MessageList, because the block of
+        // messages in the MessageListData built inside
+        // maybe_add_local_messages is likely not be contiguous with
+        // the block we're about to request from the server instead.
+        msg_data = new MessageListData({
+            filter: narrow_state.filter(),
+            muting_enabled,
+        });
     }
 
-    if (opts.use_initial_narrow_pointer) {
-        then_select_id = page_params.initial_narrow_pointer;
-        then_select_offset = page_params.initial_narrow_offset;
-        opts.use_initial_narrow_pointer = false;
-        opts.select_first_unread = false;
-        home_msg_list.pre_narrow_offset = page_params.initial_offset;
-    }
-
-    var msg_list_opts = {
-        collapse_messages: ! narrow_state.get_current_filter().is_search(),
-        muting_enabled: muting_enabled,
-    };
-
-    var msg_list = new message_list.MessageList(
-        'zfilt',
-        narrow_state.get_current_filter(),
-        msg_list_opts
-    );
+    const msg_list = new message_list.MessageList({
+        data: msg_data,
+        table_name: "zfilt",
+        collapse_messages: !narrow_state.filter().is_search(),
+    });
 
     msg_list.start_time = start_time;
 
@@ -170,66 +261,57 @@ exports.activate = function (raw_operators, opts) {
     $("#zfilt").addClass("focused_table");
     $("#zhome").removeClass("focused_table");
 
-    ui_util.change_tab_to('#home');
-    message_list.narrowed = msg_list;
+    ui_util.change_tab_to("#home");
+    message_list.set_narrowed(msg_list);
     current_msg_list = message_list.narrowed;
 
-    function maybe_select_closest() {
-        if (! message_list.narrowed.empty()) {
-            if (opts.select_first_unread) {
-                then_select_id = message_list.narrowed.first_unread_message_id();
-            }
-
-            var preserve_pre_narrowing_screen_position =
-                !opts.select_first_unread &&
-                (message_list.narrowed.get(then_select_id) !== undefined) &&
-                (then_select_offset !== undefined);
-
-            var then_scroll = !preserve_pre_narrowing_screen_position;
-
-            message_list.narrowed.select_id(then_select_id, {then_scroll: then_scroll,
-                                                         use_closest: true,
-                                                         force_rerender: true,
-                                                        });
-
-            if (preserve_pre_narrowing_screen_position) {
-                // Scroll so that the selected message is in the same
-                // position in the viewport as it was prior to
-                // narrowing
-                message_viewport.set_message_offset(then_select_offset);
-            }
-            unread_ops.process_visible();
-        }
+    let then_select_offset;
+    if (id_info.target_id === id_info.final_select_id) {
+        then_select_offset = opts.then_select_offset;
     }
 
-    // Don't bother populating a message list when it won't contain
-    // the message we want anyway or if the filter can't be applied
-    // locally.
-    if (message_list.all.get(then_select_id) !== undefined) {
-        if (narrow_state.get_current_filter().can_apply_locally()) {
-            message_util.add_messages(message_list.all.all_messages(), message_list.narrowed,
-                                       {delay_render: true});
+    const select_immediately = id_info.local_select_id !== undefined;
+
+    (function fetch_messages() {
+        let anchor;
+
+        // Either we're trying to center the narrow around a
+        // particular message ID (which could be max_int), or we're
+        // asking the server to figure out for us what the first
+        // unread message is, and center the narrow around that.
+        if (id_info.final_select_id === undefined) {
+            anchor = "first_unread";
+        } else if (id_info.final_select_id === -1) {
+            // This case should never happen in this code path; it's
+            // here in case we choose to extract this as an
+            // independent reusable function.
+            anchor = "oldest";
+        } else if (id_info.final_select_id === LARGER_THAN_MAX_MESSAGE_ID) {
+            anchor = "newest";
+        } else {
+            anchor = id_info.final_select_id;
         }
-    }
 
-    var defer_selecting_closest = message_list.narrowed.empty();
-    message_fetch.load_messages_for_narrow({
-        then_select_id: then_select_id,
-        use_initial_narrow_pointer: opts.use_initial_narrow_pointer,
-        cont: function () {
-            if (defer_selecting_closest) {
-                maybe_select_closest();
-            }
-            msg_list.network_time = new Date();
-            maybe_report_narrow_time(msg_list);
-        },
-    });
+        message_fetch.load_messages_for_narrow({
+            anchor,
+            cont() {
+                if (!select_immediately) {
+                    exports.update_selection({
+                        id_info,
+                        select_offset: then_select_offset,
+                    });
+                }
+                msg_list.network_time = new Date();
+                maybe_report_narrow_time(msg_list);
+            },
+        });
+    })();
 
-    if (! defer_selecting_closest) {
-        message_scroll.hide_indicators();
-        maybe_select_closest();
-    } else {
-        message_scroll.show_loading_older();
+    if (select_immediately) {
+        exports.update_selection({
+            id_info,
+            select_offset: then_select_offset,
+        });
     }
 
     // Put the narrow operators in the URL fragment.
@@ -239,71 +321,265 @@ exports.activate = function (raw_operators, opts) {
         hashchange.save_narrow(operators);
     }
 
-    // Put the narrow operators in the search bar.
-    $('#search_query').val(Filter.unparse(operators));
+    if (page_params.search_pills_enabled && opts.trigger !== "search") {
+        search_pill_widget.widget.clear(true);
+
+        for (const operator of operators) {
+            const search_string = Filter.unparse([operator]);
+            search_pill.append_search_string(search_string, search_pill_widget.widget);
+        }
+    }
+
+    if (filter.contains_only_private_messages()) {
+        compose.update_closed_compose_buttons_for_private();
+    } else {
+        compose.update_closed_compose_buttons_for_stream();
+    }
+
     search.update_button_visibility();
 
     compose_actions.on_narrow(opts);
 
-    var current_filter = narrow_state.get_current_filter();
+    const current_filter = narrow_state.filter();
 
     top_left_corner.handle_narrow_activated(current_filter);
     stream_list.handle_narrow_activated(current_filter);
+    typing_events.render_notifications_for_narrow();
+    tab_bar.initialize();
 
-    $(document).trigger($.Event('narrow_activated.zulip', {msg_list: message_list.narrowed,
-                                                            filter: current_filter,
-                                                            trigger: opts.trigger}));
     msg_list.initial_core_time = new Date();
-    setTimeout(function () {
+    setTimeout(() => {
+        resize.resize_stream_filters_container();
         msg_list.initial_free_time = new Date();
         maybe_report_narrow_time(msg_list);
     }, 0);
 };
 
-exports.stream_topic = function () {
-    // This function returns the stream/topic that we most
-    // specifically care about, according (mostly) to the
-    // currently selected message.
-    var msg = current_msg_list.selected_message();
+function min_defined(a, b) {
+    if (a === undefined) {
+        return b;
+    }
+    if (b === undefined) {
+        return a;
+    }
+    return a < b ? a : b;
+}
 
-    if (msg) {
-        return {
-            stream: msg.stream || undefined,
-            topic: msg.subject || undefined,
-        };
+function load_local_messages(msg_data) {
+    // This little helper loads messages into our narrow message
+    // data and returns true unless it's empty.  We use this for
+    // cases when our local cache (message_list.all) has at least
+    // one message the user will expect to see in the new narrow.
+
+    const in_msgs = message_list.all.all_messages();
+    msg_data.add_messages(in_msgs);
+
+    return !msg_data.empty();
+}
+
+exports.maybe_add_local_messages = function (opts) {
+    // This function determines whether we need to go to the server to
+    // fetch messages for the requested narrow, or whether we have the
+    // data cached locally to render the narrow correctly without
+    // waiting for the server.  There are two high-level outcomes:
+    //
+    // 1. We're centering this narrow on the first unread message: In
+    // this case final_select_id is left undefined or first unread
+    // message id locally.
+    //
+    // 2. We're centering this narrow on the most recent matching
+    // message. In this case we select final_select_id to the latest
+    // message in the local cache (if the local cache has the latest
+    // messages for this narrow) or max_int (if it doesn't).
+    //
+    // In either case, this function does two very closely related
+    // things, both of which are somewhat optional:
+    //
+    //  - update id_info with more complete values
+    //  - add messages into our message list from our local cache
+    const id_info = opts.id_info;
+    const msg_data = opts.msg_data;
+    const unread_info = narrow_state.get_first_unread_info();
+
+    // If we don't have a specific message we're hoping to select
+    // (i.e. no `target_id`) and the narrow's filter doesn't
+    // allow_use_first_unread_when_narrowing, we want to just render
+    // the latest messages matching the filter.  To ensure this, we
+    // set an initial value final_select_id to `max_int`.
+    //
+    // While that's a confusing naming choice (`final_select_id` is
+    // meant to be final in the context of the caller), this sets the
+    // default behavior to be fetching and then selecting the very
+    // latest message in this narrow.
+    //
+    // If we're able to render the narrow locally, we'll end up
+    // overwriting this value with the ID of the latest message in the
+    // narrow later in this function.
+    if (!id_info.target_id && !narrow_state.filter().allow_use_first_unread_when_narrowing()) {
+        // Note that this may be overwritten; see above comment.
+        id_info.final_select_id = LARGER_THAN_MAX_MESSAGE_ID;
     }
 
-    // We may be in an empty narrow.  In that case we use
-    // our narrow parameters to return the stream/topic.
-    return {
-        stream: narrow_state.stream(),
-        topic: narrow_state.topic(),
-    };
+    if (unread_info.flavor === "cannot_compute") {
+        // Full-text search and potentially other future cases where
+        // we can't check which messages match on the frontend, so it
+        // doesn't matter what's in our cache, we must go to the server.
+        if (id_info.target_id) {
+            // TODO: Ideally, in this case we should be asking the
+            // server to give us the first unread or the target_id,
+            // whichever is first (i.e. basically the `found` logic
+            // below), but the server doesn't support that query.
+            id_info.final_select_id = id_info.target_id;
+        }
+        // if we can't compute a next unread id, just return without
+        // setting local_select_id, so that we go to the server.
+        return;
+    }
+
+    // We can now assume narrow_state.filter().can_apply_locally(),
+    // because !can_apply_locally => cannot_compute
+
+    if (
+        unread_info.flavor === "found" &&
+        narrow_state.filter().allow_use_first_unread_when_narrowing()
+    ) {
+        // We have at least one unread message in this narrow, and the
+        // narrow is one where we use the first unread message in
+        // narrowing positioning decisions.  So either we aim for the
+        // first unread message, or the target_id (if any), whichever
+        // is earlier.  See #2091 for a detailed explanation of why we
+        // need to look at unread here.
+        id_info.final_select_id = min_defined(id_info.target_id, unread_info.msg_id);
+
+        if (!load_local_messages(msg_data)) {
+            return;
+        }
+
+        // Now that we know what message ID we're going to land on, we
+        // can see if we can take the user there locally.
+        if (msg_data.get(id_info.final_select_id)) {
+            id_info.local_select_id = id_info.final_select_id;
+        }
+
+        // If we don't have the first unread message locally, we must
+        // go to the server to get it before we can render the narrow.
+        return;
+    }
+
+    // In all cases below here, the first unread message is irrelevant
+    // to our positioning decisions, either because there are no
+    // unread messages (unread_info.flavor === 'not_found') or because
+    // this is a mixed narrow where we prefer the bottom of the feed
+    // to the first unread message for positioning (and the narrow
+    // will be configured to not mark messages as read).
+
+    if (!id_info.target_id) {
+        // Without unread messages or a target ID, we're narrowing to
+        // the very latest message or first unread if matching the narrow allows.
+
+        if (!message_list.all.data.fetch_status.has_found_newest()) {
+            // If message_list.all is not caught up, then we cannot
+            // populate the latest messages for the target narrow
+            // correctly from there, so we must go to the server.
+            return;
+        }
+        if (!load_local_messages(msg_data)) {
+            return;
+        }
+        // Otherwise, we have matching messages, and message_list.all
+        // is caught up, so the last message in our now-populated
+        // msg_data object must be the last message matching the
+        // narrow the server could give us, so we can render locally.
+        // and use local latest message id instead of max_int if set earlier.
+        const last_msg = msg_data.last();
+        id_info.final_select_id = last_msg.id;
+        id_info.local_select_id = id_info.final_select_id;
+        return;
+    }
+
+    // We have a target_id and no unread messages complicating things,
+    // so we definitely want to land on the target_id message.
+    id_info.final_select_id = id_info.target_id;
+
+    // TODO: We could improve on this next condition by considering
+    // cases where `message_list.all.has_found_oldest(); which would
+    // come up with e.g. `near: 0` in a small organization.
+    //
+    // And similarly for `near: max_int` with has_found_newest.
+    if (
+        message_list.all.empty() ||
+        id_info.target_id < message_list.all.first().id ||
+        id_info.target_id > message_list.all.last().id
+    ) {
+        // If the target message is outside the range that we had
+        // available for local population, we must go to the server.
+        return;
+    }
+    if (!load_local_messages(msg_data)) {
+        return;
+    }
+    if (msg_data.get(id_info.target_id)) {
+        // We have a range of locally renderable messages, including
+        // our target, so we can render the narrow locally.
+        id_info.local_select_id = id_info.final_select_id;
+        return;
+    }
+
+    // Note: Arguably, we could have a use_closest sort of condition
+    // here to handle cases where `target_id` doesn't match the narrow
+    // but is within the locally renderable range.  But
+    // !can_apply_locally + target_id is a rare combination in the
+    // first place, so we don't bother.
+    return;
+};
+
+exports.update_selection = function (opts) {
+    if (message_list.narrowed.empty()) {
+        return;
+    }
+
+    const id_info = opts.id_info;
+    const select_offset = opts.select_offset;
+
+    let msg_id = id_info.final_select_id;
+    if (msg_id === undefined) {
+        msg_id = message_list.narrowed.first_unread_message_id();
+    }
+
+    const preserve_pre_narrowing_screen_position =
+        message_list.narrowed.get(msg_id) !== undefined && select_offset !== undefined;
+
+    const then_scroll = !preserve_pre_narrowing_screen_position;
+
+    message_list.narrowed.select_id(msg_id, {
+        then_scroll,
+        use_closest: true,
+        force_rerender: true,
+    });
+
+    if (preserve_pre_narrowing_screen_position) {
+        // Scroll so that the selected message is in the same
+        // position in the viewport as it was prior to
+        // narrowing
+        message_list.narrowed.view.set_message_offset(select_offset);
+    }
+    unread_ops.process_visible();
 };
 
 exports.activate_stream_for_cycle_hotkey = function (stream_name) {
     // This is the common code for A/D hotkeys.
-
-    var filter_expr = [
-        {operator: 'stream', operand: stream_name},
-    ];
-
-    var opts = {
-        select_first_unread: true,
-    };
-
-    exports.activate(filter_expr, opts);
+    const filter_expr = [{operator: "stream", operand: stream_name}];
+    exports.activate(filter_expr, {});
 };
 
-
 exports.stream_cycle_backward = function () {
-    var curr_stream = narrow_state.stream();
+    const curr_stream = narrow_state.stream();
 
     if (!curr_stream) {
         return;
     }
 
-    var stream_name = topic_generator.get_prev_stream(curr_stream);
+    const stream_name = topic_generator.get_prev_stream(curr_stream);
 
     if (!stream_name) {
         return;
@@ -313,13 +589,13 @@ exports.stream_cycle_backward = function () {
 };
 
 exports.stream_cycle_forward = function () {
-    var curr_stream = narrow_state.stream();
+    const curr_stream = narrow_state.stream();
 
     if (!curr_stream) {
         return;
     }
 
-    var stream_name = topic_generator.get_next_stream(curr_stream);
+    const stream_name = topic_generator.get_next_stream(curr_stream);
 
     if (!stream_name) {
         return;
@@ -329,38 +605,29 @@ exports.stream_cycle_forward = function () {
 };
 
 exports.narrow_to_next_topic = function () {
-    var curr_info = exports.stream_topic();
+    const curr_info = {
+        stream: narrow_state.stream(),
+        topic: narrow_state.topic(),
+    };
 
-    if (!curr_info) {
-        return;
-    }
-
-    var next_narrow = topic_generator.get_next_topic(
-        curr_info.stream,
-        curr_info.topic
-    );
+    const next_narrow = topic_generator.get_next_topic(curr_info.stream, curr_info.topic);
 
     if (!next_narrow) {
         return;
     }
 
-    var filter_expr = [
-        {operator: 'stream', operand: next_narrow.stream},
-        {operator: 'topic', operand: next_narrow.topic},
+    const filter_expr = [
+        {operator: "stream", operand: next_narrow.stream},
+        {operator: "topic", operand: next_narrow.topic},
     ];
 
-    var opts = {
-        select_first_unread: true,
-    };
-
-    exports.activate(filter_expr, opts);
+    exports.activate(filter_expr, {});
 };
 
 exports.narrow_to_next_pm_string = function () {
+    const curr_pm = narrow_state.pm_string();
 
-    var curr_pm = narrow_state.pm_string();
-
-    var next_pm = topic_generator.get_next_unread_pm_string(curr_pm);
+    const next_pm = topic_generator.get_next_unread_pm_string(curr_pm);
 
     if (!next_pm) {
         return;
@@ -368,70 +635,147 @@ exports.narrow_to_next_pm_string = function () {
 
     // Hopefully someday we can narrow by user_ids_string instead of
     // mapping back to emails.
-    var pm_with = people.user_ids_string_to_emails_string(next_pm);
+    const pm_with = people.user_ids_string_to_emails_string(next_pm);
 
-    var filter_expr = [
-        {operator: 'pm-with', operand: pm_with},
-    ];
+    const filter_expr = [{operator: "pm-with", operand: pm_with}];
 
     // force_close parameter is true to not auto open compose_box
-    var opts = {
-        select_first_unread: true,
+    const opts = {
         force_close: true,
     };
 
     exports.activate(filter_expr, opts);
 };
 
-
 // Activate narrowing with a single operator.
 // This is just for syntactic convenience.
 exports.by = function (operator, operand, opts) {
-    exports.activate([{operator: operator, operand: operand}], opts);
+    exports.activate([{operator, operand}], opts);
 };
 
-exports.by_subject = function (target_id, opts) {
+exports.by_topic = function (target_id, opts) {
     // don't use current_msg_list as it won't work for muted messages or for out-of-narrow links
-    var original = message_store.get(target_id);
-    if (original.type !== 'stream') {
+    const original = message_store.get(target_id);
+    if (original.type !== "stream") {
         // Only stream messages have topics, but the
         // user wants us to narrow in some way.
         exports.by_recipient(target_id, opts);
         return;
     }
-    unread_ops.mark_message_as_read(original);
-    var search_terms = [
-        {operator: 'stream', operand: original.stream},
-        {operator: 'topic', operand: original.subject},
+
+    // We don't check msg_list.can_mark_messages_read here only because
+    // the target msg_list isn't initialized yet; in any case, the
+    // message is about to be marked read in the new view.
+    unread_ops.notify_server_message_read(original);
+
+    const search_terms = [
+        {operator: "stream", operand: original.stream},
+        {operator: "topic", operand: original.topic},
     ];
-    opts = _.defaults({}, opts, {then_select_id: target_id});
+    opts = {then_select_id: target_id, ...opts};
     exports.activate(search_terms, opts);
 };
 
 // Called for the 'narrow by stream' hotkey.
 exports.by_recipient = function (target_id, opts) {
-    opts = _.defaults({}, opts, {then_select_id: target_id});
+    opts = {then_select_id: target_id, ...opts};
     // don't use current_msg_list as it won't work for muted messages or for out-of-narrow links
-    var message = message_store.get(target_id);
-    unread_ops.mark_message_as_read(message);
-    switch (message.type) {
-    case 'private':
-        exports.by('pm-with', message.reply_to, opts);
-        break;
+    const message = message_store.get(target_id);
 
-    case 'stream':
-        exports.by('stream', message.stream, opts);
-        break;
+    // We don't check msg_list.can_mark_messages_read here only because
+    // the target msg_list isn't initialized yet; in any case, the
+    // message is about to be marked read in the new view.
+    unread_ops.notify_server_message_read(message);
+
+    switch (message.type) {
+        case "private":
+            exports.by("pm-with", message.reply_to, opts);
+            break;
+
+        case "stream":
+            exports.by("stream", message.stream, opts);
+            break;
     }
 };
 
-exports.by_time_travel = function (target_id, opts) {
-    opts = _.defaults({}, opts, {then_select_id: target_id});
-    narrow.activate([{operator: "near", operand: target_id}], opts);
+// Called by the narrow_to_compose_target hotkey.
+exports.to_compose_target = function () {
+    if (!compose_state.composing()) {
+        return;
+    }
+
+    const opts = {
+        trigger: "narrow_to_compose_target",
+    };
+
+    if (compose_state.get_message_type() === "stream") {
+        const stream_name = compose_state.stream_name();
+        const stream_id = stream_data.get_stream_id(stream_name);
+        if (!stream_id) {
+            return;
+        }
+        // If we are composing to a new topic, we narrow to the stream but
+        // grey-out the message view instead of narrowing to an empty view.
+        const topics = stream_topic_history.get_recent_topic_names(stream_id);
+        const operators = [{operator: "stream", operand: stream_name}];
+        const topic = compose_state.topic();
+        if (topics.includes(topic)) {
+            operators.push({operator: "topic", operand: topic});
+        }
+        exports.activate(operators, opts);
+        return;
+    }
+
+    if (compose_state.get_message_type() === "private") {
+        const recipient_string = compose_state.private_message_recipient();
+        const emails = util.extract_pm_recipients(recipient_string);
+        const invalid = emails.filter((email) => !people.is_valid_email_for_compose(email));
+        // If there are no recipients or any recipient is
+        // invalid, narrow to all PMs.
+        if (emails.length === 0 || invalid.length > 0) {
+            exports.by("is", "private", opts);
+            return;
+        }
+        exports.by("pm-with", util.normalize_recipients(recipient_string), opts);
+    }
 };
 
+function handle_post_narrow_deactivate_processes() {
+    compose_fade.update_message_list();
+
+    // clear existing search pills
+    if (page_params.search_pills_enabled) {
+        search_pill_widget.widget.clear(true);
+    }
+
+    top_left_corner.handle_narrow_deactivated();
+    stream_list.handle_narrow_deactivated();
+    compose.update_closed_compose_buttons_for_stream();
+    message_edit.handle_narrow_deactivated();
+    widgetize.set_widgets_for_list();
+    typing_events.render_notifications_for_narrow();
+    tab_bar.initialize();
+    exports.narrow_title = "home";
+    notifications.redraw_title();
+    message_scroll.hide_top_of_narrow_notices();
+    message_scroll.update_top_of_narrow_notices(home_msg_list);
+}
+
 exports.deactivate = function () {
-    if (narrow_state.get_current_filter() === undefined) {
+    /*
+      Switches current_msg_list from narrowed_msg_list to
+      home_msg_list ("All messages"), ending the current narrow.  This
+      is a very fast operation, because we keep home_msg_list's data
+      cached and updated in the DOM at all times, making it suitable
+      for rapid access via keyboard shortcuts.
+
+      Long-term, we will likely want to make `home_msg_list` not
+      special in any way, and instead just have a generic
+      message_list_data structure caching system that happens to have
+      home_msg_list in it.
+     */
+    search.clear_search_form();
+    if (narrow_state.filter() === undefined) {
         return;
     }
     unnarrow_times = {start_time: new Date()};
@@ -453,22 +797,21 @@ exports.deactivate = function () {
 
     exports.hide_empty_narrow_message();
 
-    $("body").removeClass('narrowed_view');
-    $("#zfilt").removeClass('focused_table');
-    $("#zhome").addClass('focused_table');
+    $("body").removeClass("narrowed_view");
+    $("#zfilt").removeClass("focused_table");
+    $("#zhome").addClass("focused_table");
     current_msg_list = home_msg_list;
     condense.condense_and_collapse($("#zhome div.message_row"));
 
-    $('#search_query').val('');
     message_scroll.hide_indicators();
     hashchange.save_narrow();
 
     if (current_msg_list.selected_id() !== -1) {
-        var preserve_pre_narrowing_screen_position =
-            (current_msg_list.selected_row().length > 0) &&
-            (current_msg_list.pre_narrow_offset !== undefined);
-        var message_id_to_select;
-        var select_opts = {
+        const preserve_pre_narrowing_screen_position =
+            current_msg_list.selected_row().length > 0 &&
+            current_msg_list.pre_narrow_offset !== undefined;
+        let message_id_to_select;
+        const select_opts = {
             then_scroll: true,
             use_closest: true,
             empty_ok: true,
@@ -498,18 +841,11 @@ exports.deactivate = function () {
         current_msg_list.select_id(message_id_to_select, select_opts);
     }
 
-    compose_fade.update_message_list();
-
-    top_left_corner.handle_narrow_deactivated();
-    stream_list.handle_narrow_deactivated();
-
-    $(document).trigger($.Event('narrow_deactivated.zulip', {msg_list: current_msg_list}));
-
-    exports.narrow_title = "home";
-    notifications.redraw_title();
+    handle_post_narrow_deactivate_processes();
 
     unnarrow_times.initial_core_time = new Date();
-    setTimeout(function () {
+    setTimeout(() => {
+        resize.resize_stream_filters_container();
         unnarrow_times.initial_free_time = new Date();
         report_unnarrow_time();
     });
@@ -526,22 +862,110 @@ exports.restore_home_state = function () {
     navigate.maybe_scroll_to_selected();
 };
 
-function pick_empty_narrow_banner() {
-    var default_banner = $('#empty_narrow_message');
+function set_invalid_narrow_message(invalid_narrow_message) {
+    const search_string_display = $("#empty_search_stop_words_string");
+    search_string_display.text(invalid_narrow_message);
+}
 
-    var current_filter = narrow_state.get_current_filter();
+function show_search_query() {
+    // when search bar contains multiple filters, only show search queries
+    const current_filter = narrow_state.filter();
+    const search_query = current_filter.operands("search")[0];
+    const query_words = search_query.split(" ");
+
+    const search_string_display = $("#empty_search_stop_words_string");
+    let query_contains_stop_words = false;
+
+    // Also removes previous search_string if any
+    search_string_display.text(i18n.t("You searched for:"));
+
+    // Add in stream:foo and topic:bar if present
+    if (current_filter.has_operator("stream") || current_filter.has_operator("topic")) {
+        let stream_topic_string = "";
+        const stream = current_filter.operands("stream")[0];
+        const topic = current_filter.operands("topic")[0];
+        if (stream) {
+            stream_topic_string = "stream: " + stream;
+        }
+        if (topic) {
+            stream_topic_string = stream_topic_string + " topic: " + topic;
+        }
+
+        search_string_display.append(" ");
+        search_string_display.append($("<span>").text(stream_topic_string));
+    }
+
+    for (const query_word of query_words) {
+        search_string_display.append(" ");
+
+        // if query contains stop words, it is enclosed by a <del> tag
+        if (page_params.stop_words.includes(query_word)) {
+            // stop_words do not need sanitization so this is unnecessary but it is fail-safe.
+            search_string_display.append($("<del>").text(query_word));
+            query_contains_stop_words = true;
+        } else {
+            // We use .text("...") to sanitize the user-given query_string.
+            search_string_display.append($("<span>").text(query_word));
+        }
+    }
+
+    if (query_contains_stop_words) {
+        search_string_display.html(
+            i18n.t("Some common words were excluded from your search.") +
+                "<br/>" +
+                search_string_display.html(),
+        );
+    }
+}
+
+function pick_empty_narrow_banner() {
+    const default_banner = $("#empty_narrow_message");
+
+    const current_filter = narrow_state.filter();
 
     if (current_filter === undefined) {
         return default_banner;
     }
 
-    var first_term = current_filter.operators()[0];
-    var first_operator = first_term.operator;
-    var first_operand = first_term.operand;
-    var num_operators = current_filter.operators().length;
+    const first_term = current_filter.operators()[0];
+    const first_operator = first_term.operator;
+    const first_operand = first_term.operand;
+    const num_operators = current_filter.operators().length;
 
     if (num_operators !== 1) {
-        // For multi-operator narrows, we just use the default banner
+        // For invalid-multi-operator narrows, we display an invalid narrow message
+        const streams = current_filter.operands("stream");
+
+        let invalid_narrow_message = "";
+        // No message can have multiple streams
+        if (streams.length > 1) {
+            invalid_narrow_message = i18n.t(
+                "You are searching for messages that belong to more than one stream, which is not possible.",
+            );
+        }
+        // No message can have multiple topics
+        if (current_filter.operands("topic").length > 1) {
+            invalid_narrow_message = i18n.t(
+                "You are searching for messages that belong to more than one topic, which is not possible.",
+            );
+        }
+        // No message can have multiple senders
+        if (current_filter.operands("sender").length > 1) {
+            invalid_narrow_message = i18n.t(
+                "You are searching for messages that are sent by more than one person, which is not possible.",
+            );
+        }
+        if (invalid_narrow_message !== "") {
+            set_invalid_narrow_message(invalid_narrow_message);
+            return $("#empty_search_narrow_message");
+        }
+
+        // For empty stream searches within other narrows, we display the stop words
+        if (current_filter.operands("search").length > 0) {
+            show_search_query();
+            return $("#empty_search_narrow_message");
+        }
+        // For other multi-operator narrows, we just use the default banner
         return default_banner;
     } else if (first_operator === "is") {
         if (first_operand === "starred") {
@@ -556,20 +980,42 @@ function pick_empty_narrow_banner() {
             // You have no unread messages.
             return $("#no_unread_narrow_message");
         }
-    } else if ((first_operator === "stream") && !stream_data.is_subscribed(first_operand)) {
+    } else if (first_operator === "stream" && !stream_data.is_subscribed(first_operand)) {
         // You are narrowed to a stream which does not exist or is a private stream
         // in which you were never subscribed.
-        var stream_sub = stream_data.get_sub(narrow_state.stream());
-        if (!stream_sub || stream_sub.invite_only) {
-            return $("#nonsubbed_private_nonexistent_stream_narrow_message");
+
+        function should_display_subscription_button() {
+            const stream_name = narrow_state.stream();
+
+            if (!stream_name) {
+                return false;
+            }
+
+            const stream_sub = stream_data.get_sub(first_operand);
+            return stream_sub && stream_sub.should_display_subscription_button;
         }
-        return $("#nonsubbed_stream_narrow_message");
+
+        if (should_display_subscription_button()) {
+            return $("#nonsubbed_stream_narrow_message");
+        }
+
+        return $("#nonsubbed_private_nonexistent_stream_narrow_message");
     } else if (first_operator === "search") {
         // You are narrowed to empty search results.
+        show_search_query();
         return $("#empty_search_narrow_message");
     } else if (first_operator === "pm-with") {
-        if (first_operand.indexOf(',') === -1) {
+        if (!people.is_valid_bulk_emails_for_compose(first_operand.split(","))) {
+            if (!first_operand.includes(",")) {
+                return $("#non_existing_user");
+            }
+            return $("#non_existing_users");
+        }
+        if (!first_operand.includes(",")) {
             // You have no private messages with this person
+            if (people.is_current_user(first_operand)) {
+                return $("#empty_narrow_self_private_message");
+            }
             return $("#empty_narrow_private_message");
         }
         return $("#empty_narrow_multi_private_message");
@@ -587,75 +1033,17 @@ function pick_empty_narrow_banner() {
 exports.show_empty_narrow_message = function () {
     $(".empty_feed_notice").hide();
     pick_empty_narrow_banner().show();
+    $("#left_bar_compose_reply_button_big").attr(
+        "title",
+        i18n.t("There are no messages to reply to."),
+    );
+    $("#left_bar_compose_reply_button_big").prop("disabled", true);
 };
 
 exports.hide_empty_narrow_message = function () {
     $(".empty_feed_notice").hide();
+    $("#left_bar_compose_reply_button_big").attr("title", i18n.t("Reply (r)"));
+    $("#left_bar_compose_reply_button_big").prop("disabled", false);
 };
 
-exports.pm_with_uri = function (reply_to) {
-    return hashchange.operators_to_hash([
-        {operator: 'pm-with', operand: reply_to},
-    ]);
-};
-
-exports.huddle_with_uri = function (user_ids_string) {
-    // This method is convenient is convenient for callers
-    // that have already converted emails to a comma-delimited
-    // list of user_ids.  We should be careful to keep this
-    // consistent with hash_util.decode_operand.
-    return "#narrow/pm-with/" + user_ids_string + '-group';
-};
-
-exports.by_sender_uri = function (reply_to) {
-    return hashchange.operators_to_hash([
-        {operator: 'sender', operand: reply_to},
-    ]);
-};
-
-exports.by_stream_uri = function (stream) {
-    return "#narrow/stream/" + hash_util.encode_stream_name(stream);
-};
-
-exports.by_stream_subject_uri = function (stream, subject) {
-    return "#narrow/stream/" + hash_util.encode_stream_name(stream) +
-           "/subject/" + hash_util.encodeHashComponent(subject);
-};
-
-exports.by_message_uri = function (message_id) {
-    return "#narrow/id/" + hash_util.encodeHashComponent(message_id);
-};
-
-exports.by_near_uri = function (message_id) {
-    return "#narrow/near/" + hash_util.encodeHashComponent(message_id);
-};
-
-exports.by_conversation_and_time_uri = function (message, is_absolute_url) {
-    var absolute_url = "";
-    if (is_absolute_url) {
-        absolute_url = window.location .protocol + "//" +
-            window.location.host + "/" + window.location.pathname.split('/')[1];
-    }
-    if (message.type === "stream") {
-        return absolute_url + "#narrow/stream/" +
-            hash_util.encode_stream_name(message.stream) +
-            "/subject/" + hash_util.encodeHashComponent(message.subject) +
-            "/near/" + hash_util.encodeHashComponent(message.id);
-    }
-
-    // Include your own email in this URI if it's not there already
-    var all_emails = message.reply_to;
-    if (all_emails.indexOf(people.my_current_email()) === -1) {
-        all_emails += "," + people.my_current_email();
-    }
-    return absolute_url + "#narrow/pm-with/" +
-        hash_util.encodeHashComponent(all_emails) +
-        "/near/" + hash_util.encodeHashComponent(message.id);
-};
-
-return exports;
-
-}());
-if (typeof module !== 'undefined') {
-    module.exports = narrow;
-}
+window.narrow = exports;

@@ -1,25 +1,34 @@
-Hi there,
+{{ _('Welcome to Zulip!') }}
 
-Welcome to Zulip!
+{% if realm_creation %}
+{% trans %}You've created the new Zulip organization {{ realm_name }}.{% endtrans %}
+{% else %}
+{% trans %}You've joined the Zulip organization {{ realm_name }}.{% endtrans %}
+{% endif %}
 
-Zulip is the team communication solution that combines the real-time ease of
-chat with the threaded organization of email. At its core, Zulip is about
-productivity -- making communication fun and easy, while avoiding the
-distracting and disorganized conversations of chatrooms.
 
-We hope you love using Zulip as much as we do. Zulip works best when it's
-always open, so we suggest pinning a browser tab or downloading our desktop
-and mobile apps (https://zulipchat.com/apps). If you're new to Zulip's
-threading, we recommend starting with the desktop or browser experience, and
-using mobile for notifications on the go.
+{{ _('Your account details:') }}
+* {{ _('Organization URL:') }} {{ realm_uri }}
+{% if ldap %}
+{% if ldap_username %}
+* {{ _('Username:') }} {{ ldap_username }}
+{% else %}
+* {{ _('Use your LDAP account to login') }}
+{% endif %}
+{% else %}
+* {{ _('Email:') }} {{ email }}
+{% endif %}
+{% trans apps_page_link="https://zulip.com/apps" %}(you'll need these to sign in to the mobile and desktop apps ({{ apps_page_link }})){% endtrans %}
 
-If you have any feedback, or want to see how we use Zulip for managing the
-Zulip project itself, swing by https://chat.zulip.org and say hi! {% if is_realm_admin %}If this is
-your first Zulip organization, we also recommend checking out
-{{ organization_setup_advice_link }}.{% endif %}
 
-Cheers,
-Team Zulip
+{% if is_realm_admin %}
+{% trans %}Check out our guide ({{ getting_started_link }}) for admins, become a Zulip pro with a few keyboard shortcuts ({{ keyboard_shortcuts_link }}), or dive right in to {{ realm_uri }}!{% endtrans %}
+{% else %}
+{% trans %}Learn more ({{ getting_started_link }}) about Zulip, become a pro with a few keyboard shortcuts ({{ keyboard_shortcuts_link }}), or dive right in to {{ realm_uri }}!{% endtrans %}
+{% endif %}
 
-PS: Check us out on Twitter (@zulip) or star us on GitHub
-(https://github.com/zulip/zulip)!
+
+{{ _("Cheers,") }}
+{{ _("Team Zulip") }}
+
+{% trans %}PS: Check us out on Twitter (@zulip), star us on GitHub (https://github.com/zulip/zulip), or chat with us live on the Zulip community server (https://chat.zulip.org)!{% endtrans %}

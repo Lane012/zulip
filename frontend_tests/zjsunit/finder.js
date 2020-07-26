@@ -1,45 +1,41 @@
-var finder = (function () {
+const fs = require("fs");
+const path = require("path");
 
-var exports = {};
-
-var _ = require('node_modules/underscore/underscore.js');
-var fs = require('fs');
-var path = require('path');
+const _ = require("underscore/underscore.js");
 
 exports.find_files_to_run = function () {
-    var oneFileFilter = [];
-    var testsDifference = [];
+    let oneFileFilter = [];
+    let testsDifference = [];
     if (process.argv[2]) {
         oneFileFilter = process.argv
-          .slice(2)
-          .filter(function (filename) {return (/[.]js$/).test(filename);})
-          .map(function (filename) {return filename.replace(/\.js$/i, '');});
+            .slice(2)
+            .filter((filename) => /[.]js$/.test(filename))
+            .map((filename) => filename.replace(/\.js$/i, ""));
     }
 
     // tests_dir is where we find our specific unit tests (as opposed
     // to framework code)
-    var tests_dir = __dirname.replace(/zjsunit/, 'node_tests');
+    const tests_dir = __dirname.replace(/zjsunit/, "node_tests");
 
-    var tests = fs.readdirSync(tests_dir)
-      .filter(function (filename) {return !(/^\./i).test(filename);})
-      .filter(function (filename) {return (/\.js$/i).test(filename);})
-      .map(function (filename) {return filename.replace(/\.js$/i, '');});
+    let tests = fs
+        .readdirSync(tests_dir)
+        .filter((filename) => !/^\./i.test(filename))
+        .filter((filename) => /\.js$/i.test(filename))
+        .map((filename) => filename.replace(/\.js$/i, ""));
 
     if (oneFileFilter.length > 0) {
-        tests = tests.filter(function (filename) {
-            return oneFileFilter.indexOf(filename) !== -1;
-        });
+        tests = tests.filter((filename) => oneFileFilter.includes(filename));
         testsDifference = _.difference(oneFileFilter, tests);
     }
 
-    testsDifference.forEach(function (filename) {
-        throw (filename + ".js does not exist");
+    testsDifference.forEach((filename) => {
+        throw filename + ".js does not exist";
     });
 
     tests.sort();
 
-    var files = tests.map(function (fn) {
-        var obj = {};
+    const files = tests.map((fn) => {
+        const obj = {};
         obj.name = fn;
         obj.full_name = path.join(tests_dir, fn);
         return obj;
@@ -47,8 +43,3 @@ exports.find_files_to_run = function () {
 
     return files;
 };
-
-
-return exports;
-}());
-module.exports = finder;

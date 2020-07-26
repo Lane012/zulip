@@ -1,13 +1,5 @@
 # Writing interactive bots
 
-Zulip's API supports a few different ways of integrating with a
-third-party service.
-
-* **Incoming webhook integrations**, for when you just want notifications from
-  a tool to be sent into Zulip. See the [integrations guide](integration-guide).
-* **Interactive bots**, for when you want the tool to react to
-  messages in Zulip.
-
 This guide is about writing and testing interactive bots. We assume
 familiarity with our [guide for running bots](running-bots).
 
@@ -20,7 +12,7 @@ On this page you'll find:
 * A [guide](#writing-a-bot) on writing a bot.
 * A [guide](#adding-a-bot-to-zulip) on adding a bot to Zulip.
 * A [guide](#testing-a-bots-output) on testing a bot's output.
-* A [documentation](#bot-api) of the bot API.
+* [Documentation](#bot-api) of the bot API.
 * Common [problems](#common-problems) when developing/running bots and their solutions.
 
 ## Installing a development version of the Zulip bots package
@@ -30,16 +22,18 @@ On this page you'll find:
 
 2. `cd python-zulip-api` - navigate into your cloned repository.
 
-3. `./tools/provision` - install all requirements in a Python virtualenv.
+3. `python3 ./tools/provision` - install all requirements in a Python virtualenv.
 
-4. Run the `source <activation/path>` command printed in the previous
-   step to activate the virtualenv.
+4. The output of `provision` will end with a command of the form `source .../activate`;
+   run that command to enter the new virtualenv.
 
-5. *Finished*. You should now see the name of your venv preceding your prompt, e.g. `(ZULIP-~1)`.
+5. *Finished*. You should now see the name of your venv preceding your prompt,
+   e.g. `(zulip-api-py3-venv)`.
 
-*Hint: `./tools/provision` installs `zulip`, `zulip_bots`, and
- `zulip_botserver` in developer mode. This enables you to make changes
- to the code after the packages are installed.*
+*Hint: `provision` installs the `zulip`, `zulip_bots`, and
+ `zulip_botserver` packages in developer mode. This enables you to
+ modify these packages and then run your modified code without
+ having to first re-install the packages or re-provision.*
 
 ## Writing a bot
 
@@ -394,19 +388,22 @@ refactor them.
  https://github.com/zulip/python-zulip-api/tree/master/zulip_bots/zulip_bots/bots/helloworld)
  bot.
 
-    from zulip_bots.test_lib import StubBotTestCase
+```
+from zulip_bots.test_lib import StubBotTestCase
 
-    class TestHelpBot(StubBotTestCase):
-        bot_name = "helloworld"  # type: str
+class TestHelpBot(StubBotTestCase):
+    bot_name: str = "helloworld"
 
-        def test_bot(self) -> None:
-            dialog = [
-                ('', 'beep boop'),
-                ('help', 'beep boop'),
-                ('foo', 'beep boop'),
-            ]
+    def test_bot(self) -> None:
+        dialog = [
+            ('', 'beep boop'),
+            ('help', 'beep boop'),
+            ('foo', 'beep boop'),
+        ]
 
-            self.verify_dialog(dialog)
+        self.verify_dialog(dialog)
+
+```
 
 The `helloworld` bot replies with "beep boop" to every message @-mentioning it.  We
 want our test to verify that the bot **actually** does that.
@@ -453,7 +450,7 @@ system and gives your test "dummy data" instead.
 
 Some bots, such as [Giphy](
 https://github.com/zulip/python-zulip-api/tree/master/zulip_bots/zulip_bots/bots/giphy),
-depend on a third-party we service, such as the Giphy webapp, in order to work. Because
+depend on a third-party service, such as the Giphy webapp, in order to work. Because
 we want our test suite to be reliable and not add load to these third-party APIs, tests
 for these services need to have "test fixtures": sample HTTP request/response pairs to
 be used by the tests. You can specify which one to use in your test code using the
@@ -463,7 +460,7 @@ following helper method:
         # self.assert_bot_response(...)
 
 `mock_http_conversation(fixture_name)` patches `requests.get` and returns the data specified
-in the file `fixtures/<fixture_name>.json`. Use the following JSON code as a skeleton for new
+in the file `fixtures/{fixture_name}.json`. Use the following JSON code as a skeleton for new
 fixtures:
 ```
 {
@@ -481,8 +478,9 @@ fixtures:
 For an example, check out the [giphy bot](
 https://github.com/zulip/python-zulip-api/tree/master/zulip_bots/zulip_bots/bots/giphy).
 
-*Tip: You can use [requestb.in](http://requestb.in) or a similar tool to capture payloads from the
-service your bot is interacting with.*
+*Tip: You can use [requestbin](https://requestbin.com/) or a similar
+tool to capture payloads from the service your bot is interacting
+with.*
 
 #### Examples
 
@@ -496,7 +494,7 @@ to see examples of bot tests.
 
 * My bot won't start
     * Ensure that your API config file is correct (download the config file from the server).
-    * Ensure that you bot script is located in zulip_bots/bots/<my-bot>/
+    * Ensure that you bot script is located in `zulip_bots/bots/<my-bot>/`
     * Are you using your own Zulip development server? Ensure that you run your bot outside
       the Vagrant environment.
     * Some bots require Python 3. Try switching to a Python 3 environment before running

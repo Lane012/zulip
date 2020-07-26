@@ -21,7 +21,7 @@ the main server app, this is [zulip/zulip][github-zulip-zulip].
 Next, clone your fork to your local machine:
 
 ```
-$ git clone --config pull.rebase git@github.com:christi3k/zulip.git
+$ git clone --config pull.rebase https://github.com/YOUR_USERNAME/zulip.git
 Cloning into 'zulip'
 remote: Counting objects: 86768, done.
 remote: Compressing objects: 100% (15/15), done.
@@ -99,43 +99,50 @@ If you haven't already, now is a good time to install the Zulip development envi
 source projects in general, we recommend following our [detailed guide for
 first-time contributors][zulip-rtd-dev-first-time].
 
-## Step 3: Configure Travis CI (continuous integration)
+## Step 3: Configure continuous integration for your fork
 
 This step is optional, but recommended.
 
-The Zulip Server project is configured to use [Travis CI][travis-ci]
-to test and create builds upon each new commit and pull
-request. Travis CI is free for open source projects and it's easy to
-configure for your own fork of Zulip. After doing so, Travis CI will
-run tests for new refs you push to GitHub and email you the outcome
+The Zulip Server project is configured to use [CircleCI][circle-ci]
+to test and create builds upon each new commit and pull request.
+CircleCI is the primary CI that runs frontend and backend
+tests across a wide range of Ubuntu distributions.
+
+CircleCI is free for open source projects and it's easy to
+configure for your own fork of Zulip. After doing so, CircleCI
+will run tests for new refs you push to GitHub and email you the outcome
 (you can also view the results in the web interface).
 
-Running Travis CI against your fork can help save both you and the
+Running CI against your fork can help save both your and the
 Zulip maintainers time by making it easy to test a change fully before
-submitting a pull request.  We generally recommend a worfklow where as
+submitting a pull request.  We generally recommend a workflow where as
 you make changes, you use a fast edit-refresh cycle running individual
 tests locally until your changes work.  But then once you've gotten
 the tests you'd expect to be relevant to your changes working, push a
-branch to Travis CI to run the full test suite before you create a
-pull request.  While you wait for Travis CI to run, you can start
-working on your next task.  When the tests finish, you can create a
-pull request that you already know passes the tests.
+branch to run the full test suite in CircleCI before
+you create a pull request.  While you wait for CircleCI jobs
+to run, you can start working on your next task.  When the tests finish,
+you can create a pull request that you already know passes the tests.
 
-First, sign in to [Travis CI][travis-ci] with your GitHub account and authorize
-Travis CI to access your GitHub account and repositories. Once you've done
-this, Travis CI will fetch your repository information and display it on your
-[profile page][travis-ci-profile]. From there you can enable integration with
-Zulip. ([See screen cast](../_static/zulip-travisci.gif).)
+### Setup CircleCI
+
+First, sign in to [CircleCI][circle-ci] with your GitHub account and authorize
+CircleCI to access your GitHub account and repositories. Once you've logged
+in you'll be in the  **Projects** section which will list all your GitHub
+repositories. Now goto the row of Zulip and click on **Set Up Project**.
+You'll then see a sample hello world config. As your forked repository from Zulip
+will already have the config file, so click on **Start Building** and then choose
+the **Add Manually** option. After that click on **Start Building** to run the build.
+![Screencast of CircleCI setup](../images/zulip-circleci.gif)
 
 [gitbook-rebase]: https://git-scm.com/book/en/v2/Git-Branching-Rebasing
-[github-help-add-ssh-key]: https://help.github.com/articles/adding-a-new-ssh-key-to-your-github-account/
-[github-help-conf-remote]: https://help.github.com/articles/configuring-a-remote-for-a-fork/
-[github-help-fork]: https://help.github.com/articles/fork-a-repo/
-[github-help-sync-fork]: https://help.github.com/articles/syncing-a-fork/
+[github-help-add-ssh-key]: https://help.github.com/en/articles/adding-a-new-ssh-key-to-your-github-account
+[github-help-conf-remote]: https://help.github.com/en/articles/configuring-a-remote-for-a-fork
+[github-help-fork]: https://help.github.com/en/articles/fork-a-repo
+[github-help-sync-fork]: https://help.github.com/en/articles/syncing-a-fork
 [github-zulip]: https://github.com/zulip/
 [github-zulip-zulip]: https://github.com/zulip/zulip/
-[travis-ci]: https://travis-ci.org/
-[travis-ci-profile]: https://travis-ci.org/profile
-[zulip-rtd-dev-first-time]: ../development/setup-vagrant.html
-[zulip-rtd-dev-overview]: ../development/overview.html
+[circle-ci]:https://circleci.com/
+[zulip-rtd-dev-first-time]: ../development/setup-vagrant.md
+[zulip-rtd-dev-overview]: ../development/overview.md
 [zulip-rtd-tools-setup]: ../git/zulip-tools.html#set-up-git-repo-script

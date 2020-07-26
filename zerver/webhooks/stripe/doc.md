@@ -1,50 +1,31 @@
-You can choose to be notified whenever certain events are triggered
-on Stripe by adding a webhook to your Stripe account.
+Get Zulip notifications for Stripe events!
 
-{!create-stream.md!}
+1. {!create-stream.md!}
 
-Next, on your {{ settings_html|safe }}, create a Stripe bot.
+1. {!create-bot-construct-url-indented.md!}
 
-Add a webhook to your Stripe account by going to **Your account** >
-**Account settings** > **Webhooks** > **Add Endpoint**.
+1. On your Stripe Dashboard, click on **Developers** on the left
+   sidebar. Click on **Webhooks**, and click on **+ Add endpoint**.
 
-{!webhook-url-with-bot-email.md!}
+1. Set **URL to be called** to the URL constructed above. Select
+   the event types you would like to be notified about, and click
+   **Add endpoint**.
 
-{!append-stream-name.md!}
+1. [Optional] In Zulip, add a
+   [linkification filter](/help/add-a-custom-linkification-filter) with
+   **Pattern** `(?P<id>cus_[0-9a-zA-Z]+)` and **URL format string**
+   `https://dashboard.stripe.com/customers/%(id)s`.
+
+Zulip currently supports Stripe events for Charges, Customers, Discounts,
+Sources, Subscriptions, Files, Invoices and Invoice items.
 
 {% if 'http:' in external_uri_scheme %}
 
+!!! tip ""
     Note that Stripe will only accept HTTPS webhooks!
 
 {% endif %}
 
-![](/static/images/integrations/stripe/001.png)
-
-To set up different topics for different events, create separate
-webhooks for those events, customizing the URL stream and topic
-for each.
-
-![](/static/images/integrations/stripe/003.png)
-
 {!congrats.md!}
 
-![](/static/images/integrations/stripe/002.png)
-
-You will now receive notifications for the events you have chosen.
-Zulip currently supports the following events:
-
-* Charge Dispute Closed
-* Charge Dispute Created
-* Charge Failed
-* Charge Succeeded
-* Customer Created
-* Customer Deleted
-* Customer Subscription Created
-* Customer Subsciption Deleted
-* Customer Subscription Trial Will End
-* Invoice Payment Failed
-* Order Payment Failed
-* Order Payment Succeeded
-* Order Updated
-* Transfer Failed
-* Transfer Paid
+![](/static/images/integrations/stripe/001.png)

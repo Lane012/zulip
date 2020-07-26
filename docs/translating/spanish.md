@@ -24,7 +24,7 @@ Use informal Spanish for translation:
   to decide what wouldn't sound awkward / rude in Spanish.
 
 * Latest RAE rule ("solo" should
-  [**never**](http://www.rae.es/consultas/el-adverbio-solo-y-los-pronombres-demostrativos-sin-tilde)
+  [**never**](https://www.rae.es/consultas/el-adverbio-solo-y-los-pronombres-demostrativos-sin-tilde)
   have accent, even when it can be replaced with "solamente").
 
 Some terms are very tricky to translate, so be sure to communicate
@@ -38,9 +38,6 @@ Zulip friendly and usable.
   precise translation, preferably don't use that one. Many users may not
   associate "MP" with *private message* in a group context. Better use it
   without abbreviations.
-* Realm - **Instancia**: the literal Spanish of realm is "reino",
-  which is not a term that's charged with computer
-  terminology. "Instancia" is much clearer.
 * Stream - **Canal**: the use of the literal Spanish word for stream
   "Flujo" is very confusing and not the correct metaphor for Spanish
   speaking people. The correct term would be "canal" (*channel*).

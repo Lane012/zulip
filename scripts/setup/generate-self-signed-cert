@@ -30,18 +30,36 @@ fi
 
 set -x
 
-KEYFILE=/etc/ssl/private/zulip.key
-CERTFILE=/etc/ssl/certs/zulip.combined-chain.crt
+is_redhat=false
+if [ -e /etc/redhat-release ]; then
+    is_redhat=true
+    SSLDIR=/etc/pki/tls
+else
+    SSLDIR=/etc/ssl
+fi
+KEYFILE=$SSLDIR/private/zulip.key
+CERTFILE=$SSLDIR/certs/zulip.combined-chain.crt
 
-if [ -n "$EXISTS_OK" ] && [ -e "$KEYFILE" -a -e "$CERTFILE" ]; then
+if [ -n "$EXISTS_OK" ] && [ -e "$KEYFILE" ] && [ -e "$CERTFILE" ]; then
     exit 0
 fi
 
-if [ -z "$FORCE" ] && [ -e "$KEYFILE" -o -e "$CERTFILE" ]; then
+if [ -z "$FORCE" ] && { [ -e "$KEYFILE" ] || [ -e "$CERTFILE" ]; }; then
     echo "$0: certificate and/or key already exists; use --force to overwrite." >&2
     exit 1
 fi
 rm -f "$KEYFILE" "$CERTFILE"
+
+if [[ "$EXTERNAL_HOST" =~ ^(([0-9]+\.){3}[0-9]+)(:[0-9]+)?$ ]]; then
+    subjectAltName="IP:${BASH_REMATCH[1]}"  # IPv4 address
+elif [[ "$EXTERNAL_HOST" =~ ^\[([^][]*)\](:[0-9]+)?$ ]]; then
+    subjectAltName="IP:${BASH_REMATCH[1]}"  # IPv6 address
+elif [[ "$EXTERNAL_HOST" =~ ^([^:]+)(:[0-9]+)?$ ]]; then
+    subjectAltName="DNS:${BASH_REMATCH[1]}"
+else
+    echo "$0: invalid host $EXTERNAL_HOST" >&2
+    exit 1
+fi
 
 config="$(mktemp)" || exit 1
 trap 'rm -f "$config"' EXIT
@@ -65,10 +83,14 @@ commonName          = $EXTERNAL_HOST
 
 [ v3_req ]
 basicConstraints    = CA:FALSE
-subjectAltName      = DNS:$EXTERNAL_HOST
+subjectAltName      = $subjectAltName
 EOF
 
-apt-get install -y openssl
+if [ "$is_redhat" = true ]; then
+    yum install -y openssl
+else
+    apt-get install -y openssl
+fi
 
 # Based on /usr/sbin/make-ssl-cert from Debian's `ssl-cert` package.
 openssl req -new -x509 \

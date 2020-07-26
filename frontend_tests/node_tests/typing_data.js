@@ -1,6 +1,6 @@
 zrequire("typing_data");
 
-(function test_basics() {
+run_test("basics", () => {
     // The typing_data needs to be robust with lists of
     // user ids being in arbitrary sorting order and
     // possibly in string form instead of integer. So all
@@ -43,16 +43,15 @@ zrequire("typing_data");
     // test duplicate ids in a groups
     typing_data.add_typist([20, 40, 20], 20);
     assert.deepEqual(typing_data.get_group_typists([20, 40]), [20]);
-}());
+});
 
+run_test("timers", () => {
+    const events = {};
 
-(function test_timers() {
-    var events = {};
-
-    var stub_timer_id = 'timer_id_stub';
-    var stub_group = [5, 10, 15];
-    var stub_delay = 99;
-    var stub_f = 'function';
+    const stub_timer_id = "timer_id_stub";
+    const stub_group = [5, 10, 15];
+    const stub_delay = 99;
+    const stub_f = "function";
 
     function set_timeout(f, delay) {
         assert.equal(delay, stub_delay);
@@ -82,8 +81,8 @@ zrequire("typing_data");
         typing_data.clear_inbound_timer(stub_group);
     }
 
-    global.patch_builtin('setTimeout', set_timeout);
-    global.patch_builtin('clearTimeout', clear_timeout);
+    global.patch_builtin("setTimeout", set_timeout);
+    global.patch_builtin("clearTimeout", clear_timeout);
 
     // first time, we set
     kickstart();
@@ -116,6 +115,4 @@ zrequire("typing_data");
         timer_cleared: false,
         timer_set: false,
     });
-
-}());
-
+});

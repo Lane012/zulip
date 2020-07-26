@@ -45,7 +45,7 @@ repeated updates to the server, so that downstream clients know that the
 user is still typing.  (Zulip messages tend to be longer than
 messages in other chat/text clients, so this detail is important.)
 
-We have a small state machine in `static/js/typing_status.js` that
+We have a small state machine in `static/shared/js/typing_status.js` that
 makes sure subsequent "start" requests get sent out every ten
 seconds.  (This document is intended to describe the high level
 architecture; the actual time values may be tuned in future releases.
@@ -69,7 +69,7 @@ how long they pause to think, and how frequently they get interrupted.
 
 The server piece of typing notificiations is currently pretty
 straightforward, since we take advantage of Zulip's
-[events system](../subsystems/events-system.html).
+[events system](../subsystems/events-system.md).
 
 We deliberately designed the server piece to be stateless,
 which minimizes the possibility of backend bugs and gives clients
@@ -83,9 +83,7 @@ Requests come into `/json/typing`.  The view mostly calls out
 to `check_send_typing_notification` to do the heavy lifting.
 
 One of the main things that the server does is to simply validate
-the recipients with a call to `recipient_for_emails`.  (We should
-streamline the payload in the request to have user ids instead of
-emails, but of course we will still need to validate recipients.)
+that the `to` users are for valid, active users in the realm.
 
 Once the request has been validated, the server sends events to
 potential recipients of the message.  The event type for that

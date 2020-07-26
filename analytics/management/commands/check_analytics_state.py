@@ -1,27 +1,21 @@
-from argparse import ArgumentParser
+import os
+import time
 from datetime import timedelta
+from typing import Any, Dict
 
 from django.core.management.base import BaseCommand
 from django.utils.timezone import now as timezone_now
 
-from analytics.models import InstallationCount, installation_epoch, \
-    last_successful_fill
 from analytics.lib.counts import COUNT_STATS, CountStat
-from zerver.lib.timestamp import floor_to_hour, floor_to_day, verify_UTC, \
-    TimezoneNotUTCException
+from analytics.models import installation_epoch, last_successful_fill
+from zerver.lib.timestamp import TimezoneNotUTCException, floor_to_day, floor_to_hour, verify_UTC
 from zerver.models import Realm
-
-import os
-import subprocess
-import sys
-import time
-from typing import Any, Dict
 
 states = {
     0: "OK",
     1: "WARNING",
     2: "CRITICAL",
-    3: "UNKNOWN"
+    3: "UNKNOWN",
 }
 
 class Command(BaseCommand):
@@ -38,9 +32,8 @@ class Command(BaseCommand):
         state_file_tmp = state_file_path + "-tmp"
 
         with open(state_file_tmp, "w") as f:
-            f.write("%s|%s|%s|%s\n" % (
-                int(time.time()), status, states[status], message))
-        subprocess.check_call(["mv", state_file_tmp, state_file_path])
+            f.write(f"{int(time.time())}|{status}|{states[status]}|{message}\n")
+        os.rename(state_file_tmp, state_file_path)
 
     def get_fill_state(self) -> Dict[str, Any]:
         if not Realm.objects.exists():
@@ -55,7 +48,7 @@ class Command(BaseCommand):
             try:
                 verify_UTC(last_fill)
             except TimezoneNotUTCException:
-                return {'status': 2, 'message': 'FillState not in UTC for %s' % (property,)}
+                return {'status': 2, 'message': f'FillState not in UTC for {property}'}
 
             if stat.frequency == CountStat.DAY:
                 floor_function = floor_to_day
@@ -67,8 +60,7 @@ class Command(BaseCommand):
                 critical_threshold = timedelta(minutes=150)
 
             if floor_function(last_fill) != last_fill:
-                return {'status': 2, 'message': 'FillState not on %s boundary for %s' %
-                        (stat.frequency, property)}
+                return {'status': 2, 'message': f'FillState not on {stat.frequency} boundary for {property}'}
 
             time_to_last_fill = timezone_now() - last_fill
             if time_to_last_fill > critical_threshold:
@@ -79,7 +71,16 @@ class Command(BaseCommand):
         if len(critical_unfilled_properties) == 0 and len(warning_unfilled_properties) == 0:
             return {'status': 0, 'message': 'FillState looks fine.'}
         if len(critical_unfilled_properties) == 0:
-            return {'status': 1, 'message': 'Missed filling %s once.' %
-                    (', '.join(warning_unfilled_properties),)}
-        return {'status': 2, 'message': 'Missed filling %s once. Missed filling %s at least twice.' %
-                (', '.join(warning_unfilled_properties), ', '.join(critical_unfilled_properties))}
+            return {
+                'status': 1,
+                'message': 'Missed filling {} once.'.format(
+                    ', '.join(warning_unfilled_properties),
+                ),
+            }
+        return {
+            'status': 2,
+            'message': 'Missed filling {} once. Missed filling {} at least twice.'.format(
+                ', '.join(warning_unfilled_properties),
+                ', '.join(critical_unfilled_properties),
+            ),
+        }

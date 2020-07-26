@@ -1,4 +1,3 @@
-
 import sys
 from argparse import ArgumentParser
 from typing import Any
@@ -7,8 +6,9 @@ from django.core.exceptions import ValidationError
 from django.db.utils import IntegrityError
 
 from zerver.lib.domains import validate_domain
-from zerver.lib.management import ZulipBaseCommand
+from zerver.lib.management import CommandError, ZulipBaseCommand
 from zerver.models import RealmDomain, get_realm_domains
+
 
 class Command(ZulipBaseCommand):
     help = """Manage domains for the specified realm"""
@@ -32,7 +32,7 @@ class Command(ZulipBaseCommand):
         realm = self.get_realm(options)
         assert realm is not None  # Should be ensured by parser
         if options["op"] == "show":
-            print("Domains for %s:" % (realm.string_id,))
+            print(f"Domains for {realm.string_id}:")
             for realm_domain in get_realm_domains(realm):
                 if realm_domain["allow_subdomains"]:
                     print(realm_domain["domain"] + " (subdomains allowed)")
@@ -44,23 +44,21 @@ class Command(ZulipBaseCommand):
         try:
             validate_domain(domain)
         except ValidationError as e:
-            print(e.messages[0])
-            sys.exit(1)
+            raise CommandError(e.messages[0])
         if options["op"] == "add":
             try:
                 RealmDomain.objects.create(realm=realm, domain=domain,
                                            allow_subdomains=options["allow_subdomains"])
                 sys.exit(0)
             except IntegrityError:
-                print("The domain %(domain)s is already a part of your organization." % {'domain': domain})
-                sys.exit(1)
+                raise CommandError(f"The domain {domain} is already a part "
+                                   "of your organization.")
         elif options["op"] == "remove":
             try:
                 RealmDomain.objects.get(realm=realm, domain=domain).delete()
                 sys.exit(0)
             except RealmDomain.DoesNotExist:
-                print("No such entry found!")
-                sys.exit(1)
+                raise CommandError("No such entry found!")
         else:
             self.print_help("./manage.py", "realm_domain")
-            sys.exit(1)
+            raise CommandError

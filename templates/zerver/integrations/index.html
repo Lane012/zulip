@@ -1,13 +1,8 @@
 {% extends "zerver/portico.html" %}
+{% set entrypoint = "integrations" %}
 
 {% block customhead %}
-{{ super() }}
-
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-{% stylesheet 'portico' %}
-{% stylesheet 'landing-page' %}
-{{ render_bundle('integrations') }}
-
 {% endblock %}
 
 {% block hello_page_container %} hello-main{% endblock %}
@@ -20,7 +15,7 @@
 <div class="portico-landing integrations">
     <div class="main">
         <div class="padded-content">
-            <div class="inner-content">
+            <div class="inner-content markdown">
 
                 <div id="integration-main-text">
                     <header>
@@ -42,7 +37,7 @@
                 <div id="integration-search">
                     <div class="searchbar">
                         <div class="searchbar-reset">
-                            <i class="icon-vector-search" aria-hidden="true"></i>
+                            <i class="fa fa-search" aria-hidden="true"></i>
                             <input type="text" placeholder="{{ _('Search integrations') }}"/>
                         </div>
                     </div>
@@ -51,7 +46,7 @@
                 <div class="integration-categories-dropdown">
                     <div class="dropdown-toggle">
                         <h3 class="dropdown-category-label">{% trans %}Filter by category{% endtrans %}</h3>
-                        <i class="icon-vector-angle-right" aria-hidden="true"></i>
+                        <i class="fa fa-angle-down" aria-hidden="true"></i>
                     </div>
                     <div class="dropdown-list">
                         <a href="/integrations">
@@ -64,6 +59,16 @@
                             </h4>
                         </a>
                         {% endfor %}
+                        <h4 class="heading">{% trans %}Custom integrations{% endtrans %}</h4>
+                        <a href="/api/incoming-webhooks-overview">
+                            <h4>{% trans %}Incoming webhooks{% endtrans %}</h4>
+                        </a>
+                        <a href="/api/writing-bots">
+                            <h4>{% trans %}Interactive bots{% endtrans %}</h4>
+                        </a>
+                        <a href="/api/rest">
+                            <h4>{% trans %}REST API{% endtrans %}</h4>
+                        </a>
                     </div>
                 </div>
 
@@ -80,21 +85,33 @@
                             </h4>
                         </a>
                         {% endfor %}
+                        <hr>
+                        <h3>{% trans %}Custom integrations{% endtrans %}</h3>
+                        <a href="/api/incoming-webhooks-overview">
+                            <h4>{% trans %}Incoming webhooks{% endtrans %}</h4>
+                        </a>
+                        <a href="/api/writing-bots">
+                            <h4>{% trans %}Interactive bots{% endtrans %}</h4>
+                        </a>
+                        <a href="/api/rest">
+                            <h4>{% trans %}REST API{% endtrans %}</h4>
+                        </a>
                     </div>
+
 
                     <div class="integration-lozenges">
                         {% for integration in integrations_dict.values() %}
                             {% if integration.is_enabled() %}
                             <a href="/integrations/doc/{{ integration.name }}">
                                 <div
-                                    {% if integration.legacy %}
-                                    class="integration-lozenge integration-{{ integration.name }} legacy"{% else %}
-                                    class="integration-lozenge integration-{{ integration.name }}"
-                                    {% endif %}
-                                    data-categories="{{ integration.categories }}"
-                                    data-name="{{ integration.name }}">
-                                    <img class="integration-logo" src="/{{ integration.logo }}"
-                                         alt="{{ integration.display_name }} logo"/>
+                                  {% if integration.legacy %}
+                                  class="integration-lozenge integration-{{ integration.name }} legacy"{% else %}
+                                  class="integration-lozenge integration-{{ integration.name }}"
+                                  {% endif %}
+                                  data-categories="{{ integration.categories }}"
+                                  data-name="{{ integration.name }}">
+                                    <img class="integration-logo" src="{{ integration.logo_url }}"
+                                      alt="{{ integration.display_name }} logo"/>
                                     {% if integration.secondary_line_text %}
                                     <h3 class="integration-name with-secondary">{{ integration.display_name }}</h3>
                                     <h4 class="integration-secondary-line-text">
@@ -108,10 +125,10 @@
                             </a>
                             {% endif %}
                         {% endfor %}
-                        <a href="https://zulipchat.com/api/integration-guide">
+                        <a href="/api/integrations-overview">
                             <div class="integration-lozenge integration-create-your-own">
                                 <div class="integration-logo">
-                                    <i class="icon-vector-plus"></i>
+                                    <i class="fa fa-plus" aria-hidden="true"></i>
                                 </div>
                                 <h3 class="integration-name create-your-own">{% trans %}Create your own!{% endtrans %}</h3>
                             </div>
@@ -121,14 +138,13 @@
 
                 <div id="integration-instructions-group">
                     <div id="integration-instruction-block" class="integration-instruction-block">
-                        <a href="/integrations" id="integration-list-link" class="no-underline"><i class="icon-vector-circle-arrow-left"></i><span>Back to list</span></a>
-                        <h3 class="name"></h3>
                         <div class="categories"></div>
+                        <a href="/integrations" id="integration-list-link" class="no-underline"><i class="fa fa-arrow-circle-left" aria-hidden="true"></i><span>Back to list</span></a>
                     </div>
 
                     {% for integration in integrations_dict.values() %}
                         {% if integration.is_enabled() %}
-                        <div id={{ integration.name }} class="integration-instructions">
+                        <div id="{{ integration.name }}" class="integration-instructions">
                             <div class="help-content"></div>
                             <p style="font-size:11px; font-style:italic;">
                                 Logos are trademarks of their respective owners.

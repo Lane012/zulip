@@ -9,7 +9,7 @@ set -e
 # usage: clean-branches --reviews
 # Deletes all the above mentioned branches as well as branches
 # created by the scripts like `fetch-rebase-pull-request`. Be careful
-# as this would also remove other branches woth names like review-*
+# as this would also remove other branches with names like review-*
 
 review=0
 if [ $# -ne 0 ] && [ "$1" == "--reviews" ]; then
@@ -30,7 +30,7 @@ function clean_ref {
 
         refs/heads/review-*)
             if [ $review -ne 0 ]; then
-                echo -n "Deleting local branch $(echo "$ref" | sed 's!^refs/heads/!!')"
+                echo -n "Deleting local branch ${ref#refs/heads/}"
                 echo " (was $(git rev-parse --short "$ref"))"
                 git update-ref -d "$ref"
             fi
@@ -38,7 +38,7 @@ function clean_ref {
 
         refs/heads/*)
             if is_merged "$ref"; then
-                echo -n "Deleting local branch $(echo "$ref" | sed 's!^refs/heads/!!')"
+                echo -n "Deleting local branch ${ref#refs/heads/}"
                 echo " (was $(git rev-parse --short "$ref"))"
                 git update-ref -d "$ref"
             fi
@@ -46,7 +46,7 @@ function clean_ref {
 
         refs/remotes/origin/$USER-*)
             if is_merged "$ref"; then
-                remote_name="$(echo "$ref" | sed 's!^refs/remotes/origin/!!')"
+                remote_name="${ref#refs/remotes/origin/}"
                 echo -n "Deleting remote branch $remote_name"
                 echo " (was $(git rev-parse --short "$ref"))"
                 # NB: this won't handle spaces in ref names

@@ -1,3 +1,5 @@
+/* eslint-disable no-console */
+
 /* WARNING:
 
     This file is only included when Django's DEBUG = True and your
@@ -16,46 +18,53 @@
     to the console along with the name "foo". */
 
 export function print_elapsed_time(name, fun) {
-    var t0 = new Date().getTime();
-    var out = fun();
-    var t1 = new Date().getTime();
-    console.log(name + ': ' + (t1 - t0) + ' ms');
+    const t0 = new Date().getTime();
+    const out = fun();
+    const t1 = new Date().getTime();
+    console.log(name + ": " + (t1 - t0) + " ms");
     return out;
 }
 
 export function check_duplicate_ids() {
-    var ids = {};
-    var collisions = [];
-    var total_collisions = 0;
+    const ids = new Set();
+    const collisions = [];
+    let total_collisions = 0;
 
-    Array.prototype.slice.call(document.querySelectorAll("*")).forEach(function (o) {
-        if (o.id && ids[o.id]) {
-            var el = collisions.find(function (c) {
-                return c.id === o.id;
-            });
+    Array.prototype.slice.call(document.querySelectorAll("*")).forEach((o) => {
+        if (o.id && ids.has(o.id)) {
+            const el = collisions.find((c) => c.id === o.id);
 
-            ids[o.id] += 1;
+            ids.add(o.id);
             total_collisions += 1;
 
             if (!el) {
-                var tag = o.tagName.toLowerCase();
+                const tag = o.tagName.toLowerCase();
                 collisions.push({
                     id: o.id,
                     count: 1,
-                    node: "<" + tag + " className='" + o.className + "' id='" + o.id + "'>" +
-                          "</" + tag + ">",
+                    node:
+                        "<" +
+                        tag +
+                        " className='" +
+                        o.className +
+                        "' id='" +
+                        o.id +
+                        "'>" +
+                        "</" +
+                        tag +
+                        ">",
                 });
             } else {
                 el.count += 1;
             }
         } else if (o.id) {
-            ids[o.id] = 1;
+            ids.add(o.id);
         }
     });
 
     return {
-        collisions: collisions,
-        total_collisions: total_collisions,
+        collisions,
+        total_collisions,
     };
 }
 
@@ -66,7 +75,7 @@ export function check_duplicate_ids() {
  *
  * Example:
  *
- *     var ip = new debug.IterationProfiler();
+ *     let ip = new debug.IterationProfiler();
  *     _.each(myarray, function (elem) {
  *         ip.iteration_start();
  *
@@ -89,45 +98,37 @@ export function check_duplicate_ids() {
  * The _rest_of_iteration section is the region of the iteration body
  * after section b.
  */
-export function IterationProfiler() {
-    this.sections = {};
-    this.last_time = window.performance.now();
-}
+export class IterationProfiler {
+    sections = new Map();
+    last_time = window.performance.now();
 
-IterationProfiler.prototype = {
-    iteration_start: function () {
-        this.section('_iteration_overhead');
-    },
+    iteration_start() {
+        this.section("_iteration_overhead");
+    }
 
-    iteration_stop: function () {
-        var now = window.performance.now();
-        var diff = now - this.last_time;
+    iteration_stop() {
+        const now = window.performance.now();
+        const diff = now - this.last_time;
         if (diff > 1) {
-            if (this.sections._rest_of_iteration === undefined) {
-                this.sections._rest_of_iteration = 0;
-            }
-            this.sections._rest_of_iteration += diff;
+            this.sections.set(
+                "_rest_of_iteration",
+                (this.sections.get("_rest_of_iteration") || 0) + diff,
+            );
         }
         this.last_time = now;
-    },
+    }
 
-    section: function (label) {
-        var now = window.performance.now();
-        if (this.sections[label] === undefined) {
-            this.sections[label] = 0;
-        }
-        this.sections[label] += (now - this.last_time);
+    section(label) {
+        const now = window.performance.now();
+        this.sections.set(label, (this.sections.get(label) || 0) + (now - this.last_time));
         this.last_time = now;
-    },
+    }
 
-    done: function () {
-        this.section('_iteration_overhead');
-        var prop;
+    done() {
+        this.section("_iteration_overhead");
 
-        for (prop in this.sections) {
-            if (this.sections.hasOwnProperty(prop)) {
-                console.log(prop, this.sections[prop]);
-            }
+        for (const [prop, cost] of this.sections) {
+            console.log(prop, cost);
         }
-    },
-};
+    }
+}

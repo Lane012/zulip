@@ -1,27 +1,23 @@
-var stream_muting = (function () {
+exports.update_is_muted = function (sub, value) {
+    sub.is_muted = value;
 
-var exports = {};
-
-exports.update_in_home_view = function (sub, value) {
-    // value is true if we are in home view
-    // TODO: flip the semantics to be is_muting
-    sub.in_home_view = value;
-
-    setTimeout(function () {
-        var msg_offset;
-        var saved_ypos;
+    setTimeout(() => {
+        let msg_offset;
+        let saved_ypos;
         // Save our current scroll position
         if (overlays.is_active()) {
             saved_ypos = message_viewport.scrollTop();
-        } else if (home_msg_list === current_msg_list &&
-                   current_msg_list.selected_row().offset() !== null) {
+        } else if (
+            home_msg_list === current_msg_list &&
+            current_msg_list.selected_row().offset() !== null
+        ) {
             msg_offset = current_msg_list.selected_row().offset().top;
         }
 
         home_msg_list.clear({clear_selected_id: false});
 
         // Recreate the home_msg_list with the newly filtered message_list.all
-        message_util.add_messages(message_list.all.all_messages(), home_msg_list);
+        message_util.add_old_messages(message_list.all.all_messages(), home_msg_list);
 
         // Ensure we're still at the same scroll position
         if (overlays.is_active()) {
@@ -30,34 +26,36 @@ exports.update_in_home_view = function (sub, value) {
             // We pass use_closest to handle the case where the
             // currently selected message is being hidden from the
             // home view
-            home_msg_list.select_id(home_msg_list.selected_id(),
-                                    {use_closest: true, empty_ok: true});
+            home_msg_list.select_id(home_msg_list.selected_id(), {
+                use_closest: true,
+                empty_ok: true,
+            });
             if (current_msg_list.selected_id() !== -1) {
-                message_viewport.set_message_offset(msg_offset);
+                current_msg_list.view.set_message_offset(msg_offset);
             }
         }
 
-        // In case we added messages to what's visible in the home view, we need to re-scroll to
-        // make sure the pointer is still visible. We don't want the auto-scroll handler to move
-        // our pointer to the old scroll location before we have a chance to update it.
-        pointer.recenter_pointer_on_display = true;
-        pointer.suppress_scroll_pointer_update = true;
+        // In case we added messages to what's visible in the home
+        // view, we need to re-scroll to make sure the pointer is
+        // still visible. We don't want the auto-scroll handler to
+        // move our pointer to the old scroll location before we have
+        // a chance to update it.
+        navigate.plan_scroll_to_selected();
+        message_scroll.suppress_selection_update_on_next_scroll();
 
-        if (! home_msg_list.empty()) {
+        if (!home_msg_list.empty()) {
             message_util.do_unread_count_updates(home_msg_list.all_messages());
         }
     }, 0);
 
-    stream_list.set_in_home_view(sub.stream_id, sub.in_home_view);
+    stream_list.set_in_home_view(sub.stream_id, !sub.is_muted);
 
-    var not_in_home_view_checkbox = $(".subscription_settings[data-stream-id='" + sub.stream_id + "'] #sub_setting_not_in_home_view .sub_setting_control");
-    not_in_home_view_checkbox.prop('checked', !value);
+    const is_muted_checkbox = $(
+        ".subscription_settings[data-stream-id='" +
+            sub.stream_id +
+            "'] #sub_is_muted_setting .sub_setting_control",
+    );
+    is_muted_checkbox.prop("checked", value);
 };
 
-return exports;
-
-}());
-if (typeof module !== 'undefined') {
-    module.exports = stream_muting;
-}
-
+window.stream_muting = exports;

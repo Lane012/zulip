@@ -1,225 +1,209 @@
-var topic_list = (function () {
+const render_more_topics = require("../templates/more_topics.hbs");
+const render_more_topics_spinner = require("../templates/more_topics_spinner.hbs");
+const render_topic_list_item = require("../templates/topic_list_item.hbs");
 
-var exports = {};
+const topic_list_data = require("./topic_list_data");
 
-// We can only ever have one active widget.
-var active_widget;
+/*
+    Track all active widgets with a Map.
+
+    (We have at max one for now, but we may
+    eventually allow multiple streams to be
+    expanded.)
+*/
+
+const active_widgets = new Map();
 
 // We know whether we're zoomed or not.
-var zoomed = false;
+let zoomed = false;
 
-exports.remove_expanded_topics = function () {
+exports.update = function () {
+    for (const widget of active_widgets.values()) {
+        widget.build();
+    }
+};
+
+exports.clear = function () {
     stream_popover.hide_topic_popover();
 
-    if (active_widget) {
-        active_widget.remove();
-        active_widget = undefined;
+    for (const widget of active_widgets.values()) {
+        widget.remove();
     }
+
+    active_widgets.clear();
 };
 
 exports.close = function () {
     zoomed = false;
-    exports.remove_expanded_topics();
+    exports.clear();
 };
 
 exports.zoom_out = function () {
     zoomed = false;
-    exports.rebuild(active_widget.get_parent(), active_widget.get_stream_id());
-};
 
-function update_unread_count(unread_count_elem, count) {
-    // unread_count_elem is a jquery element...we expect DOM
-    // to look like this:
-    //   <div class="topic-unread-count {{#if is_zero}}zero_count{{/if}}">
-    //        <div class="value">{{unread}}</div>
-    //   </div>
-    var value_span = unread_count_elem.find('.value');
+    const stream_ids = Array.from(active_widgets.keys());
 
-    if (value_span.length === 0) {
-        blueslip.error('malformed dom for unread count');
+    if (stream_ids.length !== 1) {
+        blueslip.error("Unexpected number of topic lists to zoom out.");
         return;
     }
 
-    if (count === 0) {
-        unread_count_elem.hide();
-        value_span.text('');
-    } else {
-        unread_count_elem.removeClass("zero_count");
-        unread_count_elem.show();
-        value_span.text(count);
-    }
-}
+    const stream_id = stream_ids[0];
+    const widget = active_widgets.get(stream_id);
+    const parent_widget = widget.get_parent();
 
-exports.set_count = function (stream_id, topic, count) {
-    if (active_widget && active_widget.is_for_stream(stream_id)) {
-        active_widget.set_count(topic, count);
-    }
+    exports.rebuild(parent_widget, stream_id);
 };
 
-exports.widget = function (parent_elem, my_stream_id) {
-    var self = {};
+exports.keyed_topic_li = (convo) => {
+    const render = () => render_topic_list_item(convo);
 
-    self.build_list = function () {
-        self.topic_items = new Dict({fold_case: true});
+    const eq = (other) => _.isEqual(convo, other.convo);
 
-        var max_topics = 5;
-        var topic_names = topic_data.get_recent_names(my_stream_id);
-        var my_stream_name = stream_data.get_sub_by_id(my_stream_id).name;
+    const key = "t:" + convo.topic_name;
 
-        var ul = $('<ul class="topic-list">');
-        ul.attr('data-stream', my_stream_name);
+    return {
+        key,
+        render,
+        convo,
+        eq,
+    };
+};
 
-        _.each(topic_names, function (topic_name, idx) {
-            var num_unread = unread.num_unread_for_topic(my_stream_id, topic_name);
-
-            if (!zoomed) {
-                // Show the most recent topics, as well as any with unread messages
-                var show_topic = (idx < max_topics) || (num_unread > 0) ||
-                                 (self.active_topic === topic_name.toLowerCase());
-
-                if (!show_topic) {
-                    return;
-                }
-            }
-
-            var topic_info = {
-                topic_name: topic_name,
-                unread: num_unread,
-                is_zero: num_unread === 0,
-                is_muted: muting.is_topic_muted(my_stream_name, topic_name),
-                url: narrow.by_stream_subject_uri(my_stream_name, topic_name),
-            };
-            var li = $(templates.render('topic_list_item', topic_info));
-            self.topic_items.set(topic_name, li);
-            ul.append(li);
+exports.more_li = (more_topics_unreads) => {
+    const render = () =>
+        render_more_topics({
+            more_topics_unreads,
         });
 
-        var show_more = self.build_more_topics_section();
-        ul.append(show_more);
+    const eq = (other) => other.more_items && more_topics_unreads === other.more_topics_unreads;
 
-        return ul;
+    const key = "more";
+
+    return {
+        key,
+        more_items: true,
+        more_topics_unreads,
+        render,
+        eq,
     };
-
-    self.build_more_topics_section = function () {
-        var show_more_html = templates.render('more_topics');
-        return $(show_more_html);
-    };
-
-    self.get_parent = function () {
-        return parent_elem;
-    };
-
-    self.is_for_stream = function (stream_id) {
-        return stream_id === my_stream_id;
-    };
-
-    self.get_stream_id = function () {
-        return my_stream_id;
-    };
-
-    self.get_dom = function () {
-        return self.dom;
-    };
-
-    self.remove = function () {
-        self.dom.remove();
-    };
-
-    self.num_items = function () {
-        return self.topic_items.num_items();
-    };
-
-    self.set_count = function (topic, count) {
-        if (!self.topic_items.has(topic)) {
-            // This can happen for truncated topic lists.  No need
-            // to warn about it.
-            return;
-        }
-        var topic_li = self.topic_items.get(topic);
-        var unread_count_elem = topic_li.find('.topic-unread-count').expectOne();
-
-        update_unread_count(unread_count_elem, count);
-    };
-
-    self.activate_topic = function () {
-        var li = self.topic_items.get(self.active_topic);
-        if (li) {
-            li.addClass('active-sub-filter');
-        }
-    };
-
-    self.show_spinner = function () {
-        // The spinner will go away once we get results and redraw
-        // the whole list.
-        var spinner = self.dom.find('.searching-for-more-topics');
-        spinner.show();
-    };
-
-    self.show_no_more_topics = function () {
-        var elem = self.dom.find('.no-more-topics-found');
-        elem.show();
-        self.no_more_topics = true;
-    };
-
-    self.build = function (active_topic, no_more_topics) {
-        self.no_more_topics = false; // for now
-
-        if (active_topic) {
-            active_topic = active_topic.toLowerCase();
-        }
-        self.active_topic = active_topic;
-
-        self.dom = self.build_list();
-
-        parent_elem.append(self.dom);
-
-        // We often rebuild an entire topic list, and the
-        // caller will pass us in no_more_topics as true
-        // if we were showing "No more topics found" from
-        // the initial zooming.
-        if (no_more_topics) {
-            self.show_no_more_topics();
-        }
-
-        if (active_topic) {
-            self.activate_topic();
-        }
-    };
-
-    return self;
 };
 
+exports.spinner_li = () => {
+    const render = () => render_more_topics_spinner();
+
+    const eq = (other) => other.spinner;
+
+    const key = "more";
+
+    return {
+        key,
+        spinner: true,
+        render,
+        eq,
+    };
+};
+
+class TopicListWidget {
+    prior_dom = undefined;
+
+    constructor(parent_elem, my_stream_id) {
+        this.parent_elem = parent_elem;
+        this.my_stream_id = my_stream_id;
+    }
+
+    build_list(spinner) {
+        const list_info = topic_list_data.get_list_info(this.my_stream_id, zoomed);
+
+        const num_possible_topics = list_info.num_possible_topics;
+        const more_topics_unreads = list_info.more_topics_unreads;
+
+        const is_showing_all_possible_topics =
+            list_info.items.length === num_possible_topics &&
+            stream_topic_history.is_complete_for_stream_id(this.my_stream_id);
+
+        const attrs = [["class", "topic-list"]];
+
+        const nodes = list_info.items.map(exports.keyed_topic_li);
+
+        if (spinner) {
+            nodes.push(exports.spinner_li());
+        } else if (!is_showing_all_possible_topics) {
+            nodes.push(exports.more_li(more_topics_unreads));
+        }
+
+        const dom = vdom.ul({
+            attrs,
+            keyed_nodes: nodes,
+        });
+
+        return dom;
+    }
+
+    get_parent() {
+        return this.parent_elem;
+    }
+
+    get_stream_id() {
+        return this.my_stream_id;
+    }
+
+    remove() {
+        this.parent_elem.find(".topic-list").remove();
+        this.prior_dom = undefined;
+    }
+
+    build(spinner) {
+        const new_dom = this.build_list(spinner);
+
+        const replace_content = (html) => {
+            this.remove();
+            this.parent_elem.append(html);
+        };
+
+        const find = () => this.parent_elem.find(".topic-list");
+
+        vdom.update(replace_content, find, new_dom, this.prior_dom);
+
+        this.prior_dom = new_dom;
+    }
+}
+exports.TopicListWidget = TopicListWidget;
+
 exports.active_stream_id = function () {
-    if (!active_widget) {
+    const stream_ids = Array.from(active_widgets.keys());
+
+    if (stream_ids.length !== 1) {
         return;
     }
 
-    return active_widget.get_stream_id();
+    return stream_ids[0];
 };
 
-exports.need_to_show_no_more_topics = function (stream_id) {
-    // This function is important, and the use case here is kind of
-    // subtle.  We do complete redraws of the topic list when new
-    // messages come in, and we don't want to overwrite the
-    // "no more topics" error message.
-    if (!zoomed) {
-        return false;
+exports.get_stream_li = function () {
+    const widgets = Array.from(active_widgets.values());
+
+    if (widgets.length !== 1) {
+        return;
     }
 
-    if (stream_id !== active_widget.get_stream_id()) {
-        return false;
-    }
-
-    return active_widget.no_more_topics;
+    const stream_li = widgets[0].get_parent();
+    return stream_li;
 };
 
 exports.rebuild = function (stream_li, stream_id) {
-    var active_topic = narrow_state.topic();
-    var no_more_topics = exports.need_to_show_no_more_topics(stream_id);
+    const active_widget = active_widgets.get(stream_id);
 
-    exports.remove_expanded_topics();
-    active_widget = exports.widget(stream_li, stream_id);
-    active_widget.build(active_topic, no_more_topics);
+    if (active_widget) {
+        active_widget.build();
+        return;
+    }
+
+    exports.clear();
+    const widget = new TopicListWidget(stream_li, stream_id);
+    widget.build();
+
+    active_widgets.set(stream_id, widget);
 };
 
 // For zooming, we only do topic-list stuff here...let stream_list
@@ -227,22 +211,22 @@ exports.rebuild = function (stream_li, stream_id) {
 exports.zoom_in = function () {
     zoomed = true;
 
-    if (!active_widget) {
-        blueslip.error('Cannot find widget for topic history zooming.');
+    const stream_id = exports.active_stream_id();
+    if (!stream_id) {
+        blueslip.error("Cannot find widget for topic history zooming.");
         return;
     }
 
-    var stream_id = active_widget.get_stream_id();
-    var before_count = active_widget.num_items();
+    const active_widget = active_widgets.get(stream_id);
 
     function on_success() {
-        if ((!active_widget) || (stream_id !== active_widget.get_stream_id())) {
-            blueslip.warn('User re-narrowed before topic history was returned.');
+        if (!active_widgets.has(stream_id)) {
+            blueslip.warn("User re-narrowed before topic history was returned.");
             return;
         }
 
         if (!zoomed) {
-            blueslip.warn('User zoomed out before topic history was returned.');
+            blueslip.warn("User zoomed out before topic history was returned.");
             // Note that we could attempt to re-draw the zoomed out topic list
             // here, given that we have more history, but that might be more
             // confusing than helpful to a user who is likely trying to browse
@@ -250,68 +234,44 @@ exports.zoom_in = function () {
             return;
         }
 
-        exports.rebuild(active_widget.get_parent(), stream_id);
-
-        var after_count = active_widget.num_items();
-
-        if (after_count === before_count) {
-            active_widget.show_no_more_topics();
-        }
-
-        ui.update_scrollbar($("#stream-filters-container"));
+        active_widget.build();
     }
 
-    $('#stream-filters-container').scrollTop(0);
-    ui.update_scrollbar($("#stream-filters-container"));
-    active_widget.show_spinner();
-    topic_data.get_server_history(stream_id, on_success);
+    ui.get_scroll_element($("#stream-filters-container")).scrollTop(0);
+
+    const spinner = true;
+    active_widget.build(spinner);
+
+    stream_topic_history.get_server_history(stream_id, on_success);
 };
 
-exports.set_click_handlers = function (callbacks) {
-    $('#stream_filters').on('click', '.show-more-topics', function (e) {
-        callbacks.zoom_in({
-            stream_id: active_widget.get_stream_id(),
-        });
-
-        e.preventDefault();
-        e.stopPropagation();
-    });
-
-    $('.show-all-streams').on('click', function (e) {
-        callbacks.zoom_out({
-            stream_li: active_widget.get_parent(),
-        });
-
-        e.preventDefault();
-        e.stopPropagation();
-    });
-
-    $('#stream_filters').on('click', '.topic-box', function (e) {
+exports.initialize = function () {
+    $("#stream_filters").on("click", ".topic-box", (e) => {
         if (e.metaKey || e.ctrlKey) {
+            return;
+        }
+        if ($(e.target).closest(".show-more-topics").length > 0) {
             return;
         }
 
         // In a more componentized world, we would delegate some
         // of this stuff back up to our parents.
-        if (overlays.is_active()) {
-            ui_util.change_tab_to('#home');
-        }
 
-        var stream_id = $(e.target).parents('.narrow-filter').attr('data-stream-id');
-        var sub = stream_data.get_sub_by_id(stream_id);
-        var topic = $(e.target).parents('li').attr('data-topic-name');
+        const stream_row = $(e.target).parents(".narrow-filter");
+        const stream_id = parseInt(stream_row.attr("data-stream-id"), 10);
+        const sub = stream_data.get_sub_by_id(stream_id);
+        const topic = $(e.target).parents("li").attr("data-topic-name");
 
-        narrow.activate([{operator: 'stream', operand: sub.name},
-                         {operator: 'topic', operand: topic}],
-                        {select_first_unread: true, trigger: 'sidebar'});
+        narrow.activate(
+            [
+                {operator: "stream", operand: sub.name},
+                {operator: "topic", operand: topic},
+            ],
+            {trigger: "sidebar"},
+        );
 
         e.preventDefault();
     });
 };
 
-
-return exports;
-}());
-if (typeof module !== 'undefined') {
-    module.exports = topic_list;
-}
+window.topic_list = exports;

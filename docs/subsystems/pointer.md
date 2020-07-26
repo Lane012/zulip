@@ -36,17 +36,20 @@ what you clicked on, and in fact the message you clicked on stays at
 exactly the same scroll position in the window after the narrowing as
 it was at before.
 
-### Search or sidebar click: unread/recent matching narrow
+### Search, sidebar click, or new tab: unread/recent matching narrow
 
-If you instead narrow by clicking on something in the left sidebar or
-typing some terms into the search box, Zulip will instead select
-the first unread message matching that narrow, or if there are none,
-the most recent messages matching that narrow. This provides the nice
-user experience of taking you to the start of the new stuff (with
-enough messages you'ev seen before still in view at the top to provide
-you with context), which is usually what you want. (When finding the
-"first unread message", Zulip ignores unread messages in muted streams
-or in muted topics within non-muted streams.)
+If you instead narrow by clicking on something in the left sidebar,
+typing some terms into the search box, reloading the browser, or any
+other method that doesn't encode a specific message to visit, Zulip
+will instead select the first unread message matching that narrow, or
+if there are none, the most recent messages matching that narrow.
+
+This provides the nice user experience of taking you to the start of
+the new stuff (with enough messages you'ev seen before still in view
+at the top to provide you with context), which is usually what you
+want. (When finding the "first unread message", Zulip ignores unread
+messages in muted streams or in muted topics within non-muted
+streams.)
 
 ### Unnarrow: previous sequence
 
@@ -58,29 +61,6 @@ message in the All messages view (or the bottom of the feed if there is
 none). This makes for a nice experience reading threads via the All messages
 view in sequence.
 
-### New All messages view: "high watermark"
-
-When you open a new browser window or tab to the All messages view (a.k.a. the
-interleaved view you get if you visit `/`), Zulip will select the
-furthest down that your cursor has ever reached in the All messages
-view. Because of the logic around unnarrowing in the last bullet, this
-is usually just before the first unread message in the All messages view, but
-if you never go to the All messages view, or you leave messages unread on some
-streams in your All messages view, this can lag.
-
-We plan to change this to automatically advance the pointer in a way
-similar to the unnarrow logic.
-
-### Narrow in a new tab: closest to pointer
-
-When you load a new browser tab or window to a narrowed view, Zulip
-will select the message closest to your pointer, which is what you
-would have got had you loaded the browser window to your All messages view and
-then clicked on the nearest message matching your narrow (which might
-have been offscreen).
-
-We plan to change this to match the Search/sidebar behavior.
-
 ### Forced reload: state preservation
 
 When the server forces a reload of a browser that's otherwise caught
@@ -90,7 +70,7 @@ browser), Zulip will preserve the state -- what (if any) narrow the
 user was in, the selected message, and even exact scroll position!
 
 For more on the user experience philosophy guiding these decisions,
-see [the architectural overview](../overview/architecture-overview.html).
+see [the architectural overview](../overview/architecture-overview.md).
 
 ## Unread count logic
 
@@ -108,6 +88,10 @@ use the product.  The algorithm is as follows:
 These two simple rules, combined with the pointer logic above, end up
 matching user expectations well for whether the product should treat
 them as having read a set of messages (or not).
+
+One key detail to highlight is that we only mark messages as read
+through these processes in views that contain all messages in a
+thread; search views will never mark messages as read.
 
 ## Testing and development
 

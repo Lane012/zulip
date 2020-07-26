@@ -4,7 +4,8 @@ set -e
 
 usage() {
     cat <<EOF >&2
-Usage: $0 --hostname=zulip.example.com --email=admin@example.com [--method={webroot|standalone}] [--no-zulip-conf]
+Usage: $0 --email=admin@example.com [--method={webroot|standalone}] \
+[--no-zulip-conf] hostname.example.com [another.example.com]
 EOF
     exit 1
 }
@@ -15,15 +16,10 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 method=webroot
-args="$(getopt -o '' --long help,hostname:,email:,method:,no-zulip-conf -n "$0" -- "$@")"
+args="$(getopt -o '' --long help,email:,method:,deploy-hook:,no-zulip-conf,agree-tos -n "$0" -- "$@")"
 eval "set -- $args"
 while true; do
     case "$1" in
-        --hostname)
-            DOMAIN="$2"
-            shift
-            shift
-            ;;
         --email)
             EMAIL="$2"
             shift
@@ -32,6 +28,15 @@ while true; do
         --method)
             method="$2"
             shift
+            shift
+            ;;
+        --deploy-hook)
+            deploy_hook=(--deploy-hook "$2")
+            shift
+            shift
+            ;;
+        --agree-tos)
+            agree_tos=--agree-tos
             shift
             ;;
         --no-zulip-conf)
@@ -43,16 +48,24 @@ while true; do
             shift
             ;;
         --)
+            shift
             break
             ;;
     esac
 done
 
+# Parse the remaining arguments as Subject Alternative Names to pass to certbot
+HOSTNAMES=()
+for arg; do
+    HOSTNAMES+=(-d "$arg")
+done
+DOMAIN=$1
+
 if [ -n "$show_help" ]; then
     usage
 fi
 
-if [ -z "$DOMAIN" -o -z "$EMAIL" ]; then
+if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
     usage
 fi
 
@@ -61,30 +74,39 @@ case "$method" in
         method_args=(--standalone)
         ;;
     webroot)
-        method_args=(--webroot --webroot-path=/var/lib/zulip/certbot-webroot/)
+        method_args=(--webroot '--webroot-path=/var/lib/zulip/certbot-webroot/')
         ;;
     *)
         usage
         ;;
 esac
 
+# Check for a supported OS release.
+if [ -f /etc/os-release ]; then
+    os_info="$(. /etc/os-release; printf '%s\n' "$ID" "$ID_LIKE")"
+    { read -r os_id; read -r os_id_like|| true; } <<< "$os_info"
+fi
+
 set -x
 
-CERTBOT_PATH="/usr/local/sbin/certbot-auto"
-# For reference https://certbot.eff.org/all-instructions/#debian-other-nginx
-wget -q https://dl.eff.org/certbot-auto -O "$CERTBOT_PATH"
-chmod a+x "$CERTBOT_PATH"
+case " $os_id $os_id_like " in
+    *' debian '*)
+        apt-get install -y certbot
+        ;;
+    *' rhel '*)
+        yum install -y certbot
+        ;;
+esac
 
-# First, we install the OS packages with --quiet, to suppress `apt`
-# prompting the user for input.  This can't be part of the same
-# invocation as gets the certs, since `certonly --quiet --force-interactive`
-# rejects the Certbot ToS, causing Certbot to fail.
-"$CERTBOT_PATH" --os-packages-only --quiet
 # We don't use --no-interactive, because certbot needs to ask the user
 # to agree to the Let's Encrypt Subscriber Agreement (aka ToS).
 # Passing --force-interactive suppresses a warning, but also brings up
 # an annoying prompt we stifle with --no-eff-email.
-"$CERTBOT_PATH" certonly "${method_args[@]}" -d "$DOMAIN" -m "$EMAIL" --force-interactive --no-eff-email
+certbot certonly "${method_args[@]}" \
+                "${HOSTNAMES[@]}" -m "$EMAIL" \
+                $agree_tos \
+                "${deploy_hook[@]}" \
+                --force-interactive --no-eff-email
 
 symlink_with_backup() {
     if [ -e "$2" ]; then
@@ -96,9 +118,13 @@ symlink_with_backup() {
     ln -nsf "$1" "$2"
 }
 
-CERT_DIR=/etc/letsencrypt/live/"$DOMAIN"
-symlink_with_backup "$CERT_DIR"/privkey.pem /etc/ssl/private/zulip.key
-symlink_with_backup "$CERT_DIR"/fullchain.pem /etc/ssl/certs/zulip.combined-chain.crt
+if [ ${#deploy_hook} -eq 0 ]; then
+    # If no deploy hook was specified, assume we're deploying to the default
+    # location Zulip wants.
+    CERT_DIR=/etc/letsencrypt/live/"$DOMAIN"
+    symlink_with_backup "$CERT_DIR"/privkey.pem /etc/ssl/private/zulip.key
+    symlink_with_backup "$CERT_DIR"/fullchain.pem /etc/ssl/certs/zulip.combined-chain.crt
+fi
 
 case "$method" in
     webroot)

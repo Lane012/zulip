@@ -1,15 +1,12 @@
-# -*- coding: utf-8 -*-
-
 from typing import Any, Callable, Dict, Iterable, List, Tuple
+from unittest import mock
 
+import ujson
 from django.test import override_settings
-from zerver.lib.test_classes import (
-    ZulipTestCase,
-)
+
+from zerver.lib.test_classes import ZulipTestCase
 from zerver.lib.utils import statsd
 
-import mock
-import ujson
 
 def fix_params(raw_params: Dict[str, Any]) -> Dict[str, str]:
     # A few of our few legacy endpoints need their
@@ -20,7 +17,7 @@ class StatsMock:
     def __init__(self, settings: Callable[..., Any]) -> None:
         self.settings = settings
         self.real_impl = statsd
-        self.func_calls = []  # type: List[Tuple[str, Iterable[Any]]]
+        self.func_calls: List[Tuple[str, Iterable[Any]]] = []
 
     def __getattr__(self, name: str) -> Callable[..., Any]:
         def f(*args: Any) -> None:
@@ -32,8 +29,7 @@ class StatsMock:
 
 class TestReport(ZulipTestCase):
     def test_send_time(self) -> None:
-        email = self.example_email('hamlet')
-        self.login(email)
+        self.login('hamlet')
 
         params = dict(
             time=5,
@@ -58,8 +54,7 @@ class TestReport(ZulipTestCase):
         self.assertEqual(stats_mock.func_calls, expected_calls)
 
     def test_narrow_time(self) -> None:
-        email = self.example_email('hamlet')
-        self.login(email)
+        self.login('hamlet')
 
         params = dict(
             initial_core=5,
@@ -80,8 +75,7 @@ class TestReport(ZulipTestCase):
         self.assertEqual(stats_mock.func_calls, expected_calls)
 
     def test_unnarrow_time(self) -> None:
-        email = self.example_email('hamlet')
-        self.login(email)
+        self.login('hamlet')
 
         params = dict(
             initial_core=5,
@@ -101,8 +95,9 @@ class TestReport(ZulipTestCase):
 
     @override_settings(BROWSER_ERROR_REPORTING=True)
     def test_report_error(self) -> None:
-        email = self.example_email('hamlet')
-        self.login(email)
+        user = self.example_user('hamlet')
+        self.login_user(user)
+        self.make_stream('errors', user.realm)
 
         params = fix_params(dict(
             message='hello',
@@ -117,18 +112,18 @@ class TestReport(ZulipTestCase):
         publish_mock = mock.patch('zerver.views.report.queue_json_publish')
         subprocess_mock = mock.patch(
             'zerver.views.report.subprocess.check_output',
-            side_effect=KeyError('foo')
+            side_effect=KeyError('foo'),
         )
         with publish_mock as m, subprocess_mock:
             result = self.client_post("/json/report/error", params)
         self.assert_json_success(result)
 
         report = m.call_args[0][1]['report']
-        for k in set(params) - set(['ui_message', 'more_info']):
+        for k in set(params) - {'ui_message', 'more_info'}:
             self.assertEqual(report[k], params[k])
 
         self.assertEqual(report['more_info'], dict(foo='bar', draft_content="'**xxxxx**'"))
-        self.assertEqual(report['user_email'], email)
+        self.assertEqual(report['user_email'], user.delivery_email)
 
         # Teset with no more_info
         del params['more_info']
@@ -150,3 +145,16 @@ class TestReport(ZulipTestCase):
         self.assert_json_success(result)
         # fix_params (see above) adds quotes when JSON encoding.
         annotate.assert_called_once_with('"trace"')
+
+        # Now test without authentication.
+        self.logout()
+        with \
+                self.settings(DEVELOPMENT=False, TEST_SUITE=False), \
+                mock.patch('zerver.lib.unminify.SourceMap.annotate_stacktrace') as annotate:
+            result = self.client_post("/json/report/error", params)
+        self.assert_json_success(result)
+
+    def test_report_csp_violations(self) -> None:
+        fixture_data = self.fixture_data('csp_report.json')
+        result = self.client_post("/report/csp_violations", fixture_data, content_type="application/json")
+        self.assert_json_success(result)

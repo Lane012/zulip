@@ -2,58 +2,57 @@
 
 {!admin-only.md!}
 
-Linkification filters are used to automatically translate syntax
-referring to an issue or support ticket in a message into a link to
-that issue or ticket on a third-party site. For instance, you can
-define a filter to automatically linkify #1234 to
-https://github.com/zulip/zulip/pulls/1234, Z1234 to link to that
-Zendesk ticket ID, or anything similar.
+Linkifiers make it easy to refer to issues or tickets in third
+party issue trackers, like GitHub, Salesforce, Zendesk, and others.
+For instance, you can add a filter that automatically turns `#2468`
+into a link to `https://github.com/zulip/zulip/issues/2468`.
 
-{!go-to-the.md!} [Filter settings](/#organization/filter-settings)
-{!admin.md!}
+If the pattern appears in a message topic, Zulip adds a little button to the
+right of the topic that links to the appropriate URL.
 
-5. In the green section labeled **Add a new filter**, find the **Regular expression**
-and **URL format string** fields.
+### Add a custom linkification filter
 
-    * In the **Regular expression** field, enter a
-[regular expression](http://www.regular-expressions.info) that searches and
-identifies the phrases you want to linkify.
+{start_tabs}
 
-        For example, if you want to linkify any numeric phrase that begins with
-a `#`, you could use the regular expression `#(?P<id>[0-9]+)` to find those
-phrases, where `id` is the variable that represents the phrase found by the
-search.
+{settings_tab|filter-settings}
 
-        Please note that all regular expressions used for custom linkification
-filters in your organization must be unique. In addition, the regular expression
-you enter must have a variable that gets identified by the URL format string.
+1. Under **Add a new linkifier**, enter a **Pattern** and
+**URL format string**.
 
-    * In the **URL format string** field, insert a URL that includes the regular
-expression variable you specified in the **Regular expression** field. The URL
-format string must be in the format of `https://example.com/%(\w+)s`.
+1. Click **Add linkifier**.
 
-        For example, if you want to use the variable `id` found by your regular
-expression to link to a corresponding GitHub pull request on the `zulip/zulip`
-repository, you could use the URL format string
-`https://github.com/zulip/zulip/pull/%(id)s`.
+{end_tabs}
 
-6. After filling out the **Regular expression** and **URL format string**
-fields, click the **Add filter** button to add your custom linkification
-filter to your Zulip organization.
+## Understanding linkification patterns
 
-7. Upon clicking the **Add filter** button, you will receive a notification
-labeled **Custom filter added!** in the **Custom linkification filters**
-section, confirming the success of the addition of your custom linkification
-filter to your organization.
+This is best explained by example.
 
-    ![Custom linkification filter success](/static/images/help/custom-filter-success.png)
+Hash followed by a number of any length.
 
-    The filter's information and settings will also be displayed above the **Add a new filter**
-section. You can choose to delete any custom linkification filters in your
-organization through this panel by pressing the **Delete** button next to
-the filter you want to delete.
+* Pattern: `#(?P<id>[0-9]+)`
+* URL format string: `https://github.com/zulip/zulip/issues/%(id)s`
+* Original text: `#2468`
+* Automatically links to: `https://github.com/zulip/zulip/issues/2468`
 
-8. Users in your organization can now use your custom linkification filter in
-their messages.
+String of hexadecimal digits between 7 and 40 characters long.
 
-    ![Custom linkification filter demo](/static/images/help/custom-filter-demo.png)
+* Pattern: `(?P<id>[0-9a-f]{7,40})`
+* URL format string: `https://github.com/zulip/zulip/commit/%(id)s`
+* Original text: `abdc123`
+* Automatically links to: `https://github.com/zulip/zulip/commit/abcd123`
+
+Generic GitHub `org/repo#ID` format:
+
+* Pattern: `(?P<org>[a-zA-Z0-9_-]+)/(?P<repo>[a-zA-Z0-9_-]+)#(?P<id>[0-9]+)`
+* URL format string: `https://github.com/%(org)s/%(repo)s/issues/%(id)s`
+* Original text: `zulip/zulip#2468`
+* Automatically links to: `https://github.com/zulip/zulip/issues/2468`
+
+Linkifiers are implemented as a limited subset of Python 3 regular
+expressions, with validation designed to prevent common mistakes,
+avoid accidentally expensive linkifiers, and allow translation into
+equivalent JavaScript regular expressions for local echo.
+
+If you have any trouble setting these up, please [contact
+us](/help/contact-support) with details on what you're trying to do,
+and we'll be happy to help you out.

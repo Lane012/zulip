@@ -1,7 +1,7 @@
 import logging
 import select
 import time
-from typing import Any, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from django.conf import settings
 from tornado.ioloop import IOLoop, PollIOLoop
@@ -11,8 +11,12 @@ from tornado.ioloop import IOLoop, PollIOLoop
 # be epoll.
 orig_poll_impl = select.epoll
 
+# This is used for a somewhat hacky way of passing the port number
+# into this early-initialized module.
+logging_data: Dict[str, str] = {}
+
 class InstrumentedPollIOLoop(PollIOLoop):
-    def initialize(self, **kwargs):  # type: ignore # TODO investigate likely buggy monkey patching here
+    def initialize(self, **kwargs):  # type: ignore[no-untyped-def] # TODO investigate likely buggy monkey patching here
         super().initialize(impl=InstrumentedPoll(), **kwargs)
 
 def instrument_tornado_ioloop() -> None:
@@ -29,7 +33,7 @@ def instrument_tornado_ioloop() -> None:
 class InstrumentedPoll:
     def __init__(self) -> None:
         self._underlying = orig_poll_impl()
-        self._times = []  # type: List[Tuple[float, float]]
+        self._times: List[Tuple[float, float]] = []
         self._last_print = 0.0
 
     # Python won't let us subclass e.g. select.epoll, so instead
@@ -64,8 +68,8 @@ class InstrumentedPoll:
             if total > 0:
                 percent_busy = 100 * (1 - in_poll / total)
                 if settings.PRODUCTION:
-                    logging.info('Tornado %5.1f%% busy over the past %4.1f seconds'
-                                 % (percent_busy, total))
+                    logging.info('Tornado %s %5.1f%% busy over the past %4.1f seconds',
+                                 logging_data.get('port', 'unknown'), percent_busy, total)
                     self._last_print = t1
 
         return result

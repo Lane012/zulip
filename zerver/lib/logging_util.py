@@ -1,54 +1,99 @@
 # System documented in https://zulip.readthedocs.io/en/latest/subsystems/logging.html
-
-from django.utils.timezone import now as timezone_now
-from django.utils.timezone import utc as timezone_utc
-
 import hashlib
 import logging
-import re
+import threading
 import traceback
-from typing import Optional
-from datetime import datetime, timedelta
-from django.conf import settings
+from datetime import datetime, timedelta, timezone
 from logging import Logger
+from typing import Optional, Tuple
 
-# Adapted http://djangosnippets.org/snippets/2242/ by user s29 (October 25, 2010)
+from django.conf import settings
+from django.core.cache import cache
+from django.utils.timezone import now as timezone_now
+
 
 class _RateLimitFilter:
-    last_error = datetime.min.replace(tzinfo=timezone_utc)
+    """This class is designed to rate-limit Django error reporting
+    notifications so that it won't send thousands of emails if the
+    database or cache is completely down.  It uses a remote shared
+    cache (shared by all Django processes) for its default behavior
+    (so that the deduplication is global, not per-process), and a
+    local in-process cache for when it can't access the remote cache.
+
+    This is critical code because it is called every time
+    `logging.error` or `logging.exception` (or an exception) happens
+    in the codebase.
+
+    Adapted from https://djangosnippets.org/snippets/2242/.
+
+    """
+    last_error = datetime.min.replace(tzinfo=timezone.utc)
+    # This thread-local variable is used to detect recursive
+    # exceptions during exception handling (primarily intended for
+    # when accessing the shared cache throws an exception).
+    handling_exception = threading.local()
+    should_reset_handling_exception = False
+
+    def can_use_remote_cache(self) -> Tuple[bool, bool]:
+        if getattr(self.handling_exception, 'value', False):
+            # If we're processing an exception that occurred
+            # while handling an exception, this almost
+            # certainly was because interacting with the
+            # remote cache is failing (e.g. because the cache
+            # is down).  Fall back to tracking duplicate
+            # exceptions in memory without the remote shared cache.
+            return False, False
+
+        # Now we test if the remote cache is accessible.
+        #
+        # This code path can only be reached if we are not potentially
+        # handling a recursive exception, so here we set
+        # self.handling_exception (in case the cache access we're
+        # about to do triggers a `logging.error` or exception that
+        # might recurse into this filter class), and actually record
+        # that this is the main exception handler thread.
+        try:
+            self.handling_exception.value = True
+            cache.set('RLF_TEST_KEY', 1, 1)
+            return cache.get('RLF_TEST_KEY') == 1, True
+        except Exception:
+            return False, True
 
     def filter(self, record: logging.LogRecord) -> bool:
-        from django.conf import settings
-        from django.core.cache import cache
+        # When the original filter() call finishes executing, it's
+        # going to change handling_exception.value to False. The
+        # local variable below tracks whether the *current*,
+        # potentially recursive, filter() call is allowed to touch
+        # that value (only the original will find this to be True
+        # at the end of its execution)
+        should_reset_handling_exception = False
+        try:
+            # Track duplicate errors
+            duplicate = False
+            rate = getattr(settings, f'{self.__class__.__name__.upper()}_LIMIT',
+                           600)  # seconds
 
-        # Track duplicate errors
-        duplicate = False
-        rate = getattr(settings, '%s_LIMIT' % self.__class__.__name__.upper(),
-                       600)  # seconds
-        if rate > 0:
-            # Test if the cache works
-            try:
-                cache.set('RLF_TEST_KEY', 1, 1)
-                use_cache = cache.get('RLF_TEST_KEY') == 1
-            except Exception:
-                use_cache = False
-
-            if use_cache:
-                if record.exc_info is not None:
-                    tb = '\n'.join(traceback.format_exception(*record.exc_info))
+            if rate > 0:
+                (use_cache, should_reset_handling_exception) = self.can_use_remote_cache()
+                if use_cache:
+                    if record.exc_info is not None:
+                        tb = '\n'.join(traceback.format_exception(*record.exc_info))
+                    else:
+                        tb = str(record)
+                    key = self.__class__.__name__.upper() + hashlib.sha1(tb.encode()).hexdigest()
+                    duplicate = cache.get(key) == 1
+                    if not duplicate:
+                        cache.set(key, 1, rate)
                 else:
-                    tb = str(record)
-                key = self.__class__.__name__.upper() + hashlib.sha1(tb.encode()).hexdigest()
-                duplicate = cache.get(key) == 1
-                if not duplicate:
-                    cache.set(key, 1, rate)
-            else:
-                min_date = timezone_now() - timedelta(seconds=rate)
-                duplicate = (self.last_error >= min_date)
-                if not duplicate:
-                    self.last_error = timezone_now()
+                    min_date = timezone_now() - timedelta(seconds=rate)
+                    duplicate = (self.last_error >= min_date)
+                    if not duplicate:
+                        self.last_error = timezone_now()
 
-        return not duplicate
+            return not duplicate
+        finally:
+            if should_reset_handling_exception:
+                self.handling_exception.value = False
 
 class ZulipLimiter(_RateLimitFilter):
     pass
@@ -73,41 +118,9 @@ def skip_200_and_304(record: logging.LogRecord) -> bool:
     # Apparently, `status_code` is added by Django and is not an actual
     # attribute of LogRecord; as a result, mypy throws an error if we
     # access the `status_code` attribute directly.
-    if getattr(record, 'status_code') in [200, 304]:
+    if getattr(record, 'status_code', None) in [200, 304]:
         return False
 
-    return True
-
-IGNORABLE_404_URLS = [
-    re.compile(r'^/apple-touch-icon.*\.png$'),
-    re.compile(r'^/favicon\.ico$'),
-    re.compile(r'^/robots\.txt$'),
-    re.compile(r'^/django_static_404.html$'),
-    re.compile(r'^/wp-login.php$'),
-]
-
-def skip_boring_404s(record: logging.LogRecord) -> bool:
-    """Prevents Django's 'Not Found' warnings from being logged for common
-    404 errors that don't reflect a problem in Zulip.  The overall
-    result is to keep the Zulip error logs cleaner than they would
-    otherwise be.
-
-    Assumes that its input is a django.request log record.
-    """
-    # Apparently, `status_code` is added by Django and is not an actual
-    # attribute of LogRecord; as a result, mypy throws an error if we
-    # access the `status_code` attribute directly.
-    if getattr(record, 'status_code') != 404:
-        return True
-
-    # We're only interested in filtering the "Not Found" errors.
-    if getattr(record, 'msg') != 'Not Found: %s':
-        return True
-
-    path = getattr(record, 'args', [''])[0]
-    for pattern in IGNORABLE_404_URLS:
-        if re.match(pattern, path):
-            return False
     return True
 
 def skip_site_packages_logs(record: logging.LogRecord) -> bool:
@@ -128,12 +141,13 @@ def find_log_caller_module(record: logging.LogRecord) -> Optional[str]:
     # The logging call should still be on the stack somewhere; search until
     # we find something in the same source file, and that should give the
     # right module name.
-    f = logging.currentframe()  # type: ignore  # Not in typeshed, and arguably shouldn't be
-    while f is not None:
+    f = logging.currentframe()
+    while True:
         if f.f_code.co_filename == record.pathname:
             return f.f_globals.get('__name__')
+        if f.f_back is None:
+            return None
         f = f.f_back
-    return None
 
 logger_nicknames = {
     'root': '',  # This one is more like undoing a nickname.
@@ -147,11 +161,18 @@ def find_log_origin(record: logging.LogRecord) -> str:
         module_name = find_log_caller_module(record)
         if module_name == logger_name or module_name == record.name:
             # Abbreviate a bit.
-            return logger_name
+            pass
         else:
-            return '{}/{}'.format(logger_name, module_name or '?')
-    else:
-        return logger_name
+            logger_name = '{}/{}'.format(logger_name, module_name or '?')
+
+    if settings.RUNNING_INSIDE_TORNADO:
+        # In multi-sharded Tornado, it's often valuable to have which shard is
+        # responsible for the request in the logs.
+        from zerver.tornado.ioloop_logging import logging_data
+        shard = logging_data.get('port', 'unknown')
+        logger_name = f"{logger_name}:{shard}"
+
+    return logger_name
 
 log_level_abbrevs = {
     'DEBUG':    'DEBG',
@@ -193,7 +214,7 @@ def log_to_file(logger: Logger,
                 filename: str,
                 log_format: str="%(asctime)s %(levelname)-8s %(message)s",
                 ) -> None:
-    """Note: `filename` should be declared in zproject/settings.py in ZULIP_PATHS."""
+    """Note: `filename` should be declared in zproject/settings.py with zulip_path."""
     formatter = logging.Formatter(log_format)
     handler = logging.FileHandler(filename)
     handler.setFormatter(formatter)

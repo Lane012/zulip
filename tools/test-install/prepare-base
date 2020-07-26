@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 if [ "$EUID" -ne 0 ]; then
@@ -10,10 +10,10 @@ RELEASE="$1"
 ARCH=amd64  # TODO: maybe i686 too
 
 case "$RELEASE" in
-    trusty) extra_packages=(python-virtualenv postgresql-9.3)
-        ;;
-    xenial) extra_packages=(virtualenv postgresql-9.5)
-        ;;
+    bionic) extra_packages=(python-pip)
+            ;;
+    focal) extra_packages=(python3-pip)
+           ;;
     *)
         echo "error: unsupported target release: $RELEASE" >&2
         exit 1
@@ -34,7 +34,7 @@ lxc-start -n "$CONTAINER_NAME"
 "$THIS_DIR"/lxc-wait -n "$CONTAINER_NAME"
 
 run() {
-    lxc-attach -n "$CONTAINER_NAME" -- "$@"
+    lxc-attach --clear-env -n "$CONTAINER_NAME" -- "$@"
 }
 
 run passwd -d root
@@ -49,11 +49,12 @@ run apt-get install -y --no-install-recommends \
   xvfb parallel netcat unzip zip jq python3-pip wget curl eatmydata \
   git crudini openssl ssl-cert \
   build-essential python3-dev \
-  closure-compiler memcached rabbitmq-server redis-server \
-  hunspell-en-us supervisor libssl-dev yui-compressor puppet \
+  memcached redis-server \
+  hunspell-en-us supervisor libssl-dev puppet \
   gettext libffi-dev libfreetype6-dev zlib1g-dev libjpeg-dev \
-  libldap2-dev libmemcached-dev python-dev python-pip \
-  python-six libxml2-dev libxslt1-dev libpq-dev \
+  libldap2-dev libmemcached-dev \
+  libxml2-dev libxslt1-dev libpq-dev \
+  virtualenv \
   "${extra_packages[@]}"
 
 run ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime

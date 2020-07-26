@@ -3,16 +3,15 @@
 ## What this covers
 
 This page documents how views work in Zulip. You may want to read the
-[new feature tutorial](../tutorials/new-feature-tutorial.html)
-or the [integration guide](https://zulipchat.com/api/integration-guide),
+[new feature tutorial](../tutorials/new-feature-tutorial.md)
 and treat this as a reference.
 
 If you have experience with Django, much of this will be familiar, but
 you may want to read about how REST requests are dispatched, and how
 request authentication works.
 
-This document supplements the [new feature tutorial](../tutorials/new-feature-tutorial.html)
-and the [testing](../testing/testing.html)
+This document supplements the [new feature tutorial](../tutorials/new-feature-tutorial.md)
+and the [testing](../testing/testing.md)
 documentation.
 
 ## What is a view?
@@ -21,7 +20,7 @@ A view in Zulip is everything that helps implement a server endpoint.
 Every path that the Zulip server supports (doesn't show a 404 page
 for) is a view. The obvious ones are those you can visit in your
 browser, for example
-[/integrations](https://zulipchat.com/integrations/), which shows the
+[/integrations](https://zulip.com/integrations/), which shows the
 integration documentation. These paths show up in the address bar of
 the browser. There are other views that are only seen by software,
 namely the API views. They are used to build the various clients that
@@ -51,8 +50,8 @@ to `i18n_urls` in `zproject/urls.py`
 ```diff
      i18n_urls = [
      ...
-+    url(r'^quote-of-the-day/$', TemplateView.as_view(template_name='zerver/qotd.html')),
-+    url(r'^postcards/$', 'zerver.views.postcards'),
++    path('quote-of-the-day', TemplateView.as_view(template_name='zerver/qotd.html')),
++    path('postcards', 'zerver.views.postcards'),
 ]
 ```
 
@@ -69,11 +68,10 @@ views, as an introduction to view decorators.
 ```py
 
 @require_post
-def accounts_register(request):
-    # type: (HttpRequest) -> HttpResponse
+def accounts_register(request: HttpRequest) -> HttpResponse:
 ```
 
-This decorator ensures that the requst was a POST--here, we're
+This decorator ensures that the request was a POST--here, we're
 checking that the registration submission page is requested with a
 post, and inside the function, we'll check the form data. If you
 request this page with GET, you'll get a HTTP 405 METHOD NOT ALLOWED
@@ -92,8 +90,7 @@ specific to Zulip.
 
 ```py
 @zulip_login_required
-def home(request):
-    # type: (HttpRequest) -> HttpResponse
+def home(request: HttpRequest) -> HttpResponse:
 ```
 
 [login-required-link]: https://docs.djangoproject.com/en/1.8/topics/auth/default/#django.contrib.auth.decorators.login_required
@@ -101,7 +98,7 @@ def home(request):
 ### Writing a template
 
 Templates for the main website are found in
-[templates/zerver](https://github.com/zulip/zulip/blob/master/templates/zerver).
+[templates/zerver/app](https://github.com/zulip/zulip/blob/master/templates/zerver/app).
 
 
 ## Writing API REST endpoints
@@ -156,7 +153,7 @@ from zerver.lib.request import has_request_variables, REQ
 @require_realm_admin
 @has_request_variables
 def create_user_backend(request, user_profile, email=REQ(), password=REQ(),
-                        full_name=REQ(), short_name=REQ()):
+                        full_name=REQ()):
     # ... code here
 ```
 
@@ -262,29 +259,15 @@ For example, in [zerver/views/realm.py](https://github.com/zulip/zulip/blob/mast
 ```py
 @require_realm_admin
 @has_request_variables
-def update_realm(request, user_profile, name=REQ(validator=check_string, default=None), ...)):
-    # type: (HttpRequest, UserProfile, ...) -> HttpResponse
+def update_realm(
+    request: HttpRequest, user_profile: UserProfile,
+    name: Optional[str]=REQ(validator=check_string, default=None),
+    # ...
+):
     realm = user_profile.realm
-    data = {} # type: Dict[str, Any]
-    if name is not None and realm.name != name:
-        do_set_realm_name(realm, name)
-        data['name'] = 'updated'
-```
-
-and in [zerver/lib/actions.py](https://github.com/zulip/zulip/blob/master/zerver/lib/actions.py):
-
-```py
-def do_set_realm_name(realm, name):
-    # type: (Realm, Text) -> None
-    realm.name = name
-    realm.save(update_fields=['name'])
-    event = dict(
-        type="realm",
-        op="update",
-        property='name',
-        value=name,
-    )
-    send_event(event, active_user_ids(realm))
+    # ...
+            do_set_realm_property(realm, k, v, acting_user=user_profile)
+    # ...
 ```
 
 `realm.save()` actually saves the changes to the realm to the
@@ -294,7 +277,7 @@ Zulip realm).
 
 ### Calling from the web application
 
-You should always use channel.<method> to make an `HTTP <method>` call
+You should always use `channel.<method>` to make an `HTTP <method>` call
 to the Zulip JSON API. As an example, in
 [static/js/admin.js](https://github.com/zulip/zulip/blob/master/static/js/admin.js)
 
@@ -341,13 +324,12 @@ preferable from a security perspective, and it is generally a good idea
 to make your feature available to other clients, especially the mobile
 clients.
 
-These endpoints make use of some older authentication decorators,
-`authenticated_json_api_view`, `authenticated_json_post_view`, and
-`authenticated_json_view`, so you may see them in the code.
+These endpoints make use the older authentication decorator
+`authenticated_json_view`, so you may see it in the code.
 
-## Webhook integration endpoints
+## Incoming webhook integrations
 
-Webhooks are called by other services, often to send a message as part
+Incoming webhooks are called by other services, often to send a message as part
 of those services' integrations. They are most often POST requests, and
 often there is very little you can customize about them. Usually you can
 expect that the webhook for a service will allow specification for the
@@ -367,4 +349,4 @@ def api_pagerduty_webhook(request, user_profile,
 ```
 `request.client` will be the result of `get_client("ZulipPagerDutyWebhook")`
 in this example and it will be passed to `check_send_stream_message`. For
-more information, see [Clients in Zulip](../subsystems/client.html).
+more information, see [Clients in Zulip](../subsystems/client.md).

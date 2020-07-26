@@ -2,21 +2,10 @@
 
 <p id="utctime" style="text-align: center;"></p>
 <p id="localtime" style="text-align: center;"></p>
-<script type="text/javascript">
+<script>
     var now = moment('{{ now }}');
     $('#utctime')[0].innerHTML = moment.utc(now).format('YYYY-MM-DD HH:mm') + 'Z';
     $('#localtime')[0].innerHTML = '(' + now.format('YYYY-MM-DD HH:mm ZZ') + ')';
-    $(document).ready(function() {
-        $('a.envelope-link').click(function() {
-            var temp = $(document.createElement('input'));
-            $("body").append(temp);
-            temp.val($(this).data("value")).select();
-            document.execCommand("copy");
-            temp.remove();
-            $(this).fadeOut(250);
-            $(this).fadeIn(1000);
-        });
-    });
 </script>
 
 <ul>
@@ -24,11 +13,13 @@
     <li>sites are listed if ≥1 users active in last 2 weeks</li>
     <li><strong>user</strong> - registered user, not deactivated, not a bot</li>
     <li><strong>active (user)</strong> - sent a message, or advanced the pointer (reading messages doesn't count unless advances the pointer)</li>
+    <li><strong>ARR</strong> (Annual recurring revenue) - the number of users they are paying for * annual price/user.</li>
     <li><strong><th><i class="fa fa-envelope"></i></th></strong> - copies realm admin emails to clipboard</li>
     <li><strong>DAU</strong> (Daily Active Users) - users active in last 24hr</li>
     <li><strong>WAU</strong> (Weekly Active Users) - users active in last 7 * 24hr</li>
     <li><strong>DAT</strong> (Daily Active Time) - total user-activity time in last 24hr</li>
     <li><strong>Human message</strong> - message sent by non-bot user, and not with known-bot client</li>
+    <li><a href="/stats/installation">Server total /stats style graphs</a></li>
 </ul>
 
 <table class="table summary-table sortable table-striped table-bordered">
@@ -37,7 +28,9 @@
         <tr>
             <th>Realm</th>
             <th>Created (green if ≤12wk)</th>
-            <th><i class="fa fa-envelope"></i></th>
+            <th>Plan Type</th>
+            <th>ARR</th>
+            <th></th>
             <th>DAU</th>
             <th>WAU</th>
             <th>Total users</th>
@@ -58,17 +51,28 @@
             </td>
 
             <td {% if row.is_new %}
-                class="good" {% else %}
-                class="neutral" {% endif %} >
+              class="good" {% else %}
+              class="neutral" {% endif %} >
                 {{ row.date_created_day }}
             </td>
 
-            <td class="envelope">
+            <td>
+                {{ row.plan_type_string }}
+            </td>
+
+            <td class="number">
+                {% if row.amount %}
+                {{ row.amount }}
+                {% endif %}
+            </td>
+
+            <td>
                 {% if not loop.last %}
-                <a class="envelope-link" data-value="{{ row.realm_admin_email }}">
+                <a class="envelope-link" data-admin-emails="{{ row.realm_admin_email }}">
                     <i class="fa fa-envelope"></i>
                 </a>
                 {% endif %}
+                {{ row.stats_link }}
             </td>
 
             <td class="number">

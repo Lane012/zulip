@@ -1,39 +1,19 @@
-const ELECTRON_APP_VERSION = "1.8.2";
-const ELECTRON_APP_URL_LINUX = "https://github.com/zulip/zulip-electron/releases/download/v" + ELECTRON_APP_VERSION + "/Zulip-" + ELECTRON_APP_VERSION + "-x86_64.AppImage";
-const ELECTRON_APP_URL_MAC = "https://github.com/zulip/zulip-electron/releases/download/v" + ELECTRON_APP_VERSION + "/Zulip-" + ELECTRON_APP_VERSION + ".dmg";
-const ELECTRON_APP_URL_WINDOWS = "https://github.com/zulip/zulip-electron/releases/download/v" + ELECTRON_APP_VERSION + "/Zulip-Web-Setup-" + ELECTRON_APP_VERSION + ".exe";
-
-import render_tabs from './team.js';
-
-// this will either smooth scroll to an anchor where the `name`
-// is the same as the `scroll-to` reference, or to a px height
-// (as specified like `scroll-to='0px'`).
-var ScrollTo = function () {
-    $("[scroll-to]").click(function () {
-        var sel = $(this).attr("scroll-to");
-
-        // if the `scroll-to` is a parse-able pixel value like `50px`,
-        // then use that as the scrollTop, else assume it is a selector name
-        // and find the `offsetTop`.
-        var top = /\dpx/.test(sel) ?
-                parseInt(sel, 10) :
-                $("[name='" + sel + "']").offset().top;
-
-        $("body").animate({ scrollTop: top + "px" }, 300);
-    });
-};
+import * as google_analytics from "./google-analytics.js";
+import {detect_user_os} from "./tabbed-instructions.js";
+import render_tabs from "./team.js";
 
 export function path_parts() {
-    return window.location.pathname.split('/').filter(function (chunk) {
-        return chunk !== '';
-    });
+    return window.location.pathname.split("/").filter((chunk) => chunk !== "");
 }
 
-var hello_events = function () {
-    var counter = 0;
-    $(window).scroll(function () {
+const hello_events = function () {
+    let counter = 0;
+    $(window).on("scroll", function () {
         if (counter % 2 === 0) {
-            $(".screen.hero-screen .message-feed").css("transform", "translateY(-" + $(this).scrollTop() / 5 + "px)");
+            $(".screen.hero-screen .message-feed").css(
+                "transform",
+                "translateY(-" + $(this).scrollTop() / 5 + "px)",
+            );
         }
         counter += 1;
     });
@@ -41,165 +21,162 @@ var hello_events = function () {
     $(".footer").addClass("hello");
 };
 
-var apps_events = function () {
-    var info = {
+const apps_events = function () {
+    const ELECTRON_APP_VERSION = page_params.electron_app_version;
+    const ELECTRON_APP_URL_LINUX =
+        "https://github.com/zulip/zulip-desktop/releases/download/v" +
+        ELECTRON_APP_VERSION +
+        "/Zulip-" +
+        ELECTRON_APP_VERSION +
+        "-x86_64.AppImage";
+    const ELECTRON_APP_URL_MAC =
+        "https://github.com/zulip/zulip-desktop/releases/download/v" +
+        ELECTRON_APP_VERSION +
+        "/Zulip-" +
+        ELECTRON_APP_VERSION +
+        ".dmg";
+    const ELECTRON_APP_URL_WINDOWS =
+        "https://github.com/zulip/zulip-desktop/releases/download/v" +
+        ELECTRON_APP_VERSION +
+        "/Zulip-Web-Setup-" +
+        ELECTRON_APP_VERSION +
+        ".exe";
+
+    const info = {
         windows: {
             image: "/static/images/landing-page/microsoft.png",
             alt: "Windows",
-            description: "Zulip for Windows is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
+            description:
+                "Zulip for Windows is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
             link: ELECTRON_APP_URL_WINDOWS,
             show_instructions: true,
-            install_guide: "/help/desktop-app-install-guide#installing-on-windows",
+            install_guide: "/help/desktop-app-install-guide",
+            app_type: "desktop",
         },
         mac: {
             image: "/static/images/landing-page/macbook.png",
             alt: "macOS",
-            description: "Zulip on macOS is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
+            description:
+                "Zulip on macOS is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
             link: ELECTRON_APP_URL_MAC,
             show_instructions: true,
-            install_guide: "/help/desktop-app-install-guide#installing-on-macos",
+            install_guide: "/help/desktop-app-install-guide",
+            app_type: "desktop",
         },
         android: {
             image: "/static/images/app-screenshots/zulip-android.png",
             alt: "Android",
             description: "Zulip's native Android app makes it easy to keep up while on the go.",
+            show_instructions: false,
             link: "https://play.google.com/store/apps/details?id=com.zulipmobile",
+            app_type: "mobile",
         },
         ios: {
             image: "/static/images/app-screenshots/zulip-iphone-rough.png",
             alt: "iOS",
             description: "Zulip's native iOS app makes it easy to keep up while on the go.",
+            show_instructions: false,
             link: "https://itunes.apple.com/us/app/zulip/id1203036395",
+            app_type: "mobile",
         },
         linux: {
             image: "/static/images/landing-page/ubuntu.png",
             alt: "Linux",
-            description: "Zulip on the Linux desktop is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
+            description:
+                "Zulip on the Linux desktop is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
             link: ELECTRON_APP_URL_LINUX,
             show_instructions: true,
-            install_guide: "/help/desktop-app-install-guide#installing-on-linux",
+            install_guide: "/help/desktop-app-install-guide",
+            app_type: "desktop",
         },
     };
 
-    var version;
-
-    function get_user_os() {
-        if (/Android/i.test(navigator.userAgent)) {
-            return "android";
-        }
-        if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-             return "ios";
-        }
-        if (/Mac/i.test(navigator.userAgent)) {
-             return "mac";
-        }
-        if (/Win/i.test(navigator.userAgent)) {
-             return "windows";
-        }
-        if (/Linux/i.test(navigator.userAgent)) {
-             return "linux";
-        }
-        return "mac"; // if unable to determine OS return Mac by default
-    }
+    let version;
 
     function get_version_from_path() {
-        var result;
-        var parts = path_parts();
+        let result;
+        const parts = path_parts();
 
-        Object.keys(info).forEach(function (version) {
+        Object.keys(info).forEach((version) => {
             if (parts.includes(version)) {
                 result = version;
             }
         });
 
-        result = result || get_user_os();
+        result = result || detect_user_os();
         return result;
     }
 
     function get_path_from_version() {
-        return '/apps/' + version;
+        return "/apps/" + version;
     }
 
     function update_path() {
-        var next_path = get_path_from_version();
-        history.pushState(version, '', next_path);
+        const next_path = get_path_from_version();
+        history.pushState(version, "", next_path);
     }
 
-    var update_page = function () {
-        var $download_instructions = $(".download-instructions");
-        var version_info = info[version];
+    const update_page = function () {
+        const $download_instructions = $(".download-instructions");
+        const $third_party_apps = $("#third-party-apps");
+        const $download_android_apk = $("#download-android-apk");
+        const $download_from_google_play_store = $(".download-from-google-play-store");
+        const $download_from_apple_app_store = $(".download-from-apple-app-store");
+        const $desktop_download_link = $(".desktop-download-link");
+        const version_info = info[version];
 
         $(".info .platform").text(version_info.alt);
         $(".info .description").text(version_info.description);
-        $(".info .link").attr("href", version_info.link);
+        $(".info .desktop-download-link").attr("href", version_info.link);
+        $(".download-from-google-play-store").attr("href", version_info.link);
+        $(".download-from-apple-app-store").attr("href", version_info.link);
         $(".image img").attr("src", version_info.image);
         $download_instructions.find("a").attr("href", version_info.install_guide);
 
-        if (version_info.show_instructions) {
-            $download_instructions.show();
-        } else {
-            $download_instructions.hide();
-        }
+        $download_instructions.toggle(version_info.show_instructions);
+
+        $third_party_apps.toggle(version_info.app_type === "desktop");
+        $desktop_download_link.toggle(version_info.app_type === "desktop");
+        $download_android_apk.toggle(version === "android");
+        $download_from_google_play_store.toggle(version === "android");
+        $download_from_apple_app_store.toggle(version === "ios");
     };
 
-    $(window).on('popstate', function () {
+    $(window).on("popstate", () => {
         version = get_version_from_path();
         update_page();
-        $("body").animate({ scrollTop: 0 }, 200);
+        $("body").animate({scrollTop: 0}, 200);
+        google_analytics.config({page_path: window.location.pathname});
     });
 
-    $(".apps a .icon").click(function (e) {
-        var next_version = $(e.target).closest('a')
-            .attr('href')
-            .replace('/apps/', '');
+    $(".apps a .icon").on("click", (e) => {
+        const next_version = $(e.target).closest("a").attr("href").replace("/apps/", "");
         version = next_version;
 
         update_path();
         update_page();
-        $("body").animate({ scrollTop: 0 }, 200);
+        $("body").animate({scrollTop: 0}, 200);
+        google_analytics.config({page_path: window.location.pathname});
 
         return false;
     });
 
     // init
     version = get_version_from_path();
-    history.replaceState(version, '', get_path_from_version());
+    history.replaceState(version, "", get_path_from_version());
     update_page();
 };
 
-var events = function () {
-    ScrollTo();
-
-    $("a").click(function (e) {
-        // if a user is holding the CMD/CTRL key while clicking a link, they
-        // want to open the link in another browser tab which means that we
-        // should preserve the state of this one. Return out, and don't fade
-        // the page.
-        if (e.metaKey || e.ctrlKey) {
-            return;
-        }
-
-        // if the pathname is different than what we are already on, run the
-        // custom transition function.
-        if (window.location.pathname !== this.pathname && !this.hasAttribute("download") &&
-            !/no-action/.test(this.className)) {
-            e.preventDefault();
-            $(".portico-landing").removeClass("show");
-            setTimeout(function () {
-                window.location.href = $(this).attr("href");
-            }.bind(this), 500);
-        }
-    });
-
-    // get the location url like `zulipchat.com/features/`, cut off the trailing
-    // `/` and then split by `/` to get ["zulipchat.com", "features"], then
+const events = function () {
+    // get the location url like `zulip.com/features/`, cut off the trailing
+    // `/` and then split by `/` to get ["zulip.com", "features"], then
     // pop the last element to get the current section (eg. `features`).
-    var location = window.location.pathname.replace(/\/#*$/, "").split(/\//).pop();
+    const location = window.location.pathname.replace(/\/#*$/, "").split(/\//).pop();
 
-    $("[on-page='" + location + "']").addClass("active");
+    $("[data-on-page='" + location + "']").addClass("active");
 
-    $("body").click(function (e) {
-        var $e = $(e.target);
+    $("body").on("click", (e) => {
+        const $e = $(e.target);
 
         if ($e.is("nav ul .exit")) {
             $("nav ul").removeClass("show");
@@ -210,7 +187,7 @@ var events = function () {
         }
     });
 
-    $(".hamburger").click(function (e) {
+    $(".hamburger").on("click", (e) => {
         $("nav ul").addClass("show");
         e.stopPropagation();
     });
@@ -219,45 +196,49 @@ var events = function () {
         apps_events();
     }
 
-    if (path_parts().includes('hello')) {
+    if (path_parts().includes("hello")) {
         hello_events();
     }
 };
 
+$(() => {
+    // Initiate the bootstrap carousel logic
+    $(".carousel").carousel({
+        interval: false,
+    });
 
-// run this callback when the page is determined to have loaded.
-var load = function () {
-    // show the .portico-landing when the document is loaded.
-    setTimeout(function () {
-        $(".portico-landing").addClass("show");
-    }, 200);
+    // Move to the next slide on clicking inside the carousel container
+    $(".carousel-inner .item-container").on("click", function (e) {
+        const get_tag_name = e.target.tagName.toLowerCase();
+        const is_button = get_tag_name === "button";
+        const is_link = get_tag_name === "a";
+        const is_last_slide = $("#tour-carousel .carousel-inner .item:last-child").hasClass(
+            "active",
+        );
 
-    // display the `x-grad` element a second after load so that the slide up
-    // transition on the .portico-landing is nice and smooth.
-    setTimeout(function () {
-        $("x-grad").addClass("show");
-    }, 1000);
+        // Do not trigger this event if user clicks on a button, link
+        // or if it's the last slide
+        const move_slide_forward = !is_button && !is_link && !is_last_slide;
+
+        if (move_slide_forward) {
+            $(this).closest(".carousel").carousel("next");
+        }
+    });
+
+    $(".carousel").on("slid", function () {
+        const $this = $(this);
+        $this.find(".visibility-control").show();
+        if ($this.find(".carousel-inner .item").first().hasClass("active")) {
+            $this.find(".left.visibility-control").hide();
+        } else if ($this.find(".carousel-inner .item").last().hasClass("active")) {
+            $this.find(".right.visibility-control").hide();
+        }
+    });
 
     // Set up events / categories / search
     events();
-};
 
-if (document.readyState === "complete") {
-    load();
-} else {
-    $(load);
-}
-
-$(function () {
-    if (window.location.pathname === '/team/') {
+    if (window.location.pathname === "/team/") {
         render_tabs();
     }
-});
-
-// Prevent Firefox from bfcaching the page.
-// According to https://developer.mozilla.org/en-US/docs/DOM/window.onunload
-// Using this event handler in your page prevents Firefox from caching the
-// page in the in-memory bfcache (backward/forward cache).
-$(window).on('unload', function () {
-    $(window).unbind('unload');
 });

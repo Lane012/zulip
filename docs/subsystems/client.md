@@ -14,7 +14,7 @@ of Zulip; it's primarily intended to assist debugging.
 A `Client` is used to sort messages into client categories such as
 `ZulipElectron` on the `/stats`
 [page](https://chat.zulip.org/stats). For more information see,
-[Analytics](analytics.html).
+[Analytics](analytics.md).
 
 ## Integrations
 
@@ -35,4 +35,4 @@ object as `request.client`.
 In most integrations, `request.client` is then passed to
 `check_send_stream_message`, where it is used to keep track of which client
 sent the message (which in turn is used by analytics). For more
-information, see [the webhook walkthrough](https://zulipchat.com/api/webhook-walkthrough).
+information, see [the incoming webhook walkthrough](https://zulip.com/api/incoming-webhooks-walkthrough).

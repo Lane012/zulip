@@ -1,38 +1,23 @@
-var ui_util = (function () {
-
-var exports = {};
-
 // Add functions to this that have no non-trivial
 // dependencies other than jQuery.
 
 exports.change_tab_to = function (tabname) {
-    $('#gear-menu a[href="' + tabname + '"]').tab('show');
+    $('#gear-menu a[href="' + tabname + '"]').tab("show");
 };
 
-exports.focus_on = function (field_id) {
-    // Call after autocompleting on a field, to advance the focus to
-    // the next input field.
-
-    // Bootstrap's typeahead does not expose a callback for when an
-    // autocomplete selection has been made, so we have to do this
-    // manually.
-    $("#" + field_id).focus();
-};
-
-// http://stackoverflow.com/questions/4233265/contenteditable-set-caret-at-the-end-of-the-text-cross-browser
+// https://stackoverflow.com/questions/4233265/contenteditable-set-caret-at-the-end-of-the-text-cross-browser
 exports.place_caret_at_end = function (el) {
     el.focus();
 
-    if (typeof window.getSelection !== "undefined"
-            && typeof document.createRange !== "undefined") {
-        var range = document.createRange();
+    if (typeof window.getSelection !== "undefined" && typeof document.createRange !== "undefined") {
+        const range = document.createRange();
         range.selectNodeContents(el);
         range.collapse(false);
-        var sel = window.getSelection();
+        const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
     } else if (typeof document.body.createTextRange !== "undefined") {
-        var textRange = document.body.createTextRange();
+        const textRange = document.body.createTextRange();
         textRange.moveToElementText(el);
         textRange.collapse(false);
         textRange.select();
@@ -44,9 +29,34 @@ exports.blur_active_element = function () {
     document.activeElement.blur();
 };
 
-return exports;
-}());
-
-if (typeof module !== 'undefined') {
-    module.exports = ui_util;
+function update_lock_icon_for_stream(stream_name) {
+    const icon = $("#compose-lock-icon");
+    const streamfield = $("#stream_message_recipient_stream");
+    if (stream_data.get_invite_only(stream_name)) {
+        icon.show();
+        streamfield.addClass("lock-padding");
+    } else {
+        icon.hide();
+        streamfield.removeClass("lock-padding");
+    }
 }
+
+// In an attempt to decrease mixing, set stream bar
+// color look like the stream being used.
+// (In particular, if there's a color associated with it,
+//  have that color be reflected here too.)
+exports.decorate_stream_bar = function (stream_name, element, is_compose) {
+    if (stream_name === undefined) {
+        return false;
+    }
+    const color = stream_data.get_color(stream_name);
+    if (is_compose) {
+        update_lock_icon_for_stream(stream_name);
+    }
+    element
+        .css("background-color", color)
+        .removeClass(stream_color.color_classes)
+        .addClass(stream_color.get_color_class(color));
+};
+
+window.ui_util = exports;

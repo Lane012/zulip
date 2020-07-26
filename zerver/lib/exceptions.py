@@ -1,13 +1,14 @@
 from enum import Enum
-from typing import Any, Dict, List, Optional, Text, Type
+from typing import Any, Dict, List, NoReturn, Optional, Type, TypeVar
 
-from django.core.exceptions import PermissionDenied
 from django.utils.translation import ugettext as _
+
+T = TypeVar("T", bound="AbstractEnum")
 
 class AbstractEnum(Enum):
     '''An enumeration whose members are used strictly for their names.'''
 
-    def __new__(cls: Type['AbstractEnum']) -> 'AbstractEnum':
+    def __new__(cls: Type[T]) -> T:
         obj = object.__new__(cls)
         obj._value_ = len(cls.__members__) + 1
         return obj
@@ -15,32 +16,40 @@ class AbstractEnum(Enum):
     # Override all the `Enum` methods that use `_value_`.
 
     def __repr__(self) -> str:
-        return str(self)
+        return str(self)  # nocoverage
 
     def value(self) -> None:
-        assert False
+        raise AssertionError("Not implemented")
 
-    def __reduce_ex__(self, proto: int) -> None:
-        assert False
+    def __reduce_ex__(self, proto: object) -> NoReturn:
+        raise AssertionError("Not implemented")
 
 class ErrorCode(AbstractEnum):
     BAD_REQUEST = ()  # Generic name, from the name of HTTP 400.
     REQUEST_VARIABLE_MISSING = ()
     REQUEST_VARIABLE_INVALID = ()
+    INVALID_JSON = ()
     BAD_IMAGE = ()
     REALM_UPLOAD_QUOTA = ()
     BAD_NARROW = ()
+    CANNOT_DEACTIVATE_LAST_USER = ()
+    MISSING_HTTP_EVENT_HEADER = ()
     STREAM_DOES_NOT_EXIST = ()
     UNAUTHORIZED_PRINCIPAL = ()
+    UNEXPECTED_WEBHOOK_EVENT_TYPE = ()
     BAD_EVENT_QUEUE_ID = ()
     CSRF_FAILED = ()
     INVITATION_FAILED = ()
     INVALID_ZULIP_SERVER = ()
+    INVALID_MARKDOWN_INCLUDE_STATEMENT = ()
+    REQUEST_CONFUSING_VAR = ()
+    INVALID_API_KEY = ()
+    INVALID_ZOOM_TOKEN = ()
 
 class JsonableError(Exception):
     '''A standardized error format we can turn into a nice JSON HTTP response.
 
-    This class can be invoked in several ways.
+    This class can be invoked in a couple ways.
 
      * Easiest, but completely machine-unreadable:
 
@@ -51,16 +60,6 @@ class JsonableError(Exception):
        on the user's language, it's not possible for code to distinguish
        this error from others in a non-buggy way.
 
-     * Partially machine-readable, with an error code:
-
-         raise JsonableError(_("No such widget: {}").format(widget_name),
-                             ErrorCode.NO_SUCH_WIDGET)
-
-       Now the error's `code` attribute can be used, both in server
-       and client code, to identify this type of error.  The data
-       (here, the widget name) is still embedded inside a translated
-       string, and can't be accessed by code.
-
      * Fully machine-readable, with an error code and structured data:
 
          class NoSuchWidgetError(JsonableError):
@@ -68,7 +67,7 @@ class JsonableError(Exception):
              data_fields = ['widget_name']
 
              def __init__(self, widget_name: str) -> None:
-                 self.widget_name = widget_name  # type: str
+                 self.widget_name: str = widget_name
 
              @staticmethod
              def msg_format() -> str:
@@ -76,31 +75,28 @@ class JsonableError(Exception):
 
          raise NoSuchWidgetError(widget_name)
 
-       Now both server and client code see a `widget_name` attribute.
+       Now both server and client code see a `widget_name` attribute
+       and an error code.
 
     Subclasses may also override `http_status_code`.
     '''
 
-    # Override this in subclasses, or just pass a `code` argument
-    # to the JsonableError constructor.
-    code = ErrorCode.BAD_REQUEST  # type: ErrorCode
+    # Override this in subclasses, as needed.
+    code: ErrorCode = ErrorCode.BAD_REQUEST
 
     # Override this in subclasses if providing structured data.
-    data_fields = []  # type: List[str]
+    data_fields: List[str] = []
 
     # Optionally override this in subclasses to return a different HTTP status,
     # like 403 or 404.
-    http_status_code = 400  # type: int
+    http_status_code: int = 400
 
-    def __init__(self, msg: Text, code: Optional[ErrorCode]=None) -> None:
-        if code is not None:
-            self.code = code
-
+    def __init__(self, msg: str) -> None:
         # `_msg` is an implementation detail of `JsonableError` itself.
-        self._msg = msg  # type: Text
+        self._msg: str = msg
 
     @staticmethod
-    def msg_format() -> Text:
+    def msg_format() -> str:
         '''Override in subclasses.  Gets the items in `data_fields` as format args.
 
         This should return (a translation of) a string literal.
@@ -118,7 +114,7 @@ class JsonableError(Exception):
     #
 
     @property
-    def msg(self) -> Text:
+    def msg(self) -> str:
         format_data = dict(((f, getattr(self, f)) for f in self.data_fields),
                            _msg=getattr(self, '_msg', None))
         return self.msg_format().format(**format_data)
@@ -147,6 +143,114 @@ class StreamDoesNotExistError(JsonableError):
     def msg_format() -> str:
         return _("Stream '{stream}' does not exist")
 
-class RateLimited(PermissionDenied):
+class StreamWithIDDoesNotExistError(JsonableError):
+    code = ErrorCode.STREAM_DOES_NOT_EXIST
+    data_fields = ['stream_id']
+
+    def __init__(self, stream_id: int) -> None:
+        self.stream_id = stream_id
+
+    @staticmethod
+    def msg_format() -> str:
+        return _("Stream with ID '{stream_id}' does not exist")
+
+class CannotDeactivateLastUserError(JsonableError):
+    code = ErrorCode.CANNOT_DEACTIVATE_LAST_USER
+    data_fields = ['is_last_owner', 'entity']
+
+    def __init__(self, is_last_owner: bool) -> None:
+        self.is_last_owner = is_last_owner
+        self.entity = _("organization owner") if is_last_owner else _("user")
+
+    @staticmethod
+    def msg_format() -> str:
+        return _("Cannot deactivate the only {entity}.")
+
+class InvalidMarkdownIncludeStatement(JsonableError):
+    code = ErrorCode.INVALID_MARKDOWN_INCLUDE_STATEMENT
+    data_fields = ['include_statement']
+
+    def __init__(self, include_statement: str) -> None:
+        self.include_statement = include_statement
+
+    @staticmethod
+    def msg_format() -> str:
+        return _("Invalid markdown include statement: {include_statement}")
+
+class RateLimited(Exception):
     def __init__(self, msg: str="") -> None:
         super().__init__(msg)
+
+class InvalidJSONError(JsonableError):
+    code = ErrorCode.INVALID_JSON
+
+    @staticmethod
+    def msg_format() -> str:
+        return _("Malformed JSON")
+
+class OrganizationMemberRequired(JsonableError):
+    code: ErrorCode = ErrorCode.UNAUTHORIZED_PRINCIPAL
+
+    MEMBER_REQUIRED_MESSAGE = _("Must be an organization member")
+
+    def __init__(self) -> None:
+        super().__init__(self.MEMBER_REQUIRED_MESSAGE)
+
+    @staticmethod
+    def msg_format() -> str:
+        return OrganizationMemberRequired.MEMBER_REQUIRED_MESSAGE
+
+class OrganizationAdministratorRequired(JsonableError):
+    code: ErrorCode = ErrorCode.UNAUTHORIZED_PRINCIPAL
+
+    ADMIN_REQUIRED_MESSAGE = _("Must be an organization administrator")
+
+    def __init__(self) -> None:
+        super().__init__(self.ADMIN_REQUIRED_MESSAGE)
+
+    @staticmethod
+    def msg_format() -> str:
+        return OrganizationAdministratorRequired.ADMIN_REQUIRED_MESSAGE
+
+class OrganizationOwnerRequired(JsonableError):
+    code: ErrorCode = ErrorCode.UNAUTHORIZED_PRINCIPAL
+
+    OWNER_REQUIRED_MESSAGE = _("Must be an organization owner")
+
+    def __init__(self) -> None:
+        super().__init__(self.OWNER_REQUIRED_MESSAGE)
+
+    @staticmethod
+    def msg_format() -> str:
+        return OrganizationOwnerRequired.OWNER_REQUIRED_MESSAGE
+
+class MarkdownRenderingException(Exception):
+    pass
+
+class InvalidAPIKeyError(JsonableError):
+    code = ErrorCode.INVALID_API_KEY
+    http_status_code = 401
+
+    def __init__(self) -> None:
+        pass
+
+    @staticmethod
+    def msg_format() -> str:
+        return _("Invalid API key")
+
+class InvalidAPIKeyFormatError(InvalidAPIKeyError):
+    @staticmethod
+    def msg_format() -> str:
+        return _("Malformed API key")
+
+class UnexpectedWebhookEventType(JsonableError):
+    code = ErrorCode.UNEXPECTED_WEBHOOK_EVENT_TYPE
+    data_fields = ['webhook_name', 'event_type']
+
+    def __init__(self, webhook_name: str, event_type: Optional[str]) -> None:
+        self.webhook_name = webhook_name
+        self.event_type = event_type
+
+    @staticmethod
+    def msg_format() -> str:
+        return _("The '{event_type}' event isn't currently supported by the {webhook_name} webhook")

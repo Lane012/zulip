@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
 from django.db import migrations, models
 
-import zerver.lib.str_utils
 
 class Migration(migrations.Migration):
 
@@ -19,6 +17,6 @@ class Migration(migrations.Migration):
                 ('state', models.PositiveSmallIntegerField()),
                 ('last_modified', models.DateTimeField(auto_now=True)),
             ],
-            bases=(zerver.lib.str_utils.ModelReprMixin, models.Model),
+            bases=(models.Model,),
         ),
     ]

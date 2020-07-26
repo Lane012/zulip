@@ -65,6 +65,60 @@ Try narrowing from the message view:
     - narrow to a topic
     - click on the Zulip logo (and verify you're in the All messages view)
 
+### Messagebox ###
+
+With messagebox we want to test mainly the functioning of all
+all the keyboard shortcuts and click handlers.
+
+Apart from that there are three views of a message box, we want
+to test their appearance too:
+- Message that includes sender
+- Message without the sender
+- "/me" message
+
+Here's how we're going to test the message appearances:
+- narrow to a new topic and send a message (this message will include sender)
+    - edit the message ("(EDITED)" label should appear beside sender name)
+- send another message (will not include sender)
+    - edit the message ("(EDITED)" label should appear in the left column, where the avatar is)
+- send a "/me" message (`/me test message`)
+    - message should appear alongside sender name
+    - edit the message ("(EDITED)" label should appear beside the message)
+
+For all the three cases, we need to test the click handlers and
+the hotkeys too:
+- Sender popover:
+    - click on the avatar and sender name for messages which include sender
+    - press 'u' to open the sender popover for all messages
+- Message reply:
+    - click on message to reply
+    - use 'r' or Return hotkey to reply
+    - use '>' to quote and reply
+    - use '@' to mention and reply
+- Reactions:
+    - click on the reactions button to open menu
+    - use ':' to open the reactions menu
+    - react to a message
+- Chevron
+    - click on chevron to open menu
+    - use 'i' to open chevron menu
+- Message edit
+    - click on message edit/view source button
+    - use 'i' + Return to edit/view source message
+    - click on the 'copy and close' option in view source and verify positioning of 'Copied!' label.
+- Star a message:
+    - click on the star button in the right column
+    - use 'Ctrl + S' to star a message
+- Message length
+    - send a long message and see if '[More]' appears
+    - click on the 'more' or 'collapse' link
+    - use i to collapse/expand a message irrespective of message length
+- use 'v' to show all images in the thread
+- use 'M' to mute the thread
+
+Play with the screen size to check if the messagebox appears
+fine in different screens too.
+
 ### Message editing ###
 
 With message editing we mainly want to exercise topic changes.
@@ -101,9 +155,13 @@ be watching unread counts.  Of course, you also want to see messages
 show up in the message pane.  And, finally, you should make sure
 that no messages outside the narrow show up in Cordelia's view.
 
-**Important**: Make sure that Cordelia is subscribed to Verona but not
-subscribed to Denmark; if not, you should use different streams
-for your testing.
+
+```eval_rst
+.. important::
+    Make sure that Cordelia is subscribed to Verona but not
+    subscribed to Denmark; if not, you should use different streams
+    for your testing.
+```
 
 When testing narrows, you want to have Hamlet send the same message
 several times in a row, while cycling Cordelia through various narrows.
@@ -150,7 +208,7 @@ populated and where the focus is placed.
     - use R to reply to the author of a PM
     - use R to reply to the author of a PM stream
     - use c to compose a stream message
-    - use C to compose a new PM
+    - use x to compose a new PM
 
 - Buttons
     - Narrow to a stream and click on "New topic"
@@ -208,7 +266,7 @@ then the message will disappear from the view.
 
 Here are the things to test:
 
-- Stream sidebar menus
+- Stream sidebar menus (click ellipsis when hovering over stream filters)
     - Stream settings (just make sure it goes there)
     - Narrow (and then have Hamlet send a message)
     - Pin/unpin (do both)
@@ -218,7 +276,7 @@ Here are the things to test:
     - Unsubscribe (and then go to Stream settings in the gear menu to resubscribe)
     - Choose custom color (play around with this)
 
-- Topic sidebar menus
+- Topic sidebar menus (click ellipsis when hovering over topics)
     - Narrow (and then have Hamlet send a message)
     - Mute/unmute (try both)
     - Mark as read (scroll back and then have Hamlet send you a message)
@@ -240,7 +298,7 @@ Here are the things to test:
     - Mute/unmute (try both, watch left sidebar)
     - Link to this conversation
 
-- Buddy list chevron menus
+- Buddy list menus (click ellipsis when hovering over users)
     - Narrow to PMs with
     - Narrow to message sent by
     - Compose a message to
@@ -287,7 +345,7 @@ First, we start off with "positive" tests.
         - Have Cordelia subscribe to the stream.
         - Verify Cordelia can see the previous message.
         - Have Cordelia post a message to the stream.
-    - Have Hamlet create an invite-only stream with Cordelia
+    - Have Hamlet create a private stream with Cordelia
       invited and test a two-way conversation between the two
       users.
 
@@ -402,12 +460,12 @@ Do these tasks as Cordelia.
 
 - Your account
     - Change full name (Hamlet should see the name change)
-    - Customize avatar
+    - Customize profile picture
     - Deactivate account (and then log in as Iago to re-activate Cordelia)
 - Display settings
     - Right now, these unfortunately require reloads to take effect.
     - Default language (change to Spanish)
-    - User list on left sidebar in narrow windows (verify by making window thinner)
+    - Show user list on left sidebar in narrow windows (verify by making window thinner)
     - 24-hour time (and then test going back to AM/PM)
 - Notifications
     - Stream Message
@@ -434,7 +492,7 @@ Do these tasks as Cordelia.
     - Turn on/off "Enable desktop notifications for new streams" and test.
       (We may eliminate this option soon.)
 
-### Keyboard Shorcuts ###
+### Keyboard Shortcuts ###
 
 We mostly test keyboard shortcuts as part of other tasks.
 

@@ -1,20 +1,16 @@
 {% extends "zerver/portico.html" %}
+{% set entrypoint = "landing-page" %}
 
 {% block customhead %}
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style media="screen">
     .app.portico-page { padding-bottom: 0px; }
 </style>
-{% stylesheet 'portico' %}
-{% stylesheet 'landing-page' %}
-{{ render_bundle('landing-page') }}
-
 {% endblock %}
 
 {% block portico_content %}
 
 {% include 'zerver/landing_nav.html' %}
-{% include 'zerver/gradients.html' %}
 
 <div class="portico-landing apps">
     <div class="hero">
@@ -25,16 +21,17 @@
                     <div class="cta">
                         <h1>Zulip for <span class="platform"></span></h1>
                         <p class="description"></p>
-                        <p class="download-instructions">For download instructions, go to the <a class="silver bold" href="/help/desktop-app-install-guide" target="_blank">desktop app install guide</a>.</p>
-                        <a class="link no-action" href="">
-                            <button type="button" name="button">Download Zulip for <span class="platform"></span></button>
-                        </a>
+                        <p class="download-instructions">For download instructions, go to the <a class="silver bold" href="/help/desktop-app-install-guide" target="_blank" rel="noopener noreferrer">desktop app install guide</a>.</p>
+                        <a class="desktop-download-link no-action" hidden href=""><span class="button green">Download Zulip for <span class="platform"></span></span></a>
+                        <a class="download-from-google-play-store" hidden href=""><img src='/static/images/store-badges/google-play-badge.png' alt=""/></a>
+                        <a class="download-from-apple-app-store" hidden href=""><img src='/static/images/store-badges/app-store-badge.svg' alt=""/></a>
+                        <span id="download-android-apk" hidden><a href="https://github.com/zulip/zulip-mobile/releases/latest">or manually download APK</a></span>
                     </div>
                 </div>
             </div>
             <div class="image">
                 <div class="flex">
-                    <img src="" />
+                    <img src="/static/images/loader.svg" alt="" />
                 </div>
             </div>
         </div>
@@ -59,6 +56,12 @@
             <a class="" href="/apps/ios">
                 <i class="icon fa fa-mobile-phone" data-label="iOS"></i>
             </a>
+        </div>
+        <div id="third-party-apps">
+            Zulip also works great in pinned browser tabs and
+            multi-protocol desktop chat apps
+            like <a href="https://rambox.pro">Rambox</a>
+            and <a href="https://getferdi.com">Ferdi</a>.
         </div>
     </div>
 </div>

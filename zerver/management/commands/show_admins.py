@@ -1,35 +1,34 @@
-
-import sys
 from argparse import ArgumentParser
 from typing import Any
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import CommandError
 
-from zerver.models import Realm, get_realm
+from zerver.lib.management import ZulipBaseCommand
 
-class Command(BaseCommand):
-    help = """Show the admins in a realm."""
+
+class Command(ZulipBaseCommand):
+    help = """Show the owners and administrators in an organization."""
 
     def add_arguments(self, parser: ArgumentParser) -> None:
-        parser.add_argument('realm', metavar='<realm>', type=str,
-                            help="realm to show admins for")
+        self.add_realm_args(parser, required=True)
 
-    def handle(self, *args: Any, **options: str) -> None:
-        realm_name = options['realm']
+    def handle(self, *args: Any, **options: Any) -> None:
+        realm = self.get_realm(options)
+        assert realm is not None  # True because of required=True above
 
-        try:
-            realm = get_realm(realm_name)
-        except Realm.DoesNotExist:
-            print('There is no realm called %s.' % (realm_name,))
-            sys.exit(1)
+        admin_users = realm.get_admin_users_and_bots()
+        owner_user_ids = set(list(realm.get_human_owner_users().values_list("id", flat=True)))
 
-        users = realm.get_admin_users()
+        if admin_users:
+            print('Administrators:\n')
+            for user in admin_users:
+                owner_detail = ""
+                if user.id in owner_user_ids:
+                    owner_detail = " [owner]"
+                print(f'  {user.delivery_email} ({user.full_name}){owner_detail}')
 
-        if users:
-            print('Admins:\n')
-            for user in users:
-                print('  %s (%s)' % (user.email, user.full_name))
         else:
-            print('There are no admins for this realm!')
+            raise CommandError('There are no admins for this realm!')
 
-        print('\nYou can use the "knight" management command to knight admins.')
+        print('\nYou can use the "knight" management command to make more users admins.')
+        print('\nOr with the --revoke argument, remove admin status from users.')

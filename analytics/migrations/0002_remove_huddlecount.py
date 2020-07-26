@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
-from django.db import migrations, models
+from django.db import migrations
+
 
 class Migration(migrations.Migration):
 
@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AlterUniqueTogether(
             name='huddlecount',
-            unique_together=set([]),
+            unique_together=set(),
         ),
         migrations.RemoveField(
             model_name='huddlecount',

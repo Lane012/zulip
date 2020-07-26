@@ -1,4 +1,3 @@
-
 import glob
 import logging
 import os
@@ -9,6 +8,7 @@ from typing import Any
 from django.core.management.base import BaseCommand
 
 from zerver.lib.export import export_usermessages_batch
+
 
 class Command(BaseCommand):
     help = """UserMessage fetching helper for export.py"""
@@ -24,9 +24,15 @@ class Command(BaseCommand):
                             action="store",
                             default=None,
                             help='Thread ID')
+        parser.add_argument('--consent-message-id',
+                            dest="consent_message_id",
+                            action="store",
+                            default=None,
+                            type=int,
+                            help='ID of the message advertising users to react with thumbs up')
 
     def handle(self, *args: Any, **options: Any) -> None:
-        logging.info("Starting UserMessage batch thread %s" % (options['thread'],))
+        logging.info("Starting UserMessage batch thread %s", options['thread'])
         files = set(glob.glob(os.path.join(options['path'], 'messages-*.json.partial')))
         for partial_path in files:
             locked_path = partial_path.replace(".json.partial", ".json.locked")
@@ -36,9 +42,9 @@ class Command(BaseCommand):
             except Exception:
                 # Already claimed by another process
                 continue
-            logging.info("Thread %s processing %s" % (options['thread'], output_path))
+            logging.info("Thread %s processing %s", options['thread'], output_path)
             try:
-                export_usermessages_batch(locked_path, output_path)
+                export_usermessages_batch(locked_path, output_path, options["consent_message_id"])
             except Exception:
                 # Put the item back in the free pool when we fail
                 shutil.move(locked_path, partial_path)

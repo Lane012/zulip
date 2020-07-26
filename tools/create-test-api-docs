@@ -2,21 +2,20 @@
 
 # check for the venv
 from lib import sanity_check
+
 sanity_check.check_venv(__file__)
 
-from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Set
-
-import cgi
+import html
 import os
 import pprint
-import re
+from collections import defaultdict
+from typing import Any, Dict, List, Set
+
 import ujson
 
 Call = Dict[str, Any]
 
-def clean_up_pattern(s):
-    # type: (str) -> str
+def clean_up_pattern(s: str) -> str:
     paren_level = 0
     in_braces = False
     result = ''
@@ -36,8 +35,7 @@ def clean_up_pattern(s):
         prior_char = c
     return result
 
-def encode_info(info):
-    # type: (Any) -> str
+def encode_info(info: Any) -> str:
     try:
         result = ''
         try:
@@ -45,22 +43,20 @@ def encode_info(info):
             result = '(stringified)\n'
         except Exception:
             pass
-        result += cgi.escape(pprint.pformat(info, indent=4))
+        result += html.escape(pprint.pformat(info, indent=4))
         return '<pre>' + result + '</pre>'
     except Exception:
         pass
     try:
-        return cgi.escape(str(info))
+        return html.escape(str(info))
     except Exception:
         pass
     return 'NOT ENCODABLE'
 
-def fix_test_name(s):
-    # type: (str) -> str
+def fix_test_name(s: str) -> str:
     return s.replace('zerver.tests.', '')
 
-def create_single_page(pattern, out_dir, href, calls):
-    # type: (str, str, str, List[Call]) -> None
+def create_single_page(pattern: str, out_dir: str, href: str, calls: List[Call]) -> None:
     fn = out_dir + '/' + href
     with open(fn, 'w') as f:
         f.write('''
@@ -70,11 +66,11 @@ def create_single_page(pattern, out_dir, href, calls):
             }
             </style>
             ''')
-        f.write('<h3>%s</h3>\n' % (cgi.escape(pattern),))
+        f.write(f'<h3>{html.escape(pattern)}</h3>\n')
         calls.sort(key=lambda call: call['status_code'])
         for call in calls:
             f.write('<hr>')
-            f.write('\n%s' % (fix_test_name(call['test_name']),))
+            f.write('\n{}'.format(fix_test_name(call['test_name'])))
             f.write('<div class="test">')
             try:
                 f.write(call['url'])
@@ -82,12 +78,11 @@ def create_single_page(pattern, out_dir, href, calls):
                 f.write(call['url'].encode('utf8'))
             f.write('<br>\n')
             f.write(call['method'] + '<br>\n')
-            f.write('status code: %s<br>\n' % (call['status_code'],))
+            f.write('status code: {}<br>\n'.format(call['status_code']))
             f.write('<br>')
             f.write('</div>')
 
-def create_user_docs():
-    # type: () -> None
+def create_user_docs() -> None:
     fn = 'var/url_coverage.txt'  # TODO: make path more robust, maybe use json suffix
 
     out_dir = 'var/api_docs'
@@ -115,7 +110,7 @@ def create_user_docs():
         for line in open(fn):
             calls.append(ujson.loads(line))
 
-        pattern_dict = defaultdict(list)  # type: Dict[str, List[Call]]
+        pattern_dict: Dict[str, List[Call]] = defaultdict(list)
         for call in calls:
             if 'pattern' in call:
                 pattern = clean_up_pattern(call['pattern'])
@@ -130,7 +125,7 @@ def create_user_docs():
             ('json', 'legacy'),
         ]
 
-        groups = dict()  # type: Dict[str, Set[str]]
+        groups: Dict[str, Set[str]] = dict()
         for prefix, name in tups:
             groups[name] = {p for p in patterns if p.startswith(prefix)}
             patterns -= groups[name]
@@ -142,13 +137,13 @@ def create_user_docs():
             f.write('<ul>\n')
             for pattern in sorted(groups[name]):
                 href = pattern.replace('/', '-') + '.html'
-                link = '<a href="%s">%s</a>' % (href, cgi.escape(pattern))
+                link = f'<a href="{href}">{html.escape(pattern)}</a>'
                 f.write('<li>' + link + '</li>\n')
                 create_single_page(pattern, out_dir, href, pattern_dict[pattern])
             f.write('</ul>')
             f.write('\n')
 
-    print('open %s' % (main_page,))
+    print(f'open {main_page}')
 
 
 if __name__ == '__main__':

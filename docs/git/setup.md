@@ -31,15 +31,15 @@ We also highly recommend the following:
 
 ## Get a graphical client
 
-Even if you're comfortable using git on the command line, having a graphic
-client can be useful for viewing your repository. This is especially when doing
-a complicated rebases and similar operations because you can check the state of
-your repository after each command to see what changed. If something goes
-wrong, this helps you figure out when and why.
+Even if you're comfortable using git on the command line, having a graphical
+client can be useful for viewing your repository. This is especially true
+when doing complicated rebases and similar operations because you can check
+the state of your repository after each command to see what changed. If
+something goes wrong, this helps you figure out when and why.
 
 If you don't already have one installed, here are some suggestions:
 
-- macOS: [GitX-dev][gitgui-gitxdev]
+- macOS: [GitX][gitgui-gitx] (previously [GitX-dev][gitgui-gitxdev])
 - Ubuntu/Linux: [git-cola][gitgui-gitcola], [gitg][gitgui-gitg], [gitk][gitgui-gitk]
 - Windows: [SourceTree][gitgui-sourcetree]
 
@@ -58,10 +58,11 @@ And, if none of the above are to your liking, try [one of these][gitbook-guis].
 [gitbook-setup]: https://git-scm.com/book/en/v2/Getting-Started-First-Time-Git-Setup
 [gitbook-other-envs-bash]: https://git-scm.com/book/en/v2/Git-in-Other-Environments-Git-in-Bash
 [gitbook-other-envs-zsh]: https://git-scm.com/book/en/v2/Git-in-Other-Environments-Git-in-Zsh
-[gitgui-gitcola]: http://git-cola.github.io/
+[gitgui-gitcola]: https://git-cola.github.io/
 [gitgui-gitg]: https://wiki.gnome.org/Apps/Gitg
 [gitgui-gitk]: https://git-scm.com/docs/gitk
+[gitgui-gitx]: https://github.com/gitx/gitx/
 [gitgui-gitxdev]: https://rowanj.github.io/gitx/
 [gitgui-sourcetree]: https://www.sourcetreeapp.com/
-[github-help-add-ssh-key]: https://help.github.com/articles/adding-a-new-ssh-key-to-your-github-account/
+[github-help-add-ssh-key]: https://help.github.com/en/articles/adding-a-new-ssh-key-to-your-github-account
 [tig]: http://jonas.nitro.dk/tig/

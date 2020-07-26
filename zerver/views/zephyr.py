@@ -1,20 +1,21 @@
-from typing import Any, List, Dict, Optional, Callable, Tuple, Iterable, Sequence, Text
-
-from django.conf import settings
-from django.http import HttpResponse, HttpRequest
-from django.utils.translation import ugettext as _
-from zerver.decorator import authenticated_json_view
-from zerver.lib.ccache import make_ccache
-from zerver.lib.request import has_request_variables, REQ, JsonableError
-from zerver.lib.response import json_success, json_error
-from zerver.lib.str_utils import force_str
-from zerver.models import UserProfile
-
 import base64
 import logging
+import re
 import subprocess
-import ujson
+from typing import Optional
 
+import ujson
+from django.conf import settings
+from django.http import HttpRequest, HttpResponse
+from django.utils.translation import ugettext as _
+
+from zerver.decorator import authenticated_json_view
+from zerver.lib.ccache import make_ccache
+from zerver.lib.pysa import mark_sanitized
+from zerver.lib.request import REQ, has_request_variables
+from zerver.lib.response import json_error, json_success
+from zerver.lib.users import get_api_key
+from zerver.models import UserProfile
 
 # Hack for mit.edu users whose Kerberos usernames don't match what they zephyr
 # as.  The key is for Kerberos and the value is for zephyr.
@@ -25,7 +26,7 @@ kerberos_alter_egos = {
 @authenticated_json_view
 @has_request_variables
 def webathena_kerberos_login(request: HttpRequest, user_profile: UserProfile,
-                             cred: Text=REQ(default=None)) -> HttpResponse:
+                             cred: Optional[str]=REQ(default=None)) -> HttpResponse:
     global kerberos_alter_egos
     if cred is None:
         return json_error(_("Could not find Kerberos credential"))
@@ -38,17 +39,29 @@ def webathena_kerberos_login(request: HttpRequest, user_profile: UserProfile,
         if user in kerberos_alter_egos:
             user = kerberos_alter_egos[user]
         assert(user == user_profile.email.split("@")[0])
+        # Limit characters in usernames to valid MIT usernames
+        # This is important for security since DNS is not secure.
+        assert(re.match(r'^[a-z0-9_.-]+$', user) is not None)
         ccache = make_ccache(parsed_cred)
+
+        # 'user' has been verified to contain only benign characters that won't
+        # help with shell injection.
+        user = mark_sanitized(user)
+
+        # 'ccache' is only written to disk by the script and used as a kerberos
+        # credential cache file.
+        ccache = mark_sanitized(ccache)
     except Exception:
         return json_error(_("Invalid Kerberos cache"))
 
     # TODO: Send these data via (say) rabbitmq
     try:
+        api_key = get_api_key(user_profile)
         subprocess.check_call(["ssh", settings.PERSONAL_ZMIRROR_SERVER, "--",
                                "/home/zulip/python-zulip-api/zulip/integrations/zephyr/process_ccache",
-                               force_str(user),
-                               force_str(user_profile.api_key),
-                               force_str(base64.b64encode(ccache))])
+                               user,
+                               api_key,
+                               base64.b64encode(ccache).decode("utf-8")])
     except Exception:
         logging.exception("Error updating the user's ccache")
         return json_error(_("We were unable to setup mirroring for you"))

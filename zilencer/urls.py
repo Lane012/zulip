@@ -1,28 +1,35 @@
 from typing import Any
 
-from django.conf.urls import include, url
+from django.conf.urls import include
+from django.urls import path
 
 import zilencer.views
 from zerver.lib.rest import rest_dispatch
 
-i18n_urlpatterns = [
-    url(r'^billing/$', zilencer.views.add_payment_method),
-]  # type: Any
+i18n_urlpatterns: Any = []
 
 # Zilencer views following the REST API style
 v1_api_and_json_patterns = [
-    url('^remotes/push/register$', rest_dispatch,
-        {'POST': 'zilencer.views.remote_server_register_push'}),
-    url('^remotes/push/unregister$', rest_dispatch,
-        {'POST': 'zilencer.views.remote_server_unregister_push'}),
-    url('^remotes/push/notify$', rest_dispatch,
-        {'POST': 'zilencer.views.remote_server_notify_push'}),
+    path('remotes/push/register', rest_dispatch,
+         {'POST': 'zilencer.views.register_remote_push_device'}),
+    path('remotes/push/unregister', rest_dispatch,
+         {'POST': 'zilencer.views.unregister_remote_push_device'}),
+    path('remotes/push/unregister/all', rest_dispatch,
+         {'POST': 'zilencer.views.unregister_all_remote_push_devices'}),
+    path('remotes/push/notify', rest_dispatch,
+         {'POST': 'zilencer.views.remote_server_notify_push'}),
+
+    # Push signup doesn't use the REST API, since there's no auth.
+    path('remotes/server/register', zilencer.views.register_remote_server),
+
+    # For receiving table data used in analytics and billing
+    path('remotes/server/analytics', rest_dispatch,
+         {'POST': 'zilencer.views.remote_server_post_analytics'}),
+    path('remotes/server/analytics/status', rest_dispatch,
+         {'GET': 'zilencer.views.remote_server_check_analytics'}),
 ]
 
-# Make a copy of i18n_urlpatterns so that they appear without prefix for English
-urlpatterns = list(i18n_urlpatterns)
-
-urlpatterns += [
-    url(r'^api/v1/', include(v1_api_and_json_patterns)),
-    url(r'^json/', include(v1_api_and_json_patterns)),
+urlpatterns = [
+    path('api/v1/', include(v1_api_and_json_patterns)),
+    path('json/', include(v1_api_and_json_patterns)),
 ]

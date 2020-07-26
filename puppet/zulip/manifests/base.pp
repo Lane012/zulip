@@ -1,64 +1,82 @@
 class zulip::base {
-  include apt
-  $base_packages = [ # Accurate time is essential
-                     "ntp",
-                     # Used in scripts including install-yarn.sh
-                     "curl",
-                     # Used in scripts
-                     "netcat",
-                     # Nagios plugins; needed to ensure /var/lib/nagios_plugins exists
-                     "nagios-plugins-basic",
-                     # Used to read /etc/zulip/zulip.conf for `zulipconf` puppet function
-                     "crudini",
-                     # Used for tools like sponge
-                     "moreutils",
-                     ]
-  package { $base_packages: ensure => "installed" }
-
-  $release_name = $operatingsystemrelease ? {
-    # Debian releases
-    /7.[0-9]*/ => 'wheezy',
-    /8.[0-9]*/ => 'jessie',
-    /9.[0-9]*/ => 'stretch',
-    # Ubuntu releases
-    '12.04' => 'precise',
-    '14.04' => 'trusty',
-    '15.04' => 'vivid',
-    '15.10' => 'wily',
-    '16.04' => 'xenial',
+  include zulip::common
+  case $::osfamily {
+    'debian': {
+      $release_name = $::operatingsystemrelease ? {
+        # Debian releases
+        /^7\.[0-9]*$/  => 'wheezy',
+        /^8\.[0-9]*$/  => 'jessie',
+        /^9\.[0-9]*$/  => 'stretch',
+        /^10\.[0-9]*$/ => 'buster',
+        # Ubuntu releases
+        '12.04' => 'precise',
+        '14.04' => 'trusty',
+        '15.04' => 'vivid',
+        '15.10' => 'wily',
+        '16.04' => 'xenial',
+        '18.04' => 'bionic',
+        '20.04' => 'focal',
+      }
+      $base_packages = [
+        # Accurate time is essential
+        'ntp',
+        # Used in scripts including install-yarn.sh
+        'curl',
+        'wget',
+        # Used to read /etc/zulip/zulip.conf for `zulipconf` puppet function
+        'crudini',
+        # Used for tools like sponge
+        'moreutils',
+        # Used in scripts
+        'netcat',
+        # Nagios monitoring plugins
+        $zulip::common::nagios_plugins,
+        # Required for using HTTPS in apt repositories.
+        'apt-transport-https',
+        # Needed for the cron jobs installed by puppet
+        'cron',
+      ]
+    }
+    'redhat': {
+      $release_name = "${::operatingsystem}${::operatingsystemmajrelease}"
+      $base_packages = [
+        'ntp',
+        'curl',
+        'wget',
+        'crudini',
+        'moreutils',
+        'nmap-ncat',
+        'nagios-plugins',  # there is no dummy package on CentOS 7
+        'cronie',
+      ]
+    }
+    default: {
+      fail('osfamily not supported')
+    }
   }
+  package { $base_packages: ensure => 'installed' }
 
-  $postgres_version = $release_name ? {
-    'wheezy'  => '9.1',
-    'jessie'  => '9.4',
-    'stretch'  => '9.6',
-    'precise' => '9.1',
-    'trusty'  => '9.3',
-    'vivid'   => '9.4',
-    'wily'    => '9.4',
-    'xenial'  => '9.5',
-  }
+  $postgres_version = zulipconf('postgresql', 'version', undef)
 
   $normal_queues = [
-             'deferred_work',
-             'digest_emails',
-             'email_mirror',
-             'embed_links',
-             'embedded_bots',
-             'error_reports',
-             'feedback_messages',
-             'invites',
-             'missedmessage_email_senders',
-             'email_senders',
-             'missedmessage_emails',
-             'missedmessage_mobile_notifications',
-             'outgoing_webhooks',
-             'signups',
-             'slow_queries',
-             'user_activity',
-             'user_activity_interval',
-             'user_presence',
+    'deferred_work',
+    'digest_emails',
+    'email_mirror',
+    'embed_links',
+    'embedded_bots',
+    'error_reports',
+    'invites',
+    'email_senders',
+    'missedmessage_emails',
+    'missedmessage_mobile_notifications',
+    'outgoing_webhooks',
+    'signups',
+    'user_activity',
+    'user_activity_interval',
+    'user_presence',
   ]
+
+  $total_memory_mb = Integer($::memorysize_mb);
 
   group { 'zulip':
     ensure     => present,
@@ -74,48 +92,70 @@ class zulip::base {
   }
 
   file { '/etc/zulip':
-    ensure     => 'directory',
-    mode       => 644,
-    owner      => 'zulip',
-    group      => 'zulip',
+    ensure => 'directory',
+    mode   => '0644',
+    owner  => 'zulip',
+    group  => 'zulip',
+    links  => 'follow',
+  }
+  file { ['/etc/zulip/zulip.conf', '/etc/zulip/settings.py']:
+    ensure  => 'file',
+    require => File['/etc/zulip'],
+    mode    => '0644',
+    owner   => 'zulip',
+    group   => 'zulip',
+  }
+  file { '/etc/zulip/zulip-secrets.conf':
+    ensure  => 'file',
+    require => File['/etc/zulip'],
+    mode    => '0640',
+    owner   => 'zulip',
+    group   => 'zulip',
   }
 
   file { '/etc/security/limits.conf':
-    ensure     => file,
-    mode       => 640,
-    owner      => "root",
-    group      => "root",
-    source     => 'puppet:///modules/zulip/limits.conf',
+    ensure => file,
+    mode   => '0640',
+    owner  => 'root',
+    group  => 'root',
+    source => 'puppet:///modules/zulip/limits.conf',
   }
 
   # This directory is written to by cron jobs for reading by Nagios
   file { '/var/lib/nagios_state/':
-    ensure     => directory,
-    group      => 'zulip',
-    mode       => 774,
+    ensure => directory,
+    group  => 'zulip',
+    mode   => '0774',
   }
 
   file { '/var/log/zulip':
     ensure => 'directory',
     owner  => 'zulip',
     group  => 'zulip',
-    mode   => 640,
+    mode   => '0640',
   }
 
   file { '/var/log/zulip/queue_error':
     ensure => 'directory',
     owner  => 'zulip',
     group  => 'zulip',
-    mode   => 640,
+    mode   => '0640',
   }
 
-  file { "/usr/lib/nagios/plugins/zulip_base":
-    require => Package[nagios-plugins-basic],
+  file { '/var/log/zulip/queue_stats':
+    ensure => 'directory',
+    owner  => 'zulip',
+    group  => 'zulip',
+    mode   => '0640',
+  }
+
+  file { "${zulip::common::nagios_plugins_dir}/zulip_base":
+    require => Package[$zulip::common::nagios_plugins],
     recurse => true,
-    purge => true,
-    owner => "root",
-    group => "root",
-    mode => 755,
-    source => "puppet:///modules/zulip/nagios_plugins/zulip_base",
+    purge   => true,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0755',
+    source  => 'puppet:///modules/zulip/nagios_plugins/zulip_base',
   }
 }

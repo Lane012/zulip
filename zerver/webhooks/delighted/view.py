@@ -1,19 +1,34 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from django.http import HttpRequest, HttpResponse
-from django.utils.translation import ugettext as _
 
 from zerver.decorator import api_key_only_webhook_view
 from zerver.lib.request import REQ, has_request_variables
-from zerver.lib.response import json_error, json_success
+from zerver.lib.response import json_success
 from zerver.lib.webhooks.common import check_send_webhook_message
 from zerver.models import UserProfile
 
+PROMOTER = """
+Kudos! You have a new promoter. Score of {score}/10 from {email}:
+
+``` quote
+{comment}
+```
+""".strip()
+
+FEEDBACK = """
+Great! You have new feedback. Score of {score}/10 from {email}:
+
+``` quote
+{comment}
+```
+""".strip()
+
 def body_template(score: int) -> str:
     if score >= 7:
-        return 'Kudos! You have a new promoter.\n>Score of {score}/10 from {email}\n>{comment}'
+        return PROMOTER
     else:
-        return 'Great! You have new feedback.\n>Score of {score}/10 from {email}\n>{comment}'
+        return FEEDBACK
 
 @api_key_only_webhook_view("Delighted")
 @has_request_variables

@@ -3,42 +3,59 @@
 Zulip uses the [standard Django system for doing schema
 migrations](https://docs.djangoproject.com/en/1.10/topics/migrations/).
 There is some example usage in the [new feature
-tutorial](../tutorials/new-feature-tutorial.html).
+tutorial](../tutorials/new-feature-tutorial.md).
 
 This page documents some important issues related to writing schema
 migrations.
 
-* **Naming**: Please provide clear names for new database migrations
-  (e.g. `0072_realmauditlog_add_index_event_time.py`).  Since in the
-  Django migrations system, the filename is the name for the
-  migration, this just means moving the migration file to have a
-  reasonable name.  Note that `tools/test-migrations` will fail in
-  Travis CI if a migration has bad name of the form
-  `0089_auto_20170710_1353.py`, which are what Django generates
-  automatically for nontrivial database schema changes.
-
-* **Large tables**: For large tables like Message and UserMessage, you
-  want to take precautions when adding columns to the table,
-  performing data backfills, or building indexes. We have a
-  `zerver/lib/migrate.py` library to help with adding columns and
-  backfilling data. For building indexes on these tables, we should do
-  this using SQL with postgres's CONCURRENTLY keyword.
-
+* If your database migration is just to reflect new fields in
+  `models.py`, you'll typically want to just:
+  * Rebase your branch before you start (this may save work later).
+  * Update the model class definitions in `zerver/models.py`.
+  * Run `./manage.py makemigrations` to generate a migration file
+  * Rename the migration file to have a descriptive name if Django
+    generated used a date-based name like `0089_auto_20170710_1353.py`
+    (which happens when the changes are to multiple models and Django).
+  * `git add` the new migration file
+  * Run `tools/provision` to update your local database to apply the
+    migrations.
+  * Commit your changes.
+* For more complicated migrations where you need to run custom Python
+  code as part of the migration, it's best to read past migrations to
+  understand how to write them well.  `git grep RunPython
+  zerver/migrations/02*` will find many good examples.  Before writing
+  migrations of this form, you should read Django's docs and the
+  sections below.
 * **Numbering conflicts across branches**: If you've done your schema
   change in a branch, and meanwhile another schema change has taken
-  place, Django will now have two migrations with the same number. To
-  fix this, you can either run `./tools/renumber-migrations` which
-  renumbers your migration(s) and fixes up the "dependencies" entries in your
-  migration(s), and then rewrite your git history as needed, or you can do it
-  manually. There is a tutorial [here](migration-renumbering.html) that
-  walks you though that process.
+  place, Django will now have two migrations with the same
+  number. There are two easy way to fix this:
+  * If your migrations were automatically generated using `manage.py
+    makemigrations`, a good option is to just remove your migration
+    and rerun the command after rebasing.  Remember to `git rebase` to
+    do this in the the commit that changed `models.py` if you have a
+    multi-commit branch.
+  * If you wrote code as part of preparing your migrations, or prefer
+    this workflow, you can use run `./tools/renumber-migrations`,
+    which renumbers your migration(s) and fixes up the "dependencies"
+    entries in your migration(s).  The tool could use a bit of work to
+    prompt unnecessarily less, but it will update the working tree for
+    you automatically (you still need to do all the `git add`
+    commands, etc.).
+
+* **Large tables**: For our very largest tables (e.g. Message and
+  UserMessage), we often need to take precautions when adding columns
+  to the table, performing data backfills, or building indexes. We
+  have a `zerver/lib/migrate.py` library to help with adding columns
+  and backfilling data.  For building indexes on these tables, we
+  should do this using SQL with postgres's CONCURRENTLY keyword.
 
 * **Atomicity**.  By default, each Django migration is run atomically
   inside a transaction.  This can be problematic if one wants to do
   something in a migration that touches a lot of data and would best
   be done in batches of e.g. 1000 objects (e.g. a `Message` or
-  `UserMessage` table change).  There is a new Django feature added in
-  [Django 1.10][migrations-non-atomic] that makes it possible to add
+  `UserMessage` table change).  There is a [useful Django
+  feature][migrations-non-atomic] that makes it possible to add
   `atomic=False` at the top of a `Migration` class and thus not have
   the entire migration in a transaction.  This should make it possible
   to use the batch update tools in `zerver/lib/migrate.py` (originally
@@ -66,8 +83,8 @@ migrations.
   situation you should use Django's `apps.get_model` to get access to
   a model as it is at the time of a migration. Note that this will
   work for doing something like `Realm.objects.filter(..)`, but
-  shouldn't be used for accessing `Realm.subdomain` or anything not
-  related to the Django ORM.
+  shouldn't be used for accessing properties like `Realm.subdomain` or
+  anything not related to the Django ORM.
 
 * **Making large migrations work**.  Major migrations should have a
 few properties:
@@ -103,4 +120,41 @@ few properties:
     tables are done in large-scale systems, since it ensures that the
     system can continue running happily during the migration.
 
+## Automated testing for migrations
+
+Zulip has support for writing automated tests for your database
+migrations, using the `MigrationsTestCase` test class.  This system is
+inspired by [a great blog post][django-migration-test-blog-post] on
+the subject.
+
+We have integrated this system with our test framework so that if you
+use the `use_db_models` decorator, you can use some helper methods
+from `test_classes.py` and friends from inside the tests (which is
+normally not possible in Django's migrations framework).
+
+If you find yourself writing logic in a `RunPython` migration, we
+highly recommend adding a test using this framework.  We may end up
+deleting the test later (they can get slow once they are many
+migrations away from current), but it can help prevent disaster where
+an incorrect migration messes up a database in a way that's impossible
+to undo without going to backups.
+
+[django-migration-test-blog-post]: https://www.caktusgroup.com/blog/2016/02/02/writing-unit-tests-django-migrations/
 [migrations-non-atomic]: https://docs.djangoproject.com/en/1.10/howto/writing-migrations/#non-atomic-migrations
+
+## Schema and initial data changes
+
+If you follow the processes described above, `tools/provision` and
+`tools/test-backend` should detect any changes to the declared
+migrations and run migrations on (`./manage.py migrate`) or rebuild
+the relevant database automatically as appropriate.
+
+While developing migrations, you may accidentally corrupt
+your databases while debugging your new code.
+You can always rebuild these databases from scratch.
+
+Use `tools/rebuild-test-database` to rebuild the database
+used for `test-backend` and other automated tests.
+
+Use `tools/rebuild-dev-database` to rebuild the database
+used in [manual testing](../development/using.md).

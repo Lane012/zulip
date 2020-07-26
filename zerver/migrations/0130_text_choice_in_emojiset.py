@@ -1,6 +1,7 @@
 from django.db import migrations, models
-from django.db.backends.postgresql_psycopg2.schema import DatabaseSchemaEditor
+from django.db.backends.postgresql.schema import DatabaseSchemaEditor
 from django.db.migrations.state import StateApps
+
 
 # change emojiset to text if emoji_alt_code is true.
 def change_emojiset(apps: StateApps, schema_editor: DatabaseSchemaEditor) -> None:
@@ -32,7 +33,7 @@ class Migration(migrations.Migration):
             name='emojiset',
             field=models.CharField(choices=[('google', 'Google'), ('apple', 'Apple'), ('twitter', 'Twitter'), ('emojione', 'EmojiOne'), ('text', 'Plain text')], default='google', max_length=20),
         ),
-        migrations.RunPython(change_emojiset, reverse_change_emojiset),
+        migrations.RunPython(change_emojiset, reverse_change_emojiset, elidable=True),
         migrations.RemoveField(
             model_name='userprofile',
             name='emoji_alt_code',

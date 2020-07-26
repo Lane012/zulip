@@ -1,11 +1,17 @@
 # Markdown implementation
 
-Zulip has a special flavor of Markdown, currently called 'bugdown'
-after Zulip's original name of "humbug". End users are using Bugdown
-within the client, not original Markdown.
+Zulip uses a special flavor of Markdown/CommonMark for its message
+formatting.  Our Markdown flavor is unique primarily to add important
+extensions, such as quote blocks and math blocks, and also to do
+previews and correct issues specific to the chat context.  Beyond
+that, it has a number of minor historical variations resulting from
+its history predacting CommonMark (and thus Zulip choosing different
+solutions to some problems) and based in part on Python-Markdown,
+which is proudly a classic Markdown implementation.  We reduce these
+variations with every major Zulip release.
 
-Zulip has two implementations of Bugdown.  The backend implementation
-at `zerver/lib/bugdown/` is based on
+Zulip has two implementations of Markdown. The backend implementation
+at `zerver/lib/markdown/` is based on
 [Python-Markdown](https://pypi.python.org/pypi/Markdown) and is used to
 authoritatively render messages to HTML (and implements
 slow/expensive/complex features like querying the Twitter API to
@@ -33,12 +39,12 @@ message is sent).  As a result, we try to make sure that
 ## Testing
 
 The Python-Markdown implementation is tested by
-`zerver/tests/test_bugdown.py`, and the marked.js implementation and
+`zerver/tests/test_markdown.py`, and the marked.js implementation and
 `markdown.contains_backend_only_syntax` are tested by
 `frontend_tests/node_tests/markdown.js`.
 
 A shared set of fixed test data ("test fixtures") is present in
-`zerver/fixtures/markdown_test_cases.json`, and is automatically used
+`zerver/tests/fixtures/markdown_test_cases.json`, and is automatically used
 by both test suites; as a result, it is the preferred place to add new
 tests for Zulip's markdown system.  Some important notes on reading
 this file:
@@ -79,14 +85,14 @@ testcases in `markdown_test_cases.json` that you want to ignore. This
 is a workaround due to lack of comments support in JSON. Revert your
 "ignore" changes before committing. After this, you can run the frontend
 tests with `tools/test-js-with-node markdown` and backend tests with
-`tools/test-backend zerver.tests.test_bugdown.BugdownTest.test_bugdown_fixtures`.
+`tools/test-backend zerver.tests.test_markdown.MarkdownTest.test_markdown_fixtures`.
 
 ## Changing Zulip's markdown processor
 
 First, you will likely find these third-party resources helpful:
 
-* **[Python-Markdown Extensions API](https://pypi.python.org/pypi/Markdown)**
-  is used by Zulip to make the above listed changes to markdown syntax.
+* **[Python-Markdown](https://pypi.python.org/pypi/Markdown)** is the markdown
+  library used by Zulip as a base to build our custom markdown syntax upon.
 * **[Python's XML ElementTree](https://docs.python.org/3/library/xml.etree.elementtree.html)**
   is the part of the Python standard library used by Python Markdown
   and any custom extensions to generate and modify the output HTML.
@@ -94,13 +100,13 @@ First, you will likely find these third-party resources helpful:
 When changing Zulip's markdown syntax, you need to update several
 places:
 
-* The backend markdown processor (`zerver/lib/bugdown/__init__.py`).
+* The backend markdown processor (`zerver/lib/markdown/__init__.py`).
 * The frontend markdown processor (`static/js/markdown.js` and sometimes
   `static/third/marked/lib/marked.js`), or `markdown.contains_backend_only_syntax` if
   your changes won't be supported in the frontend processor.
 * If desired, the typeahead logic in `static/js/composebox_typeahead.js`.
-* The test suite, probably via adding entries to `zerver/fixtures/markdown_test_cases.json`.
-* The in-app markdown documentation (`templates/zerver/markdown_help.html`).
+* The test suite, probably via adding entries to `zerver/tests/fixtures/markdown_test_cases.json`.
+* The in-app markdown documentation (`templates/zerver/app/markdown_help.html`).
 * The list of changes to markdown at the end of this document.
 
 Important considerations for any changes are:
@@ -121,10 +127,36 @@ Important considerations for any changes are:
   and for that reason we currently should avoid making database
   queries inside the markdown processor.  This is a technical
   implementation detail that could be changed with a few days of work,
-  but is important detail to know about until we do that work.
+  but is an important detail to know about until we do that work.
 * Testing: Every new feature should have both positive and negative
   tests; they're easy to write and give us the flexibility to refactor
   frequently.
+
+## Per-realm features
+
+Zulip's markdown processor's rendering supports a number of features
+that depend on realm-specific or user-specific data.  For example, the
+realm could have
+[Linkifiers](https://zulip.com/help/add-a-custom-linkification-filter)
+or [Custom emoji](https://zulip.com/help/add-custom-emoji)
+configured, and Zulip supports mentions for streams, users, and user
+groups (which depend on data like users' names, IDs, etc.).
+
+At a backend code level, these are controlled by the `message_realm`
+object and other arguments passed into `do_convert` (`sent_by_bot`,
+`translate_emoticons`, `mention_data`, etc.).  Because
+`python-markdown` doesn't support directly passing arguments into the
+markdown processor, our logic attaches these data to the Markdown
+processor object via e.g. `_md_engine.zulip_db_data`, and then
+individual markdown rules can access the data from there.
+
+For non-message contexts (e.g. an organization's profile (aka the
+thing on the right-hand side of the login page), stream descriptions,
+or rendering custom profile fields), one needs to just pass in a
+`message_realm` (see, for example, `zulip_default_context` for the
+organization profile code for this).  But for messages, we need to
+pass in attributes like `sent_by_bot` and `translate_emoticons` that
+indicate details about how the user sending the message is configured.
 
 ## Zulip's Markdown philosophy
 
@@ -146,29 +178,32 @@ mistakes, you don't want to be doing that often.  There are basically
 2 types of error rates that are important for a product like Zulip:
 
 * What fraction of the time, if you pasted a short technical email
-that you wrote to your team and passed it through your Markdown
-implementation, would you need to change the text of your email for it
-to render in a reasonable way?  This is the "accidental Markdown
-syntax" problem, common with Markdown syntax like the italics syntax
-interacting with talking about `char *`s.
+  that you wrote to your team and passed it through your Markdown
+  implementation, would you need to change the text of your email for it
+  to render in a reasonable way?  This is the "accidental Markdown
+  syntax" problem, common with Markdown syntax like the italics syntax
+  interacting with talking about `char *`s.
 
 * What fraction of the time do users attempting to use a particular
-Markdown syntax actually succeed at doing so correctly?  Syntax like
-required a blank line between text and the start of a bulleted list
-raise this figure substantially.
+  Markdown syntax actually succeed at doing so correctly?  Syntax like
+  required a blank line between text and the start of a bulleted list
+  raise this figure substantially.
 
 Both of these are minor issues for most products using Markdown, but
 they are major problems in the instant messaging context, because one
-can't edit a message that has already been sent and users are
-generally writing quickly.  Zulip's Markdown strategy is based on the
-principles of giving users the power they need to express complicated
-ideas in a chat context while minimizing those two error rates.
+can't edit a message that has already been sent before others read it
+and users are generally writing quickly. Zulip's Markdown strategy is
+based on the principles of giving users the power they need to express
+complicated ideas in a chat context while minimizing those two error rates.
 
 ## Zulip's Changes to Markdown
 
 Below, we document the changes that Zulip has against stock
 Python-Markdown; some of the features we modify / disable may already
 be non-standard.
+
+**Note** This section has not been updated in a few years and is not
+accurate.
 
 ### Basic syntax
 
@@ -210,14 +245,13 @@ be non-standard.
   things like `t.co/foo`.
 
 * Force links to be absolute. `[foo](google.com)` will go to
-  `http://google.com`, and not `http://zulip.com/google.com` which
+  `http://google.com`, and not `https://zulip.com/google.com` which
   is the default behavior.
 
-* Set `target="_blank"` and `title=`(the url) on every link tag so
-  clicking always opens a new window.
+* Set `title=`(the url) on every link tag.
 
 * Disable link-by-reference syntax,
-  `[foo][bar]` ... `[bar]: http://google.com`.
+  `[foo][bar]` ... `[bar]: https://google.com`.
 
 * Enable linking to other streams using `#**streamName**`.
 

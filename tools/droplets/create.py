@@ -14,18 +14,17 @@
 # Copy conf.ini-template to conf.ini and populate with your api token.
 #
 # usage: python3 create.py <username>
-
-import sys
+import argparse
 import configparser
+import json
+import os
+import sys
+import time
 import urllib.error
 import urllib.request
-import json
-import digitalocean
-import time
-import argparse
-import os
-
 from typing import Any, Dict, List
+
+import digitalocean
 
 # initiation argument parser
 parser = argparse.ArgumentParser(description='Create a Zulip devopment VM Digital Ocean droplet.')
@@ -33,111 +32,115 @@ parser.add_argument("username", help="Github username for whom you want to creat
 parser.add_argument('--tags', nargs='+', default=[])
 parser.add_argument('-f', '--recreate', dest='recreate', action="store_true", default=False)
 
-def get_config():
-    # type: () -> configparser.ConfigParser
+def get_config() -> configparser.ConfigParser:
     config = configparser.ConfigParser()
     config.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'conf.ini'))
     return config
 
-def user_exists(username):
-    # type: (str) -> bool
-    print("Checking to see if GitHub user {0} exists...".format(username))
-    user_api_url = "https://api.github.com/users/{0}".format(username)
+def user_exists(username: str) -> bool:
+    print(f"Checking to see if GitHub user {username} exists...")
+    user_api_url = f"https://api.github.com/users/{username}"
     try:
         response = urllib.request.urlopen(user_api_url)
-        json.loads(response.read().decode())
+        json.load(response)
         print("...user exists!")
         return True
     except urllib.error.HTTPError as err:
         print(err)
-        print("Does the github user {0} exist?".format(username))
+        print(f"Does the github user {username} exist?")
         sys.exit(1)
 
-def get_keys(username):
-    # type: (str) -> List[Dict[str, Any]]
+def get_keys(username: str) -> List[Dict[str, Any]]:
     print("Checking to see that GitHub user has available public keys...")
-    apiurl_keys = "https://api.github.com/users/{0}/keys".format(username)
+    apiurl_keys = f"https://api.github.com/users/{username}/keys"
     try:
         response = urllib.request.urlopen(apiurl_keys)
-        userkeys = json.loads(response.read().decode())
+        userkeys = json.load(response)
         if not userkeys:
-            print("No keys found. Has user {0} added ssh keys to their github account?".format(username))
+            print(f"No keys found. Has user {username} added ssh keys to their github account?")
             sys.exit(1)
         print("...public keys found!")
         return userkeys
     except urllib.error.HTTPError as err:
         print(err)
-        print("Has user {0} added ssh keys to their github account?".format(username))
+        print(f"Has user {username} added ssh keys to their github account?")
         sys.exit(1)
 
-def fork_exists(username):
-    # type: (str) -> bool
+def fork_exists(username: str) -> bool:
     print("Checking to see GitHub user has forked zulip/zulip...")
-    apiurl_fork = "https://api.github.com/repos/{0}/zulip".format(username)
+    apiurl_fork = f"https://api.github.com/repos/{username}/zulip"
     try:
         response = urllib.request.urlopen(apiurl_fork)
-        json.loads(response.read().decode())
+        json.load(response)
         print("...fork found!")
         return True
     except urllib.error.HTTPError as err:
         print(err)
-        print("Has user {0} forked zulip/zulip?".format(username))
+        print(f"Has user {username} forked zulip/zulip?")
         sys.exit(1)
 
 def exit_if_droplet_exists(my_token: str, username: str, recreate: bool) -> None:
-    print("Checking to see if droplet for {0} already exists...".format(username))
+    print(f"Checking to see if droplet for {username} already exists...")
     manager = digitalocean.Manager(token=my_token)
     my_droplets = manager.get_all_droplets()
     for droplet in my_droplets:
-        if droplet.name == "{0}.zulipdev.org".format(username):
+        if droplet.name.lower() == f"{username}.zulipdev.org":
             if not recreate:
-                print("Droplet for user {0} already exists. Pass --recreate if you "
+                print("Droplet for user {} already exists. Pass --recreate if you "
                       "need to recreate the droplet.".format(username))
                 sys.exit(1)
             else:
-                print("Deleting existing droplet for {0}.".format(username))
+                print(f"Deleting existing droplet for {username}.")
                 droplet.destroy()
                 return
     print("...No droplet found...proceeding.")
 
-def set_user_data(username, userkeys):
-    # type: (str, List[Dict[str, Any]]) -> str
+def set_user_data(username: str, userkey_dicts: List[Dict[str, Any]]) -> str:
     print("Setting cloud-config data, populated with GitHub user's public keys...")
-    ssh_authorized_keys = ""
+    userkeys = [userkey_dict["key"] for userkey_dict in userkey_dicts]
+    ssh_keys = "\n".join(userkeys)
 
-    # spaces here are important here - these need to be properly indented under
-    # ssh_authorized_keys:
-    for key in userkeys:
-        ssh_authorized_keys += "\n          - {0}".format(key['key'])
-    # print(ssh_authorized_keys)
+    setup_root_ssh_keys = f"printf '{ssh_keys}' > /root/.ssh/authorized_keys"
+    setup_zulipdev_ssh_keys = f"printf '{ssh_keys}' > /home/zulipdev/.ssh/authorized_keys"
 
-    git_add_remote = "git remote add origin"  # get around "line too long" lint error
-    cloudconf = """
-    #cloud-config
-    users:
-      - name: zulipdev
-        ssh_authorized_keys:{1}
-    runcmd:
-      - su -c 'cd /home/zulipdev/zulip && {2} https://github.com/{0}/zulip.git && git fetch origin' zulipdev
-      - su -c 'git clean -f' zulipdev
-      - su -c 'git config --global core.editor nano' zulipdev
-      - su -c 'git config --global pull.rebase true' zulipdev
-    power_state:
-     mode: reboot
-     condition: True
-    """.format(username, ssh_authorized_keys, git_add_remote)
+    # We pass the hostname as username.zulipdev.org to the DigitalOcean API.
+    # But some droplets (eg on 18.04) are created with with hostname set to just username.
+    # So we fix the hostname using cloud-init.
+    hostname_setup = f"hostnamectl set-hostname {username}.zulipdev.org"
 
+    setup_repo = (
+        "cd /home/zulipdev/{1} && "
+        "git remote add origin https://github.com/{0}/{1}.git && "
+        "git fetch origin && "
+        "git clean -f"
+    )
+
+    server_repo_setup = setup_repo.format(username, "zulip")
+    python_api_repo_setup = setup_repo.format(username, "python-zulip-api")
+
+    cloudconf = f"""\
+#!/bin/bash
+
+{setup_zulipdev_ssh_keys}
+{setup_root_ssh_keys}
+sed -i "s/PasswordAuthentication yes/PasswordAuthentication no/g" /etc/ssh/sshd_config
+service ssh restart
+{hostname_setup}
+su -c '{server_repo_setup}' zulipdev
+su -c '{python_api_repo_setup}' zulipdev
+su -c 'git config --global core.editor nano' zulipdev
+su -c 'git config --global pull.rebase true' zulipdev
+"""
     print("...returning cloud-config data.")
     return cloudconf
 
-def create_droplet(my_token, template_id, username, tags, user_data):
-    # type: (str, str, str, List[str], str) -> str
+def create_droplet(my_token: str, template_id: str, username: str, tags: List[str], user_data: str) -> str:
     droplet = digitalocean.Droplet(
         token=my_token,
-        name='{0}.zulipdev.org'.format(username),
-        region='sfo1',
+        name=f'{username}.zulipdev.org',
+        region='nyc3',
         image=template_id,
-        size_slug='2gb',
+        size_slug='s-1vcpu-2gb',
         user_data=user_data,
         tags=tags,
         backups=False)
@@ -150,7 +153,7 @@ def create_droplet(my_token, template_id, username, tags, user_data):
         actions = droplet.get_actions()
         for action in actions:
             action.load()
-            print("...[{0}]: {1}".format(action.type, action.status))
+            print(f"...[{action.type}]: {action.status}")
             if action.type == 'create' and action.status == 'completed':
                 incomplete = False
                 break
@@ -158,7 +161,7 @@ def create_droplet(my_token, template_id, username, tags, user_data):
             time.sleep(15)
     print("...droplet created!")
     droplet.load()
-    print("...ip address for new droplet is: {0}.".format(droplet.ip_address))
+    print(f"...ip address for new droplet is: {droplet.ip_address}.")
     return droplet.ip_address
 
 def delete_existing_records(records: List[digitalocean.Record], record_name: str) -> None:
@@ -168,10 +171,9 @@ def delete_existing_records(records: List[digitalocean.Record], record_name: str
             record.destroy()
             count = count + 1
     if count:
-        print("Deleted {0} existing A records for {1}.zulipdev.org.".format(count, record_name))
+        print(f"Deleted {count} existing A records for {record_name}.zulipdev.org.")
 
-def create_dns_record(my_token, username, ip_address):
-    # type: (str, str, str) -> None
+def create_dns_record(my_token: str, username: str, ip_address: str) -> None:
     domain = digitalocean.Domain(token=my_token, name='zulipdev.org')
     domain.load()
     records = domain.get_records()
@@ -180,13 +182,12 @@ def create_dns_record(my_token, username, ip_address):
     wildcard_name = "*." + username
     delete_existing_records(records, wildcard_name)
 
-    print("Creating new A record for {0}.zulipdev.org that points to {1}.".format(username, ip_address))
+    print(f"Creating new A record for {username}.zulipdev.org that points to {ip_address}.")
     domain.create_new_domain_record(type='A', name=username, data=ip_address)
-    print("Creating new A record for *.{0}.zulipdev.org that points to {1}.".format(username, ip_address))
+    print(f"Creating new A record for *.{username}.zulipdev.org that points to {ip_address}.")
     domain.create_new_domain_record(type='A', name=wildcard_name, data=ip_address)
 
-def print_completion(username):
-    # type: (str) -> None
+def print_completion(username: str) -> None:
     print("""
 COMPLETE! Droplet for GitHub user {0} is available at {0}.zulipdev.org.
 
@@ -199,7 +200,7 @@ Your remote Zulip dev server has been created!
   `ssh zulipdev@{0}.zulipdev.org` on the command line
   (Terminal for macOS and Linux, Bash for Git on Windows).
 - There is no password; your account is configured to use your ssh keys.
-- Once you log in, you should see `(zulip-venv) ~$`.
+- Once you log in, you should see `(zulip-py3-venv) ~$`.
 - To start the dev server, `cd zulip` and then run `./tools/run-dev.py`.
 - While the dev server is running, you can see the Zulip server in your browser at
   http://{0}.zulipdev.org:9991.
@@ -220,42 +221,43 @@ if __name__ == '__main__':
     # Broken in two to satisfy linter (line too long)
     # curl -X GET -H "Content-Type: application/json" -u <API_KEY>: "https://api.digitaloc
     # ean.com/v2/images?page=5" | grep --color=always base.zulipdev.org
-    template_id = "29724416"
+    template_id = "63219191"
 
     # get command line arguments
     args = parser.parse_args()
-    print("Creating Zulip developer environment for GitHub user {0}...".format(args.username))
+    username = args.username.lower()
+    print(f"Creating Zulip developer environment for GitHub user {username}...")
 
     # get config details
     config = get_config()
 
     # see if droplet already exists for this user
-    user_exists(username=args.username)
+    user_exists(username=username)
 
     # grab user's public keys
-    public_keys = get_keys(username=args.username)
+    public_keys = get_keys(username=username)
 
     # now make sure the user has forked zulip/zulip
-    fork_exists(username=args.username)
+    fork_exists(username=username)
 
     api_token = config['digitalocean']['api_token']
     # does the droplet already exist?
-    exit_if_droplet_exists(my_token=api_token, username=args.username, recreate=args.recreate)
+    exit_if_droplet_exists(my_token=api_token, username=username, recreate=args.recreate)
 
     # set user_data
-    user_data = set_user_data(username=args.username, userkeys=public_keys)
+    user_data = set_user_data(username=username, userkey_dicts=public_keys)
 
     # create droplet
     ip_address = create_droplet(my_token=api_token,
                                 template_id=template_id,
-                                username=args.username,
+                                username=username,
                                 tags=args.tags,
                                 user_data=user_data)
 
     # create dns entry
-    create_dns_record(my_token=api_token, username=args.username, ip_address=ip_address)
+    create_dns_record(my_token=api_token, username=username, ip_address=ip_address)
 
     # print completion message
-    print_completion(username=args.username)
+    print_completion(username=username)
 
     sys.exit(1)

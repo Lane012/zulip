@@ -1,34 +1,35 @@
 # Deactivate your account
 
-We'd be sorry to see you go, but you can follow the following steps to
-deactivate your Zulip account.
+{start_tabs}
 
-{!go-to-the.md!} [Your account](/#settings/your-account)
-{!settings.md!}
+{settings_tab|your-account}
 
-2. Click the **Deactivate account** button on the bottom of the
-   **Your account** section.
+1. Under **Deactivate account**, click **Deactivate account**.
 
-4. After clicking the **Deactivate account** button, a modal window titled
-**Deactivate your account** will appear. To confirm the deletion of your
-account, click the **Deactivate now** button.  
+1. Confirm by clicking **Deactivate now**.
 
-    !!! warn ""
-        **Note:** Any bots that you maintain will be disabled when you
-        deactivate your account.
+{end_tabs}
 
-6. After clicking the **Deactivate now** button, you will be logged
-   out and returned to the Zulip login page.
+## What happens when you deactivate an account
 
-Please note that you cannot register a Zulip account using the email address of
-a deactivated account.
+* Any bots that you maintain will be disabled.
 
-In addition, if you're the only administrator in the organization, you cannot
-deactivate your account; you need to make another user an administrator first
-before you can deactivate your account.
+* Deactivating your account won't delete messages you've sent or files
+  you've shared. If permitted in your organization, delete content you'd
+  like to remove before deactivating your account.
 
-!!! tip ""
-    If you regret deactivating your account, you can ask a Zulip organization
-    administrator to
-    [reactivate](/help/deactivate-or-reactivate-a-user#reactivate-a-user) your
-    account.
+* You cannot register a Zulip account using the email
+  address of a deactivated account. If you change your mind about deactivating
+  an account, an organization administrator can
+  [reactivate](/help/deactivate-or-reactivate-a-user#reactivate-a-user)
+  your account at any time.
+
+!!! warn ""
+    If you are the only administrator in the organization, you cannot
+    deactivate your account. You'll need to
+    [add another administrator](/help/change-a-users-role) first.
+
+## Related articles
+
+You may also be interested in
+[deactivating an organization](/help/deactivate-your-organization).

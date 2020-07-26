@@ -1,8 +1,8 @@
-
+import json
 import os
 import re
 from subprocess import CalledProcessError, check_output
-from typing import Any, Dict, List, Text
+from typing import Any, Dict, List
 
 import polib
 import ujson
@@ -13,6 +13,7 @@ from django.core.management.commands import compilemessages
 from django.utils.translation.trans_real import to_language
 
 from zerver.lib.i18n import with_language
+
 
 class Command(compilemessages.Command):
 
@@ -26,13 +27,6 @@ class Command(compilemessages.Command):
             help='Stop execution in case of errors.')
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if settings.PRODUCTION:
-            # HACK: When using upgrade-zulip-from-git, we're in a
-            # production environment where STATIC_ROOT will include
-            # past versions; this ensures we only process the current
-            # version
-            settings.STATIC_ROOT = os.path.join(settings.DEPLOY_ROOT, "static")
-            settings.LOCALE_PATHS = (os.path.join(settings.DEPLOY_ROOT, 'static/locale'),)
         super().handle(*args, **options)
         self.strict = options['strict']
         self.extract_language_options()
@@ -40,11 +34,11 @@ class Command(compilemessages.Command):
 
     def create_language_name_map(self) -> None:
         join = os.path.join
-        static_root = settings.STATIC_ROOT
-        path = join(static_root, 'locale', 'language_options.json')
-        output_path = join(static_root, 'locale', 'language_name_map.json')
+        deploy_root = settings.DEPLOY_ROOT
+        path = join(deploy_root, 'locale', 'language_options.json')
+        output_path = join(deploy_root, 'locale', 'language_name_map.json')
 
-        with open(path, 'r') as reader:
+        with open(path) as reader:
             languages = ujson.load(reader)
             lang_list = []
             for lang_info in languages['languages']:
@@ -55,33 +49,33 @@ class Command(compilemessages.Command):
             lang_list.sort(key=lambda lang: lang['name'])
 
         with open(output_path, 'w') as output_file:
-            ujson.dump({'name_map': lang_list}, output_file, indent=4)
+            ujson.dump({'name_map': lang_list}, output_file, indent=4, sort_keys=True)
             output_file.write('\n')
 
-    def get_po_filename(self, locale_path: Text, locale: Text) -> Text:
+    def get_po_filename(self, locale_path: str, locale: str) -> str:
         po_template = '{}/{}/LC_MESSAGES/django.po'
         return po_template.format(locale_path, locale)
 
-    def get_json_filename(self, locale_path: Text, locale: Text) -> Text:
-        return "{}/{}/translations.json".format(locale_path, locale)
+    def get_json_filename(self, locale_path: str, locale: str) -> str:
+        return f"{locale_path}/{locale}/translations.json"
 
-    def get_name_from_po_file(self, po_filename: Text, locale: Text) -> Text:
-        lang_name_re = re.compile('"Language-Team: (.*?) \(')
-        with open(po_filename, 'r') as reader:
+    def get_name_from_po_file(self, po_filename: str, locale: str) -> str:
+        lang_name_re = re.compile(r'"Language-Team: (.*?) \(')
+        with open(po_filename) as reader:
             result = lang_name_re.search(reader.read())
             if result:
                 try:
                     return result.group(1)
                 except Exception:
-                    print("Problem in parsing {}".format(po_filename))
+                    print(f"Problem in parsing {po_filename}")
                     raise
             else:
-                raise Exception("Unknown language %s" % (locale,))
+                raise Exception(f"Unknown language {locale}")
 
-    def get_locales(self) -> List[Text]:
-        tracked_files = check_output(['git', 'ls-files', 'static/locale'])
-        tracked_files = tracked_files.decode().split()
-        regex = re.compile('static/locale/(\w+)/LC_MESSAGES/django.po')
+    def get_locales(self) -> List[str]:
+        output = check_output(['git', 'ls-files', 'locale'])
+        tracked_files = output.decode().split()
+        regex = re.compile(r'locale/(\w+)/LC_MESSAGES/django.po')
         locales = ['en']
         for tracked_file in tracked_files:
             matched = regex.search(tracked_file)
@@ -91,10 +85,10 @@ class Command(compilemessages.Command):
         return locales
 
     def extract_language_options(self) -> None:
-        locale_path = "{}/locale".format(settings.STATIC_ROOT)
-        output_path = "{}/language_options.json".format(locale_path)
+        locale_path = f"{settings.DEPLOY_ROOT}/locale"
+        output_path = f"{locale_path}/language_options.json"
 
-        data = {'languages': []}  # type: Dict[str, List[Dict[str, Any]]]
+        data: Dict[str, List[Dict[str, Any]]] = {'languages': []}
 
         try:
             locales = self.get_locales()
@@ -120,7 +114,7 @@ class Command(compilemessages.Command):
                 # Not a locale.
                 continue
 
-            info = {}  # type: Dict[str, Any]
+            info: Dict[str, Any] = {}
             code = to_language(locale)
             percentage = self.get_translation_percentage(locale_path, locale)
             try:
@@ -140,10 +134,10 @@ class Command(compilemessages.Command):
             data['languages'].append(info)
 
         with open(output_path, 'w') as writer:
-            ujson.dump(data, writer, indent=2)
+            json.dump(data, writer, indent=2, sort_keys=True)
             writer.write('\n')
 
-    def get_translation_percentage(self, locale_path: Text, locale: Text) -> int:
+    def get_translation_percentage(self, locale_path: str, locale: str) -> int:
 
         # backend stats
         po = polib.pofile(self.get_po_filename(locale_path, locale))

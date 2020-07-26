@@ -1,19 +1,10 @@
-var top_left_corner = (function () {
-
-var exports = {};
-
-exports.get_global_filter_li = function (filter_name) {
-    var selector = "#global_filters li[data-name='" + filter_name + "']";
-    return $(selector);
-};
-
 exports.update_count_in_dom = function (unread_count_elem, count) {
-    var count_span = unread_count_elem.find('.count');
-    var value_span = count_span.find('.value');
+    const count_span = unread_count_elem.find(".count");
+    const value_span = count_span.find(".value");
 
     if (count === 0) {
         count_span.hide();
-        value_span.text('');
+        value_span.text("");
         return;
     }
 
@@ -21,62 +12,86 @@ exports.update_count_in_dom = function (unread_count_elem, count) {
     value_span.text(count);
 };
 
+exports.update_starred_count = function (count) {
+    const starred_li = $(".top_left_starred_messages");
+    exports.update_count_in_dom(starred_li, count);
+};
 
 exports.update_dom_with_unread_counts = function (counts) {
     // Note that "Private messages" counts are handled in pm_list.js.
 
     // mentioned/home have simple integer counts
-    var mentioned_li = exports.get_global_filter_li('mentioned');
-    var home_li = exports.get_global_filter_li('home');
+    const mentioned_li = $(".top_left_mentions");
+    const home_li = $(".top_left_all_messages");
 
     exports.update_count_in_dom(mentioned_li, counts.mentioned_message_count);
     exports.update_count_in_dom(home_li, counts.home_unread_messages);
 
-    unread_ui.animate_mention_changes(mentioned_li,
-                                      counts.mentioned_message_count);
+    unread_ui.animate_mention_changes(mentioned_li, counts.mentioned_message_count);
 };
 
 function deselect_top_left_corner_items() {
-    function remove(name) {
-        var li = exports.get_global_filter_li(name);
-        li.removeClass('active-filter active-sub-filter');
+    function remove(elem) {
+        elem.removeClass("active-filter active-sub-filter");
     }
 
-    remove('home');
-    remove('private');
-    remove('starred');
-    remove('mentioned');
+    remove($(".top_left_all_messages"));
+    remove($(".top_left_private_messages"));
+    remove($(".top_left_starred_messages"));
+    remove($(".top_left_mentions"));
+}
+
+function should_expand_pm_list(filter) {
+    const op_is = filter.operands("is");
+
+    if (op_is.length >= 1 && op_is.includes("private")) {
+        return true;
+    }
+
+    const op_pm = filter.operands("pm-with");
+
+    if (op_pm.length !== 1) {
+        return false;
+    }
+
+    const emails_strings = op_pm[0];
+    const emails = emails_strings.split(",");
+
+    const has_valid_emails = people.is_valid_bulk_emails_for_compose(emails);
+
+    return has_valid_emails;
 }
 
 exports.handle_narrow_activated = function (filter) {
     deselect_top_left_corner_items();
 
-    var ops;
-    var filter_name;
-    var filter_li;
+    let ops;
+    let filter_name;
+    let filter_li;
 
     // TODO: handle confused filters like "in:all stream:foo"
-    ops = filter.operands('in');
+    ops = filter.operands("in");
     if (ops.length >= 1) {
         filter_name = ops[0];
-        if (filter_name === 'home') {
-            filter_li = exports.get_global_filter_li(filter_name);
-            filter_li.addClass('active-filter');
+        if (filter_name === "home") {
+            filter_li = $(".top_left_all_messages");
+            filter_li.addClass("active-filter");
         }
     }
-    ops = filter.operands('is');
+    ops = filter.operands("is");
     if (ops.length >= 1) {
         filter_name = ops[0];
-        if ((filter_name === 'starred') || (filter_name === 'mentioned')) {
-            filter_li = exports.get_global_filter_li(filter_name);
-            filter_li.addClass('active-filter');
+        if (filter_name === "starred") {
+            filter_li = $(".top_left_starred_messages");
+            filter_li.addClass("active-filter");
+        } else if (filter_name === "mentioned") {
+            filter_li = $(".top_left_mentions");
+            filter_li.addClass("active-filter");
         }
     }
 
-    var op_is = filter.operands('is');
-    var op_pm = filter.operands('pm-with');
-    if (((op_is.length >= 1) && _.contains(op_is, "private")) || op_pm.length >= 1) {
-        pm_list.expand(op_pm);
+    if (should_expand_pm_list(filter)) {
+        pm_list.expand();
     } else {
         pm_list.close();
     }
@@ -86,12 +101,8 @@ exports.handle_narrow_deactivated = function () {
     deselect_top_left_corner_items();
     pm_list.close();
 
-    var filter_li = exports.get_global_filter_li('home');
-    filter_li.addClass('active-filter');
+    const filter_li = $(".top_left_all_messages");
+    filter_li.addClass("active-filter");
 };
 
-return exports;
-}());
-if (typeof module !== 'undefined') {
-    module.exports = top_left_corner;
-}
+window.top_left_corner = exports;

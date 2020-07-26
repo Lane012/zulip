@@ -1,26 +1,20 @@
 {% extends "zerver/emails/compiled/email_base_default.html" %}
 
 {% block illustration %}
-<img src="{{ email_images_base_uri }}/registration_confirmation.png"/>
+<img src="{{ email_images_base_uri }}/registration_confirmation.png" alt=""/>
 {% endblock %}
 
 {% block content %}
-<p>Hi there,
+<p>{{ _("Hi there,") }}</p>
+
+<p>
+    {% trans %}<a href="mailto:{{ referrer_email }}">{{ referrer_full_name }} ({{ referrer_email }})</a> wants you to join them on Zulip &mdash; the team communication tool designed for productivity.{% endtrans %}
 </p>
 <p>
-    {{ referrer.full_name }} ({{ referrer.email }}) wants you to join
-    them on Zulip &mdash; the team communication tool designed for
-    productivity.
+    {{ _("To get started, click the button below.") }}
+    <a class="button" href="{{ activate_url }}">{{ _("Complete registration") }}</a>
 </p>
 <p>
-    To get started, please click here:
-    <a class="button" href="{{ activate_url }}">Complete registration</a>
-</p>
-<p>
-    Feel free to give us a shout at <a href="mailto:{{ support_email }}">{{ support_email }}</a>, if you have any questions.
-</p>
-<p>
-    Cheers,<br />
-    Team Zulip
+    {% trans %}Contact us any time at <a href="mailto:{{ support_email }}">{{ support_email }}</a> if you run into trouble, have any feedback, or just want to chat!{% endtrans %}
 </p>
 {% endblock %}

@@ -1,12 +1,15 @@
-
 import logging
 import os
 import subprocess
-from django.conf import settings
-from typing import Optional, Text
+from typing import Optional
 
-def render_tex(tex: Text, is_inline: bool=True) -> Optional[Text]:
-    """Render a TeX string into HTML using KaTeX
+from django.conf import settings
+
+from zerver.lib.storage import static_path
+
+
+def render_tex(tex: str, is_inline: bool=True) -> Optional[str]:
+    r"""Render a TeX string into HTML using KaTeX
 
     Returns the HTML string, or None if there was some error in the TeX syntax
 
@@ -19,13 +22,17 @@ def render_tex(tex: Text, is_inline: bool=True) -> Optional[Text]:
                  (default True)
     """
 
-    katex_path = os.path.join(settings.STATIC_ROOT, 'third/katex/cli.js')
+    katex_path = (
+        static_path("webpack-bundles/katex-cli.js")
+        if settings.PRODUCTION
+        else os.path.join(settings.DEPLOY_ROOT, "node_modules/katex/cli.js")
+    )
     if not os.path.isfile(katex_path):
         logging.error("Cannot find KaTeX for latex rendering!")
         return None
     command = ['node', katex_path]
     if not is_inline:
-        command.extend(['--', '--display-mode'])
+        command.extend(['--display-mode'])
     katex = subprocess.Popen(command,
                              stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE,

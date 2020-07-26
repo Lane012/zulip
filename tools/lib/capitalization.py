@@ -1,6 +1,5 @@
-
-from typing import List, Tuple, Set, Pattern, Match
 import re
+from typing import List, Match, Tuple
 
 from bs4 import BeautifulSoup
 
@@ -17,14 +16,19 @@ IGNORED_PHRASES = [
     r"App Store",
     r"Botserver",
     r"Cookie Bot",
+    r"DevAuthBackend",
     r"Dropbox",
+    r"GCM",
     r"GitHub",
+    r"G Suite",
     r"Google",
     r"Gravatar",
     r"Hamlet",
+    r"Help Center",
     r"HTTP",
     r"ID",
     r"IDs",
+    r"IP",
     r"JIRA",
     r"JSON",
     r"Kerberos",
@@ -32,13 +36,17 @@ IGNORED_PHRASES = [
     r"Mac",
     r"macOS",
     r"MiB",
+    r"OAuth",
     r"OTP",
     r"Pivotal",
     r"Play Store",
+    r"PM",
+    r"PMs",
     r'REMOTE_USER',
     r'Slack',
     r"SSO",
     r'Terms of Service',
+    r'Tuesday',
     r"URL",
     r"Ubuntu",
     r"Updown",
@@ -48,11 +56,18 @@ IGNORED_PHRASES = [
     r"WordPress",
     r"XML",
     r"Zephyr",
+    r"Zoom",
     r"Zulip",
+    r"Zulip Account Security",
+    r"Zulip Security",
+    r"Zulip Standard",
+    r"Zulip Team",
     r"iPhone",
     r"iOS",
     r"Emoji One",
     r"mailinator.com",
+    r"HQ",
+    r"Big Blue Button",
     # Code things
     r".zuliprc",
     r"__\w+\.\w+__",
@@ -61,6 +76,7 @@ IGNORED_PHRASES = [
     r"I want",
     r"I'm",
     # Specific short words
+    r"beta",
     r"and",
     r"bot",
     r"e.g.",
@@ -68,7 +84,14 @@ IGNORED_PHRASES = [
     r"images",
     r"enabled",
     r"disabled",
-
+    r"zulip_org_id",
+    r"admins",
+    r"members",
+    r"signups",
+    # Placeholders
+    r"keyword",
+    r"streamname",
+    r"user@example.com",
     # Fragments of larger strings
     (r'your subscriptions on your Streams page'),
     (r'Change notification settings for individual streams on your '
@@ -83,6 +106,11 @@ IGNORED_PHRASES = [
     r"was too large; the maximum file size is 25MiB.",
     r"selected message",
     r"a-z",
+    r"organization administrator",
+    r"user",
+    r"an unknown operating system",
+    r"Go to Settings",
+    r"Like Organization logo",
 
     # SPECIAL CASES
     # Enter is usually capitalized
@@ -91,14 +119,27 @@ IGNORED_PHRASES = [
     r"more topics",
     # For consistency with "more topics"
     r"more conversations",
+    # Capital 'i' looks weird in reminders popover
+    r"in 1 hour",
+    r"in 20 minutes",
+    r"in 3 hours",
     # We should probably just delete this string from translations
     r'activation key',
-    # this is used as a topic
-    r'^hello$',
+    # these are used as topics
+    r'^new streams$',
+    r'^stream events$',
     # These are used as example short names (e.g. an uncapitalized context):
     r"^marketing$",
     r"^cookie$",
     r"^new_emoji$",
+    # Used to refer custom time limits
+    r"\bN\b",
+    # Capital c feels obtrusive in clear status option
+    r"clear",
+
+    r"group private messages with __recipient__",
+    r"private messages with __recipient__",
+    r"private messages with yourself",
 
     # TO CLEAN UP
     # Just want to avoid churning login.html right now
@@ -107,6 +148,13 @@ IGNORED_PHRASES = [
     r"argument ",
     # I can't find this one
     r"text",
+    r"GIF",
+    # Emoji name placeholder
+    r"leafy green vegetable",
+    # Subdomain placeholder
+    r"your-organization-url",
+    # Used in invite modal
+    r"or",
 ]
 
 # Sort regexes in descending order of their lengths. As a result, the
@@ -122,11 +170,11 @@ COMPILED_IGNORED_PHRASES = [
 ]
 
 SPLIT_BOUNDARY = '?.!'  # Used to split string into sentences.
-SPLIT_BOUNDARY_REGEX = re.compile(r'[{}]'.format(SPLIT_BOUNDARY))
+SPLIT_BOUNDARY_REGEX = re.compile(fr'[{SPLIT_BOUNDARY}]')
 
 # Regexes which check capitalization in sentences.
 DISALLOWED_REGEXES = [re.compile(regex) for regex in [
-    r'^[a-z]',  # Checks if the sentence starts with a lower case character.
+    r'^[a-z](?!\})',  # Checks if the sentence starts with a lower case character.
     r'^[A-Z][a-z]+[\sa-z0-9]+[A-Z]',  # Checks if an upper case character exists
     # after a lower case character when the first character is in upper case.
 ]]
@@ -136,8 +184,7 @@ BANNED_WORDS = {
               'Use organization instead.'),
 }
 
-def get_safe_phrase(phrase):
-    # type: (str) -> str
+def get_safe_phrase(phrase: str) -> str:
     """
     Safe phrase is in lower case and doesn't contain characters which can
     conflict with split boundaries. All conflicting characters are replaced
@@ -146,8 +193,7 @@ def get_safe_phrase(phrase):
     phrase = SPLIT_BOUNDARY_REGEX.sub('_', phrase)
     return phrase.lower()
 
-def replace_with_safe_phrase(matchobj):
-    # type: (Match[str]) -> str
+def replace_with_safe_phrase(matchobj: Match[str]) -> str:
     """
     The idea is to convert IGNORED_PHRASES into safe phrases, see
     `get_safe_phrase()` function. The only exception is when the
@@ -171,8 +217,7 @@ def replace_with_safe_phrase(matchobj):
 
     return safe_string
 
-def get_safe_text(text):
-    # type: (str) -> str
+def get_safe_text(text: str) -> str:
     """
     This returns text which is rendered by BeautifulSoup and is in the
     form that can be split easily and has all IGNORED_PHRASES processed.
@@ -184,8 +229,7 @@ def get_safe_text(text):
 
     return text
 
-def is_capitalized(safe_text):
-    # type: (str) -> bool
+def is_capitalized(safe_text: str) -> bool:
     sentences = SPLIT_BOUNDARY_REGEX.split(safe_text)
     sentences = [sentence.strip()
                  for sentence in sentences if sentence.strip()]
@@ -215,8 +259,7 @@ def check_banned_words(text: str) -> List[str]:
 
     return errors
 
-def check_capitalization(strings):
-    # type: (List[str]) -> Tuple[List[str], List[str], List[str]]
+def check_capitalization(strings: List[str]) -> Tuple[List[str], List[str], List[str]]:
     errors = []
     ignored = []
     banned_word_errors = []

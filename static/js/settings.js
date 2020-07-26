@@ -1,50 +1,9 @@
-var settings = (function () {
+const render_settings_tab = require("../templates/settings_tab.hbs");
 
-var exports = {};
-var map;
+const settings_config = require("./settings_config");
 
-$("body").ready(function () {
-    var $sidebar = $(".form-sidebar");
-    var $targets = $sidebar.find("[data-target]");
-    var $title = $sidebar.find(".title h1");
-    var is_open = false;
-
-    var close_sidebar = function () {
-        $sidebar.removeClass("show");
-        $sidebar.find("#edit_bot").empty();
-        is_open = false;
-    };
-
-    exports.trigger_sidebar = function (target) {
-        $targets.hide();
-        var $target = $(".form-sidebar").find("[data-target='" + target + "']");
-
-        $title.text($target.attr("data-title"));
-        $target.show();
-
-        $sidebar.addClass("show");
-        is_open = true;
-    };
-
-    $(".form-sidebar .exit").click(function (e) {
-        close_sidebar();
-        e.stopPropagation();
-    });
-
-    $("body").click(function (e) {
-        if (is_open && !$(e.target).within(".form-sidebar")) {
-            close_sidebar();
-        }
-    });
-
-    $("body").on("click", "[data-sidebar-form]", function (e) {
-        exports.trigger_sidebar($(this).attr("data-sidebar-form"));
-        e.stopPropagation();
-    });
-
-    $("body").on("click", "[data-sidebar-form-close]", close_sidebar);
-
-    $("#settings_overlay_container").click(function (e) {
+$("body").ready(() => {
+    $("#settings_overlay_container").on("click", (e) => {
         if (!overlays.is_modal_open()) {
             return;
         }
@@ -53,6 +12,11 @@ $("body").ready(function () {
         }
         e.preventDefault();
         e.stopPropagation();
+        // Whenever opening a modal(over settings overlay) in an event handler
+        // attached to a click event, make sure to stop the propagation of the
+        // event to the parent container otherwise the modal will not open. This
+        // is so because this event handler will get fired on any click in settings
+        // overlay and subsequently close any open modal.
         overlays.close_active_modal();
     });
 });
@@ -60,137 +24,89 @@ $("body").ready(function () {
 function setup_settings_label() {
     exports.settings_label = {
         // settings_notification
-        // stream_notification_settings
-        enable_stream_desktop_notifications: i18n.t("Visual desktop notifications"),
-        enable_stream_sounds: i18n.t("Audible desktop notifications"),
-        enable_stream_push_notifications: i18n.t("Mobile notifications"),
-
-        // pm_mention_notification_settings
-        enable_desktop_notifications: i18n.t("Visual desktop notifications"),
-        enable_offline_email_notifications: i18n.t("Email notifications when offline"),
-        enable_offline_push_notifications: i18n.t("Mobile notifications when offline"),
-        enable_online_push_notifications: i18n.t("Mobile notifications always (even when online)"),
-        enable_sounds: i18n.t("Audible desktop notifications"),
-        pm_content_in_desktop_notifications: i18n.t("Include content of private messages"),
-
-        // other_notification_settings
+        enable_online_push_notifications: i18n.t(
+            "Send mobile notifications even if I'm online (useful for testing)",
+        ),
+        pm_content_in_desktop_notifications: i18n.t(
+            "Include content of private messages in desktop notifications",
+        ),
+        desktop_icon_count_display: i18n.t(
+            "Unread count summary (appears in desktop sidebar and browser tab)",
+        ),
         enable_digest_emails: i18n.t("Send digest emails when I'm away"),
-        message_content_in_email_notifications: i18n.t("Include content of private messages"),
-        realm_name_in_notifications: i18n.t("Include organization name in subject of missed message emails"),
+        enable_login_emails: i18n.t("Send email notifications for new logins to my account"),
+        message_content_in_email_notifications: i18n.t(
+            "Include message content in missed message emails",
+        ),
+        realm_name_in_notifications: i18n.t(
+            "Include organization name in subject of missed message emails",
+        ),
+        presence_enabled: i18n.t("Display my availability to other users when online"),
+
+        // display settings
+        dense_mode: i18n.t("Dense mode"),
+        fluid_layout_width: i18n.t("Use full width on wide screens"),
+        high_contrast_mode: i18n.t("High contrast mode"),
+        left_side_userlist: i18n.t("Show user list on left sidebar in narrow windows"),
+        starred_message_counts: i18n.t("Show counts for starred messages"),
+        twenty_four_hour_time: i18n.t("Time format"),
+        translate_emoticons: i18n.t(
+            "Convert emoticons before sending (<code>:)</code> becomes 😃)",
+        ),
     };
 }
 
-function _setup_page() {
-    ui.set_up_scrollbar($("#settings_page .sidebar.left"));
-    ui.set_up_scrollbar($("#settings_content"));
-
-    // only run once -- if the map has not already been initialized.
-    if (map === undefined) {
-        map = {
-            "your-account": i18n.t("Your account"),
-            "display-settings": i18n.t("Display settings"),
-            notifications: i18n.t("Notifications"),
-            "your-bots": i18n.t("Your bots"),
-            "alert-words": i18n.t("Alert words"),
-            "uploaded-files": i18n.t("Uploaded files"),
-            "muted-topics": i18n.t("Muted topics"),
-            "zulip-labs": i18n.t("Zulip labs"),
-            "organization-profile": i18n.t("Organization profile"),
-            "organization-settings": i18n.t("Organization settings"),
-            "organization-permissions": i18n.t("Organization permissions"),
-            "emoji-settings": i18n.t("Emoji settings"),
-            "auth-methods": i18n.t("Authorization methods"),
-            "user-list-admin": i18n.t("Active users"),
-            "deactivated-users-admin": i18n.t("Deactivated users"),
-            "bot-list-admin": i18n.t("Bot list"),
-            "streams-list-admin": i18n.t("Streams"),
-            "default-streams-list": i18n.t("Default streams"),
-            "filter-settings": i18n.t("Filter settings"),
-            "invites-list-admin": i18n.t("Invitations"),
-            "user-groups-admin": i18n.t("User groups"),
-        };
-    }
-
-    var tab = (function () {
-        var tab = false;
-        var hash_sequence = window.location.hash.split(/\//);
-        if (/#*(settings)/.test(hash_sequence[0])) {
-            tab = hash_sequence[1];
-            return tab || "your-account";
-        }
-        return tab;
-    }());
-
+exports.build_page = function () {
     setup_settings_label();
-    settings_bots.setup_bot_creation_policy_values();
 
-    var settings_tab = templates.render('settings_tab', {
+    const rendered_settings_tab = render_settings_tab({
         full_name: people.my_full_name(),
-        page_params: page_params,
-        zuliprc: 'zuliprc',
-        flaskbotrc: 'flaskbotrc',
+        page_params,
+        enable_sound_select:
+            page_params.enable_sounds || page_params.enable_stream_audible_notifications,
+        zuliprc: "zuliprc",
+        botserverrc: "botserverrc",
         timezones: moment.tz.names(),
-        admin_only_bot_creation: page_params.is_admin ||
-            page_params.realm_bot_creation_policy !==
-            settings_bots.bot_creation_policy_values.admins_only.code,
-        settings_label: settings.settings_label,
+        can_create_new_bots: settings_bots.can_create_new_bots(),
+        settings_label: exports.settings_label,
+        demote_inactive_streams_values: settings_config.demote_inactive_streams_values,
+        color_scheme_values: settings_config.color_scheme_values,
+        twenty_four_hour_time_values: settings_config.twenty_four_hour_time_values,
+        general_settings: settings_config.all_notifications().general_settings,
+        notification_settings: settings_config.all_notifications().settings,
+        desktop_icon_count_display_values: settings_notifications.desktop_icon_count_display_values,
+        show_push_notifications_tooltip: settings_config.all_notifications()
+            .show_push_notifications_tooltip,
+        display_settings: settings_config.get_all_display_settings(),
+        user_can_change_name: settings_account.user_can_change_name(),
+        user_can_change_avatar: settings_account.user_can_change_avatar(),
     });
 
-    $(".settings-box").html(settings_tab);
-
-    // Since we just swapped in a whole new settings widget, we need to
-    // tell settings_sections nothing is loaded.
-    settings_sections.reset_sections();
-
-    if (tab) {
-        exports.launch_page(tab);
-    }
-}
-
-exports.setup_page = function () {
-    i18n.ensure_i18n(_setup_page);
+    $(".settings-box").html(rendered_settings_tab);
 };
 
-exports.launch_page = function (tab) {
-    var $active_tab = $("#settings_overlay_container li[data-section='" + tab + "']");
-
-    if (!$active_tab.hasClass("admin")) {
-        components.toggle.lookup("settings-toggle").goto("settings", { dont_switch_tab: true });
-    }
+exports.launch = function (section) {
+    exports.build_page();
+    admin.build_page();
+    settings_sections.reset_sections();
 
     overlays.open_settings();
-
-    $active_tab.click();
+    settings_panel_menu.normal_settings.activate_section_or_default(section);
+    settings_toggle.highlight_toggle("settings");
 };
 
 exports.set_settings_header = function (key) {
-    if (map[key]) {
-        $(".settings-header h1 .section").text(" / " + map[key]);
+    const header_text = $(`#settings_page .sidebar-list [data-section='${key}'] .text`).text();
+    if (header_text) {
+        $(".settings-header h1 .section").text(" / " + header_text);
     } else {
-        blueslip.warn("Error: the key '" + key + "' does not exist in the settings" +
-            " header mapping file. Please add it.");
+        blueslip.warn(
+            "Error: the key '" +
+                key +
+                "' does not exist in the settings" +
+                " sidebar list. Please add it.",
+        );
     }
 };
 
-exports.handle_up_arrow = function (e) {
-    var prev = e.target.previousElementSibling;
-
-    if ($(prev).css("display") !== "none") {
-        $(prev).focus().click();
-    }
-};
-
-exports.handle_down_arrow = function (e) {
-    var next = e.target.nextElementSibling;
-
-    if ($(next).css("display") !== "none") {
-        $(next).focus().click();
-    }
-};
-
-return exports;
-}());
-
-if (typeof module !== 'undefined') {
-    module.exports = settings;
-}
+window.settings = exports;

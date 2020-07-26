@@ -1,19 +1,41 @@
+from functools import wraps
+from typing import Any, Dict, cast
 
-from typing import Any, Dict
-
+from django.conf import settings
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.utils.cache import add_never_cache_headers
 from django.utils.module_loading import import_string
-from django.utils.translation import ugettext as _
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 
-from zerver.decorator import authenticated_json_view, authenticated_rest_api_view, \
-    process_as_post
+from zerver.decorator import (
+    authenticated_json_view,
+    authenticated_rest_api_view,
+    authenticated_uploads_api_view,
+    process_as_post,
+)
 from zerver.lib.response import json_method_not_allowed, json_unauthorized
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
-from django.conf import settings
+from zerver.lib.types import ViewFuncT
 
 METHODS = ('GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'PATCH')
 FLAGS = ('override_api_url_scheme')
 
+def default_never_cache_responses(view_func: ViewFuncT) -> ViewFuncT:
+    """Patched version of the standard Django never_cache_responses
+    decorator that adds headers to a response so that it will never be
+    cached, unless the view code has already set a Cache-Control
+    header.
+    """
+    @wraps(view_func)
+    def _wrapped_view_func(request: HttpRequest, *args: object, **kwargs: object) -> HttpResponse:
+        response = view_func(request, *args, **kwargs)
+        if response.has_header("Cache-Control"):
+            return response
+
+        add_never_cache_headers(response)
+        return response
+    return cast(ViewFuncT, _wrapped_view_func)  # https://github.com/python/mypy/issues/1927
+
+@default_never_cache_responses
 @csrf_exempt
 def rest_dispatch(request: HttpRequest, **kwargs: Any) -> HttpResponse:
     """Dispatch to a REST API endpoint.
@@ -38,7 +60,12 @@ def rest_dispatch(request: HttpRequest, **kwargs: Any) -> HttpResponse:
     Never make a urls.py pattern put user input into a variable called GET, POST,
     etc, as that is where we route HTTP verbs to target functions.
     """
-    supported_methods = {}  # type: Dict[str, Any]
+    supported_methods: Dict[str, Any] = {}
+
+    if hasattr(request, "saved_response"):
+        # For completing long-polled Tornado requests, we skip the
+        # view function logic and just return the response.
+        return request.saved_response
 
     # duplicate kwargs so we can mutate the original as we go
     for arg in list(kwargs):
@@ -46,18 +73,18 @@ def rest_dispatch(request: HttpRequest, **kwargs: Any) -> HttpResponse:
             supported_methods[arg] = kwargs[arg]
             del kwargs[arg]
 
+    if 'GET' in supported_methods:
+        supported_methods.setdefault('HEAD', supported_methods['GET'])
+
     if request.method == 'OPTIONS':
         response = HttpResponse(status=204)  # No content
         response['Allow'] = ', '.join(sorted(supported_methods.keys()))
-        response['Content-Length'] = "0"
         return response
 
     # Override requested method if magic method=??? parameter exists
     method_to_use = request.method
     if request.POST and 'method' in request.POST:
         method_to_use = request.POST['method']
-    if method_to_use == "SOCKET" and "zulip.emulated_method" in request.META:
-        method_to_use = request.META["zulip.emulated_method"]
 
     if method_to_use in supported_methods:
         entry = supported_methods[method_to_use]
@@ -84,36 +111,53 @@ def rest_dispatch(request: HttpRequest, **kwargs: Any) -> HttpResponse:
         # uploaded), we support using the same url for web and API clients.
         if ('override_api_url_scheme' in view_flags and
                 request.META.get('HTTP_AUTHORIZATION', None) is not None):
-            # This request  API based authentication.
-            target_function = authenticated_rest_api_view()(target_function)
+            # This request uses standard API based authentication.
+            # For override_api_url_scheme views, we skip our normal
+            # rate limiting, because there are good reasons clients
+            # might need to (e.g.) request a large number of uploaded
+            # files or avatars in quick succession.
+            target_function = authenticated_rest_api_view(skip_rate_limiting=True)(target_function)
+        elif ('override_api_url_scheme' in view_flags and
+              request.GET.get('api_key') is not None):
+            # This request uses legacy API authentication.  We
+            # unfortunately need that in the React Native mobile apps,
+            # because there's no way to set HTTP_AUTHORIZATION in
+            # React Native.  See last block for rate limiting notes.
+            target_function = authenticated_uploads_api_view(skip_rate_limiting=True)(target_function)
         # /json views (web client) validate with a session token (cookie)
         elif not request.path.startswith("/api") and request.user.is_authenticated:
             # Authenticated via sessions framework, only CSRF check needed
-            target_function = csrf_protect(authenticated_json_view(target_function))
+            auth_kwargs = {}
+            if 'override_api_url_scheme' in view_flags:
+                auth_kwargs["skip_rate_limiting"] = True
+            target_function = csrf_protect(authenticated_json_view(target_function, **auth_kwargs))
 
         # most clients (mobile, bots, etc) use HTTP Basic Auth and REST calls, where instead of
         # username:password, we use email:apiKey
         elif request.META.get('HTTP_AUTHORIZATION', None):
             # Wrap function with decorator to authenticate the user before
             # proceeding
-            view_kwargs = {}
-            if 'allow_incoming_webhooks' in view_flags:
-                view_kwargs['is_webhook'] = True
-            target_function = authenticated_rest_api_view(**view_kwargs)(target_function)  # type: ignore # likely mypy bug
+            target_function = authenticated_rest_api_view(
+                is_webhook='allow_incoming_webhooks' in view_flags,
+            )(target_function)
         # Pick a way to tell user they're not authed based on how the request was made
         else:
             # If this looks like a request from a top-level page in a
             # browser, send the user to the login page
             if 'text/html' in request.META.get('HTTP_ACCEPT', ''):
                 # TODO: It seems like the `?next=` part is unlikely to be helpful
-                return HttpResponseRedirect('%s/?next=%s' % (settings.HOME_NOT_LOGGED_IN, request.path))
+                return HttpResponseRedirect(f'{settings.HOME_NOT_LOGGED_IN}?next={request.path}')
             # Ask for basic auth (email:apiKey)
             elif request.path.startswith("/api"):
-                return json_unauthorized(_("Not logged in: API authentication or user session required"))
+                return json_unauthorized()
+            # Logged out user accessing an endpoint with anonymous user access on JSON; proceed.
+            elif request.path.startswith("/json") and 'allow_anonymous_user_web' in view_flags:
+                auth_kwargs = dict(allow_unauthenticated=True)
+                target_function = csrf_protect(authenticated_json_view(
+                    target_function, **auth_kwargs))
             # Session cookie expired, notify the client
             else:
-                return json_unauthorized(_("Not logged in: API authentication or user session required"),
-                                         www_authenticate='session')
+                return json_unauthorized(www_authenticate='session')
 
         if request.method not in ["GET", "POST"]:
             # process_as_post needs to be the outer decorator, because

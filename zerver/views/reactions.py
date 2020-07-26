@@ -1,17 +1,16 @@
+from typing import Optional
 
 from django.http import HttpRequest, HttpResponse
 from django.utils.translation import ugettext as _
-from typing import Text
 
-from zerver.decorator import \
-    has_request_variables, REQ, to_non_negative_int
-from zerver.lib.actions import do_add_reaction, do_add_reaction_legacy,\
-    do_remove_reaction, do_remove_reaction_legacy
-from zerver.lib.emoji import check_emoji_request, check_valid_emoji
+from zerver.decorator import REQ, has_request_variables
+from zerver.lib.actions import do_add_reaction, do_remove_reaction
+from zerver.lib.emoji import check_emoji_request, emoji_name_to_emoji_code
 from zerver.lib.message import access_message
 from zerver.lib.request import JsonableError
 from zerver.lib.response import json_success
 from zerver.models import Message, Reaction, UserMessage, UserProfile
+
 
 def create_historical_message(user_profile: UserProfile, message: Message) -> None:
     # Users can see and react to messages sent to streams they
@@ -26,9 +25,21 @@ def create_historical_message(user_profile: UserProfile, message: Message) -> No
 @has_request_variables
 def add_reaction(request: HttpRequest, user_profile: UserProfile, message_id: int,
                  emoji_name: str=REQ(),
-                 emoji_code: str=REQ(),
-                 reaction_type: str=REQ(default="unicode_emoji")) -> HttpResponse:
+                 emoji_code: Optional[str]=REQ(default=None),
+                 reaction_type: Optional[str]=REQ(default=None)) -> HttpResponse:
     message, user_message = access_message(user_profile, message_id)
+
+    if emoji_code is None:
+        # The emoji_code argument is only required for rare corner
+        # cases discussed in the long block comment below.  For simple
+        # API clients, we allow specifying just the name, and just
+        # look up the code using the current name->code mapping.
+        emoji_code = emoji_name_to_emoji_code(message.sender.realm,
+                                              emoji_name)[0]
+
+    if reaction_type is None:
+        reaction_type = emoji_name_to_emoji_code(message.sender.realm,
+                                                 emoji_name)[1]
 
     if Reaction.objects.filter(user_profile=user_profile,
                                message=message,
@@ -43,7 +54,7 @@ def add_reaction(request: HttpRequest, user_profile: UserProfile, message_id: in
         # If another user has already reacted to this message with
         # same emoji code, we treat the new reaction as a vote for the
         # existing reaction.  So the emoji name used by that earlier
-        # reaction takes precendence over whatever was passed in this
+        # reaction takes precedence over whatever was passed in this
         # request.  This is necessary to avoid a message having 2
         # "different" emoji reactions with the same emoji code (and
         # thus same image) on the same message, which looks ugly.
@@ -62,7 +73,7 @@ def add_reaction(request: HttpRequest, user_profile: UserProfile, message_id: in
         # Otherwise, use the name provided in this request, but verify
         # it is valid in the user's realm (e.g. not a deactivated
         # realm emoji).
-        check_emoji_request(message.sender.realm, emoji_name,
+        check_emoji_request(user_profile.realm, emoji_name,
                             emoji_code, reaction_type)
 
     if user_message is None:
@@ -74,9 +85,23 @@ def add_reaction(request: HttpRequest, user_profile: UserProfile, message_id: in
 
 @has_request_variables
 def remove_reaction(request: HttpRequest, user_profile: UserProfile, message_id: int,
-                    emoji_code: str=REQ(),
+                    emoji_name: Optional[str]=REQ(default=None),
+                    emoji_code: Optional[str]=REQ(default=None),
                     reaction_type: str=REQ(default="unicode_emoji")) -> HttpResponse:
     message, user_message = access_message(user_profile, message_id)
+
+    if emoji_code is None:
+        if emoji_name is None:
+            raise JsonableError(_('At least one of the following arguments '
+                                  'must be present: emoji_name, emoji_code'))
+        # A correct full Zulip client implementation should always
+        # pass an emoji_code, because of the corner cases discussed in
+        # the long block comments elsewhere in this file.  However, to
+        # make it easy for simple API clients to use the reactions API
+        # without needing the mapping between emoji names and codes,
+        # we allow instead passing the emoji_name and looking up the
+        # corresponding code using the current data.
+        emoji_code = emoji_name_to_emoji_code(message.sender.realm, emoji_name)[0]
 
     if not Reaction.objects.filter(user_profile=user_profile,
                                    message=message,
@@ -93,48 +118,5 @@ def remove_reaction(request: HttpRequest, user_profile: UserProfile, message_id:
     # valid in legitimate situations (e.g. if a realm emoji was
     # deactivated by an administrator in the meantime).
     do_remove_reaction(user_profile, message, emoji_code, reaction_type)
-
-    return json_success()
-
-@has_request_variables
-def add_reaction_legacy(request: HttpRequest, user_profile: UserProfile,
-                        message_id: int, emoji_name: Text) -> HttpResponse:
-
-    # access_message will throw a JsonableError exception if the user
-    # cannot see the message (e.g. for messages to private streams).
-    message, user_message = access_message(user_profile, message_id)
-
-    check_valid_emoji(message.sender.realm, emoji_name)
-
-    # We could probably just make this check be a try/except for the
-    # IntegrityError from it already existing, but this is a bit cleaner.
-    if Reaction.objects.filter(user_profile=user_profile,
-                               message=message,
-                               emoji_name=emoji_name).exists():
-        raise JsonableError(_("Reaction already exists"))
-
-    if user_message is None:
-        create_historical_message(user_profile, message)
-
-    do_add_reaction_legacy(user_profile, message, emoji_name)
-
-    return json_success()
-
-@has_request_variables
-def remove_reaction_legacy(request: HttpRequest, user_profile: UserProfile,
-                           message_id: int, emoji_name: Text) -> HttpResponse:
-
-    # access_message will throw a JsonableError exception if the user
-    # cannot see the message (e.g. for messages to private streams).
-    message = access_message(user_profile, message_id)[0]
-
-    # We could probably just make this check be a try/except for the
-    # IntegrityError from it already existing, but this is a bit cleaner.
-    if not Reaction.objects.filter(user_profile=user_profile,
-                                   message=message,
-                                   emoji_name=emoji_name).exists():
-        raise JsonableError(_("Reaction does not exist"))
-
-    do_remove_reaction_legacy(user_profile, message, emoji_name)
 
     return json_success()

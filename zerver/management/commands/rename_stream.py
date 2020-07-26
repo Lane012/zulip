@@ -1,12 +1,10 @@
-
-import sys
 from argparse import ArgumentParser
 from typing import Any
 
 from zerver.lib.actions import do_rename_stream
 from zerver.lib.management import ZulipBaseCommand
-from zerver.lib.str_utils import force_text
 from zerver.models import get_stream
+
 
 class Command(ZulipBaseCommand):
     help = """Change the stream name for a realm."""
@@ -23,7 +21,6 @@ class Command(ZulipBaseCommand):
         assert realm is not None  # Should be ensured by parser
         old_name = options['old_name']
         new_name = options['new_name']
-        encoding = sys.getfilesystemencoding()
 
-        stream = get_stream(force_text(old_name, encoding), realm)
-        do_rename_stream(stream, force_text(new_name, encoding))
+        stream = get_stream(old_name, realm)
+        do_rename_stream(stream, new_name, self.user_profile)

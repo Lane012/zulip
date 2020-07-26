@@ -1,63 +1,69 @@
-import json
-import logging
-import os
-import signal
-import sys
-import time
-import re
 import importlib
-from zerver.lib.actions import internal_send_private_message, \
-    internal_send_stream_message, internal_send_huddle_message
-from zerver.models import UserProfile, get_user
-from zerver.lib.bot_storage import get_bot_storage, set_bot_storage, \
-    is_key_in_bot_storage, get_bot_storage_size, remove_bot_storage
-from zerver.lib.bot_config import get_bot_config, ConfigError
+import json
+import os
+from typing import Any, Callable, Dict
+
+from django.utils.translation import ugettext as _
+
+from zerver.lib.actions import (
+    internal_send_huddle_message,
+    internal_send_private_message,
+    internal_send_stream_message_by_name,
+)
+from zerver.lib.bot_config import ConfigError, get_bot_config
+from zerver.lib.bot_storage import (
+    get_bot_storage,
+    is_key_in_bot_storage,
+    remove_bot_storage,
+    set_bot_storage,
+)
 from zerver.lib.integrations import EMBEDDED_BOTS
-
-import configparser
-
-if False:
-    from mypy_extensions import NoReturn
-from typing import Any, Optional, List, Dict, Text
-from types import ModuleType
+from zerver.lib.topic import get_topic_from_message_info
+from zerver.models import UserProfile, get_active_user
 
 our_dir = os.path.dirname(os.path.abspath(__file__))
 
 from zulip_bots.lib import RateLimit
 
+
 def get_bot_handler(service_name: str) -> Any:
 
     # Check that this service is present in EMBEDDED_BOTS, add exception handling.
-    is_present_in_registry = any(service_name == embedded_bot_service.name for
-                                 embedded_bot_service in EMBEDDED_BOTS)
-    if not is_present_in_registry:
+    configured_service = ""
+    for embedded_bot_service in EMBEDDED_BOTS:
+        if service_name == embedded_bot_service.name:
+            configured_service = embedded_bot_service.name
+    if not configured_service:
         return None
-    bot_module_name = 'zulip_bots.bots.%s.%s' % (service_name, service_name)
-    bot_module = importlib.import_module(bot_module_name)  # type: Any
+    bot_module_name = f'zulip_bots.bots.{configured_service}.{configured_service}'
+    bot_module: Any = importlib.import_module(bot_module_name)
     return bot_module.handler_class()
 
 
 class StateHandler:
-    storage_size_limit = 10000000   # type: int # TODO: Store this in the server configuration model.
+    storage_size_limit: int = 10000000  # TODO: Store this in the server configuration model.
 
     def __init__(self, user_profile: UserProfile) -> None:
         self.user_profile = user_profile
-        self.marshal = lambda obj: json.dumps(obj)
-        self.demarshal = lambda obj: json.loads(obj)
+        self.marshal: Callable[[object], str] = lambda obj: json.dumps(obj)
+        self.demarshal: Callable[[str], object] = lambda obj: json.loads(obj)
 
-    def get(self, key: Text) -> Text:
+    def get(self, key: str) -> object:
         return self.demarshal(get_bot_storage(self.user_profile, key))
 
-    def put(self, key: Text, value: Text) -> None:
+    def put(self, key: str, value: object) -> None:
         set_bot_storage(self.user_profile, [(key, self.marshal(value))])
 
-    def remove(self, key: Text) -> None:
+    def remove(self, key: str) -> None:
         remove_bot_storage(self.user_profile, [key])
 
-    def contains(self, key: Text) -> bool:
+    def contains(self, key: str) -> bool:
         return is_key_in_bot_storage(self.user_profile, key)
 
 class EmbeddedBotQuitException(Exception):
+    pass
+
+class EmbeddedBotEmptyRecipientsList(Exception):
     pass
 
 class EmbeddedBotHandler:
@@ -68,14 +74,17 @@ class EmbeddedBotHandler:
         self.full_name = user_profile.full_name
         self.email = user_profile.email
         self.storage = StateHandler(user_profile)
+        self.user_id = user_profile.id
 
     def send_message(self, message: Dict[str, Any]) -> None:
         if not self._rate_limit.is_legal():
             self._rate_limit.show_error_and_exit()
 
         if message['type'] == 'stream':
-            internal_send_stream_message(self.user_profile.realm, self.user_profile, message['to'],
-                                         message['subject'], message['content'])
+            internal_send_stream_message_by_name(
+                self.user_profile.realm, self.user_profile,
+                message['to'], message['topic'], message['content'],
+            )
             return
 
         assert message['type'] == 'private'
@@ -83,8 +92,10 @@ class EmbeddedBotHandler:
         # usual 'to' field could be either a List[str] or a str.
         recipients = ','.join(message['to']).split(',')
 
-        if len(message['to']) == 1:
-            recipient_user = get_user(recipients[0], self.user_profile.realm)
+        if len(message['to']) == 0:
+            raise EmbeddedBotEmptyRecipientsList(_('Message must have recipients!'))
+        elif len(message['to']) == 1:
+            recipient_user = get_active_user(recipients[0], self.user_profile.realm)
             internal_send_private_message(self.user_profile.realm, self.user_profile,
                                           recipient_user, message['content'])
         else:
@@ -103,13 +114,13 @@ class EmbeddedBotHandler:
             self.send_message(dict(
                 type='stream',
                 to=message['display_recipient'],
-                subject=message['subject'],
+                topic=get_topic_from_message_info(message),
                 content=response,
                 sender_email=message['sender_email'],
             ))
 
     # The bot_name argument exists only to comply with ExternalBotHandler.get_config_info().
-    def get_config_info(self, bot_name: str, optional: bool=False) -> Dict[Text, Text]:
+    def get_config_info(self, bot_name: str, optional: bool=False) -> Dict[str, str]:
         try:
             return get_bot_config(self.user_profile)
         except ConfigError:

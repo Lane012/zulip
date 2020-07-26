@@ -1,9 +1,9 @@
-from typing import Text, List
-
-import gitlint
-from gitlint.rules import LineRule, RuleViolation, CommitMessageTitle
-from gitlint.options import StrOption
 import re
+from typing import List, Text
+
+from gitlint.git import GitCommit
+from gitlint.options import StrOption
+from gitlint.rules import CommitMessageTitle, LineRule, RuleViolation
 
 # Word list from https://github.com/m1foley/fit-commit
 # Copyright (c) 2015 Mike Foley
@@ -69,7 +69,7 @@ WORD_SET = {
     'testing', 'tested',  # 'tests' excluded to reduce false negative
     'truncates', 'truncating', 'truncated',
     'updates', 'updating', 'updated',
-    'uses', 'using', 'used'
+    'uses', 'using', 'used',
 }
 
 imperative_forms = sorted([
@@ -84,8 +84,7 @@ imperative_forms = sorted([
 ])
 
 
-def head_binary_search(key, words):
-    # type: (Text, List[str]) -> str
+def head_binary_search(key: Text, words: List[str]) -> str:
     """ Find the imperative mood version of `word` by looking at the first
     3 characters. """
 
@@ -99,7 +98,7 @@ def head_binary_search(key, words):
     while True:
         if lower > upper:
             # Should not happen
-            raise Exception("Cannot find imperative mood of {}".format(key))
+            raise Exception(f"Cannot find imperative mood of {key}")
 
         mid = (lower + upper) // 2
         imperative_form = words[mid]
@@ -124,8 +123,7 @@ class ImperativeMood(LineRule):
     error_msg = ('The first word in commit title should be in imperative mood '
                  '("{word}" -> "{imperative}"): "{title}"')
 
-    def validate(self, line, commit):
-        # type: (Text, gitlint.commit) -> List[RuleViolation]
+    def validate(self, line: Text, commit: GitCommit) -> List[RuleViolation]:
         violations = []
 
         # Ignore the section tag (ie `<section tag>: <message body>.`)
@@ -137,7 +135,7 @@ class ImperativeMood(LineRule):
             violation = RuleViolation(self.id, self.error_msg.format(
                 word=first_word,
                 imperative=imperative,
-                title=commit.message.title
+                title=commit.message.title,
             ))
 
             violations.append(violation)
@@ -153,13 +151,12 @@ class TitleMatchRegexAllowException(LineRule):
     target = CommitMessageTitle
     options_spec = [StrOption('regex', ".*", "Regex the title should match")]
 
-    def validate(self, title, commit):
-        # type: (Text, gitlint.commit) -> List[RuleViolation]
+    def validate(self, title: Text, commit: GitCommit) -> List[RuleViolation]:
 
         regex = self.options['regex'].value
         pattern = re.compile(regex, re.UNICODE)
         if not pattern.search(title) and not title.startswith("Revert \""):
-            violation_msg = u"Title does not match regex ({0})".format(regex)
+            violation_msg = f"Title does not match regex ({regex})"
             return [RuleViolation(self.id, violation_msg, title)]
 
         return []

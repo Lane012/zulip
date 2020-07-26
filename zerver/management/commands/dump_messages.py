@@ -1,13 +1,12 @@
-
 import datetime
 import time
 from typing import Any
 
 from django.core.management.base import CommandParser
-from django.utils.timezone import utc as timezone_utc
 
 from zerver.lib.management import ZulipBaseCommand
 from zerver.models import Message, Recipient, Stream
+
 
 class Command(ZulipBaseCommand):
     help = "Dump messages from public streams of a realm"
@@ -26,8 +25,8 @@ class Command(ZulipBaseCommand):
         streams = Stream.objects.filter(realm=realm, invite_only=False)
         recipients = Recipient.objects.filter(
             type=Recipient.STREAM, type_id__in=[stream.id for stream in streams])
-        cutoff = datetime.datetime.fromtimestamp(options["since"], tz=timezone_utc)
-        messages = Message.objects.filter(pub_date__gt=cutoff, recipient__in=recipients)
+        cutoff = datetime.datetime.fromtimestamp(options["since"], tz=datetime.timezone.utc)
+        messages = Message.objects.filter(date_sent__gt=cutoff, recipient__in=recipients)
 
         for message in messages:
             print(message.to_dict(False))

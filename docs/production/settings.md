@@ -9,14 +9,14 @@ Most configuration can be done by a realm administrator, on the web.
 For those settings, see [the documentation for realm
 administrators][realm-admin-docs].
 
-[realm-admin-docs]: https://zulipchat.com/help/getting-your-organization-started-with-zulip
+[realm-admin-docs]: https://zulip.com/help/getting-your-organization-started-with-zulip
 
 This page discusses additional configuration that a system
 administrator can do.  To change any of the following settings, edit
 the `/etc/zulip/settings.py` file on your Zulip server, and then
 restart the server with the following command:
 ```
-su zulip -c /home/zulip/deployments/current/scripts/restart-server
+su zulip -c '/home/zulip/deployments/current/scripts/restart-server'
 ```
 
 ## Specific settings
@@ -38,15 +38,13 @@ prefilled with that value.
 
 `AUTHENTICATION_BACKENDS`: Zulip supports a wide range of popular
 options for authenticating users to your server, including Google
-Auth, GitHub Auth, LDAP, REMOTE_USER, and more.  Note, however, that
-the default (email) backend must be used when creating a new
-organization.
+Auth, GitHub Auth, LDAP, SAML, REMOTE_USER, and more.
 
 If you want an additional or different authentication backend, you
 will need to uncomment one or more and then do any additional
 configuration required for that backend as documented in the
 `settings.py` file. See the
-[section on Authentication](../production/authentication-methods.html) for more
+[section on Authentication](../production/authentication-methods.md) for more
 detail on the available authentication backends and how to configure
 them.
 
@@ -63,7 +61,7 @@ their push notification protocols, the Zulip mobile apps for
 [Android](https://play.google.com/store/apps/details?id=com.zulipmobile)
 can only receive push notifications from a single Zulip server.  We
 have configured that server to be `push.zulipchat.com`, and offer a
-[push notification forwarding service](mobile-push-notifications.html) that
+[push notification forwarding service](mobile-push-notifications.md) that
 forwards push notifications through our servers to mobile devices.
 Read the linked documentation for instructions on how to register for
 and configure this service.
@@ -92,7 +90,7 @@ been added in more recent versions of Zulip.
 
 Since Zulip's settings file is a Python script, there are a number of
 other things that one can configure that are not documented; ask on
-[chat.zulip.org](../contributing/chat-zulip-org.html)
+[chat.zulip.org](../contributing/chat-zulip-org.md)
 if there's something you'd like to do but can't figure out how to.
 
 [settings-py-template]: https://github.com/zulip/zulip/blob/master/zproject/prod_settings_template.py
@@ -100,9 +98,9 @@ if there's something you'd like to do but can't figure out how to.
 Some popular settings in `/etc/zulip/settings.py` include:
 * The Twitter integration, which provides pretty inline previews of
   tweets.
-* The email gateway, which lets users send emails into Zulip.
-* `INLINE_URL_EMBED_PREVIEW`, which controls our experimental feature
-  providing inline previews of links pasted into Zulip.
+* The [email gateway](../production/email-gateway.md), which lets
+  users send emails into Zulip.
+* The [Zoom video call integration](zoom-configuration.md).
 
 ## Zulip announcement list
 
@@ -119,5 +117,5 @@ request; we love even small contributions, and we'd love to make the
 Zulip documentation cover everything anyone might want to know about
 running Zulip in production.
 
-Next: [Maintaining and upgrading Zulip in
-production](../production/maintain-secure-upgrade.html).
+Next: [Backups, export and import](../production/export-and-import.md) and
+[upgrading](../production/upgrade-or-modify.md) Zulip in production.

@@ -8,11 +8,11 @@ Welcome to the Zulip documentation!
 
 Welcome! Zulip's documentation is split into four parts:
 
-- `User documentation <https://zulipchat.com/help>`__, for users and
+- `User documentation <https://zulip.com/help>`__, for users and
   administrators of Zulip organizations.
-- `Installation documentation <production/overview.html>`__, for
-  installing and maintaining a self-hosted Zulip installation.
-- `API documentation <https://zulipchat.com/api/>`__, for writing
+- `Installation documentation <production/install.html>`__, for
+  installing and maintaining a production self-hosted Zulip installation.
+- `API documentation <https://zulip.com/api/>`__, for writing
   integrations or bots using the Zulip API.
 - `Contributor documentation <overview/contributing.html>`__, for
   developing the Zulip software, translating, submitting bug reports,
@@ -26,7 +26,7 @@ Zulip project and its features can be found at `https://www.zulip.org
 
 This site contains our installation and contributor documentation. If
 this is your first time here, you may want to start with `Production
-overview <production/overview.html>`_ or `Contributing to Zulip
+installation <production/install.html>`_ or `Contributing to Zulip
 <overview/contributing.html>`_.
 
 Contents:
@@ -39,6 +39,7 @@ Contents:
 * :ref:`Code Contribution Guide <code-contribution-guide>`
 * :ref:`Code Testing <code-testing>`
 * :ref:`Subsystem Documentation <subsystem-documentation>`
+* :ref:`Writing Documentation <writing-documentation>`
 * :ref:`Translating <translating>`
 
 .. _overview:
@@ -96,6 +97,13 @@ Contents:
    :maxdepth: 3
 
    subsystems/index
+
+.. _writing-documentation:
+
+.. toctree::
+   :maxdepth: 3
+
+   documentation/index
 
 .. _translating:
 

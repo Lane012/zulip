@@ -1,44 +1,147 @@
-var invite = (function () {
+const autosize = require("autosize");
 
-var exports = {};
-
-function update_subscription_checkboxes() {
-    // TODO: If we were more clever, we would only do this if the
-    // stream list has actually changed; that way, the settings of the
-    // checkboxes are saved from invocation to invocation (which is
-    // nice if I want to invite a bunch of people at once)
-    var streams = [];
-
-    _.each(stream_data.invite_streams(), function (value) {
-        var is_notifications_stream = value === page_params.notifications_stream;
-        if ((stream_data.subscribed_streams().length === 1) ||
-            !is_notifications_stream ||
-            (is_notifications_stream && stream_data.get_invite_only(value))) {
-            // You can't actually elect not to invite someone to the
-            // notifications stream. We won't even show it as a choice unless
-            // it's the only stream you have, or if you've made it private.
-            var default_status = stream_data.get_default_status(value);
-            var invite_status = stream_data.get_invite_only(value);
-            streams.push({name: value, invite_only: invite_status, default_stream: default_status});
-            // Sort by default status.
-            streams.sort(function (a, b) {
-                return b.default_stream - a.default_stream;
-            });
-        }
-    });
-    $('#streams_to_add').html(templates.render('invite_subscription', {streams: streams}));
-}
+const render_invitation_failed_error = require("../templates/invitation_failed_error.hbs");
+const render_invite_subscription = require("../templates/invite_subscription.hbs");
+const render_settings_dev_env_email_access = require("../templates/settings/dev_env_email_access.hbs");
 
 function reset_error_messages() {
-    var invite_status = $('#invite_status');
-    var invitee_emails = $("#invitee_emails");
-    var invitee_emails_group = invitee_emails.closest('.control-group');
+    $("#invite_status").hide().text("").removeClass(common.status_classes);
+    $("#multiuse_invite_status").hide().text("").removeClass(common.status_classes);
 
-    invite_status.hide().text('').removeClass('alert-error alert-warning alert-success');
-    invitee_emails_group.removeClass('warning error');
+    $("#invitee_emails").closest(".control-group").removeClass("warning error");
+
     if (page_params.development_environment) {
-        $('#dev_env_msg').hide().text('').removeClass('alert-error alert-warning alert-success');
+        $("#dev_env_msg").hide().text("").removeClass(common.status_classes);
     }
+}
+
+function get_common_invitation_data() {
+    const invite_as = parseInt($("#invite_as").val(), 10);
+    const stream_ids = [];
+    $("#invite-stream-checkboxes input:checked").each(function () {
+        const stream_id = parseInt($(this).val(), 10);
+        stream_ids.push(stream_id);
+    });
+    const data = {
+        csrfmiddlewaretoken: $('input[name="csrfmiddlewaretoken"]').attr("value"),
+        invite_as,
+        stream_ids: JSON.stringify(stream_ids),
+    };
+    return data;
+}
+
+function beforeSend() {
+    reset_error_messages();
+    // TODO: You could alternatively parse the textarea here, and return errors to
+    // the user if they don't match certain constraints (i.e. not real email addresses,
+    // aren't in the right domain, etc.)
+    //
+    // OR, you could just let the server do it. Probably my temptation.
+    $("#submit-invitation").button("loading");
+    return true;
+}
+
+function submit_invitation_form() {
+    const invite_status = $("#invite_status");
+    const invitee_emails = $("#invitee_emails");
+    const invitee_emails_group = invitee_emails.closest(".control-group");
+    const data = get_common_invitation_data();
+    data.invitee_emails = $("#invitee_emails").val();
+
+    channel.post({
+        url: "/json/invites",
+        data,
+        beforeSend,
+        success() {
+            ui_report.success(i18n.t("User(s) invited successfully."), invite_status);
+            invitee_emails_group.removeClass("warning");
+            invitee_emails.val("");
+
+            if (page_params.development_environment) {
+                const rendered_email_msg = render_settings_dev_env_email_access();
+                $("#dev_env_msg").html(rendered_email_msg).addClass("alert-info").show();
+            }
+        },
+        error(xhr) {
+            const arr = JSON.parse(xhr.responseText);
+            if (arr.errors === undefined) {
+                // There was a fatal error, no partial processing occurred.
+                ui_report.error("", xhr, invite_status);
+            } else {
+                // Some users were not invited.
+                const invitee_emails_errored = [];
+                const error_list = [];
+                let is_invitee_deactivated = false;
+                arr.errors.forEach((value) => {
+                    const [email, error_message, deactivated] = value;
+                    error_list.push(`${email}: ${error_message}`);
+                    if (deactivated) {
+                        is_invitee_deactivated = true;
+                    }
+                    invitee_emails_errored.push(value[0]);
+                });
+
+                const error_response = render_invitation_failed_error({
+                    error_message: arr.msg,
+                    error_list,
+                    is_admin: page_params.is_admin,
+                    is_invitee_deactivated,
+                });
+                ui_report.message(error_response, invite_status, "alert-warning");
+                invitee_emails_group.addClass("warning");
+
+                if (arr.sent_invitations) {
+                    invitee_emails.val(invitee_emails_errored.join("\n"));
+                }
+            }
+        },
+        complete() {
+            $("#submit-invitation").button("reset");
+        },
+    });
+}
+
+function generate_multiuse_invite() {
+    const invite_status = $("#multiuse_invite_status");
+    const data = get_common_invitation_data();
+    channel.post({
+        url: "/json/invites/multiuse",
+        data,
+        beforeSend,
+        success(data) {
+            ui_report.success(
+                i18n.t('Invitation link: <a href="__link__">__link__</a>', {
+                    link: data.invite_link,
+                }),
+                invite_status,
+            );
+        },
+        error(xhr) {
+            ui_report.error("", xhr, invite_status);
+        },
+        complete() {
+            $("#submit-invitation").button("reset");
+        },
+    });
+}
+
+exports.get_invite_streams = function () {
+    const streams = stream_data.get_invite_stream_data();
+
+    function compare_streams(a, b) {
+        return a.name.localeCompare(b.name);
+    }
+    streams.sort(compare_streams);
+    return streams;
+};
+
+function update_subscription_checkboxes() {
+    const data = {
+        streams: exports.get_invite_streams(),
+        notifications_stream: stream_data.get_notifications_stream(),
+    };
+    const html = render_invite_subscription(data);
+    $("#streams_to_add").html(html);
 }
 
 function prepare_form_to_be_shown() {
@@ -46,99 +149,58 @@ function prepare_form_to_be_shown() {
     reset_error_messages();
 }
 
-exports.initialize = function () {
-    ui.set_up_scrollbar($("#invite_user_form .modal-body"));
-    var invite_status = $('#invite_status');
-    var invitee_emails = $("#invitee_emails");
-    var invitee_emails_group = invitee_emails.closest('.control-group');
-
-    $('#submit-invitation').button();
+exports.launch = function () {
+    $("#submit-invitation").button();
     prepare_form_to_be_shown();
-    invitee_emails.focus().autosize();
-
-    $("#invite_user_form").ajaxForm({
-        dataType: 'json',
-        beforeSubmit: function () {
-            reset_error_messages();
-            // TODO: You could alternatively parse the textarea here, and return errors to
-            // the user if they don't match certain constraints (i.e. not real email addresses,
-            // aren't in the right domain, etc.)
-            //
-            // OR, you could just let the server do it. Probably my temptation.
-            $('#submit-invitation').button('loading');
-            return true;
-        },
-        success: function () {
-            $('#submit-invitation').button('reset');
-            invite_status.text(i18n.t('User(s) invited successfully.'))
-                          .addClass('alert-success')
-                          .show();
-            invitee_emails.val('');
-
-            if (page_params.development_environment) {
-                var email_msg = templates.render('dev_env_email_access');
-                $('#dev_env_msg').html(email_msg).addClass('alert-info').show();
-            }
-
-        },
-        error: function (xhr) {
-            $('#submit-invitation').button('reset');
-            var arr = JSON.parse(xhr.responseText);
-            if (arr.errors === undefined) {
-                // There was a fatal error, no partial processing occurred.
-                invite_status.text(arr.msg)
-                              .addClass('alert-error')
-                              .show();
-            } else {
-                // Some users were not invited.
-                var invitee_emails_errored = [];
-                var error_list = $('<ul>');
-                _.each(arr.errors, function (value) {
-                    error_list.append($('<li>').text(value.join(': ')));
-                    invitee_emails_errored.push(value[0]);
-                });
-
-                invite_status.addClass('alert-warning')
-                              .empty()
-                              .append($('<p>').text(arr.msg))
-                              .append(error_list)
-                              .show();
-                invitee_emails_group.addClass('warning');
-
-                if (arr.sent_invitations) {
-                    invitee_emails.val(invitee_emails_errored.join('\n'));
-                }
-
-            }
-
-        },
-    });
+    autosize($("#invitee_emails").trigger("focus"));
 
     overlays.open_overlay({
-        name: 'invite',
-        overlay: $('#invite-user'),
-        on_close: function () {
+        name: "invite",
+        overlay: $("#invite-user"),
+        on_close() {
             hashchange.exit_overlay();
         },
     });
 };
 
-$(function () {
-    $(document).on('click', '.invite_check_all_button', function (e) {
-        $('#streams_to_add :checkbox').prop('checked', true);
+exports.initialize = function () {
+    $(document).on("click", ".invite_check_all_button", (e) => {
+        $("#streams_to_add :checkbox").prop("checked", true);
         e.preventDefault();
     });
 
-    $(document).on('click', '.invite_uncheck_all_button', function (e) {
-        $('#streams_to_add :checkbox').prop('checked', false);
+    $(document).on("click", ".invite_uncheck_all_button", (e) => {
+        $("#streams_to_add :checkbox").prop("checked", false);
         e.preventDefault();
     });
-});
 
-return exports;
+    $("#submit-invitation").on("click", () => {
+        const is_generate_invite_link = $("#generate_multiuse_invite_radio").prop("checked");
+        if (is_generate_invite_link) {
+            generate_multiuse_invite();
+        } else {
+            submit_invitation_form();
+        }
+    });
 
-}());
+    $("#generate_multiuse_invite_button").on("click", () => {
+        $("#generate_multiuse_invite_radio").prop("checked", true);
+        $("#multiuse_radio_section").show();
+        $("#invite-method-choice").hide();
+        $("#invitee_emails").prop("disabled", true);
+        $("#submit-invitation").text(i18n.t("Generate invite link"));
+        $("#submit-invitation").data("loading-text", i18n.t("Generating link..."));
+        reset_error_messages();
+    });
 
-if (typeof module !== 'undefined') {
-    module.exports = invite;
-}
+    $("#invite-user").on("change", "#generate_multiuse_invite_radio", () => {
+        $("#invitee_emails").prop("disabled", false);
+        $("#submit-invitation").text(i18n.t("Invite"));
+        $("#submit-invitation").data("loading-text", i18n.t("Inviting..."));
+        $("#multiuse_radio_section").hide();
+        $("#invite-method-choice").show();
+        reset_error_messages();
+    });
+};
+
+window.invite = exports;

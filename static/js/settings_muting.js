@@ -1,24 +1,23 @@
-var settings_muting = (function () {
-
-var exports = {};
+exports.loaded = false;
 
 exports.set_up = function () {
-    $('body').on('click', '.settings-unmute-topic', function (e) {
-        var $row = $(this).closest("tr");
-        var stream = $row.data("stream");
-        var topic = $row.data("topic");
+    exports.loaded = true;
+    $("body").on("click", ".settings-unmute-topic", function (e) {
+        const $row = $(this).closest("tr");
+        const stream_id = parseInt($row.attr("data-stream-id"), 10);
+        const topic = $row.attr("data-topic");
 
-        muting_ui.unmute(stream, topic);
-        $row.remove();
         e.stopImmediatePropagation();
+
+        muting_ui.unmute(stream_id, topic);
+        $row.remove();
     });
 
-    muting_ui.set_up_muted_topics_ui(muting.get_muted_topics());
+    muting_ui.set_up_muted_topics_ui();
 };
 
-return exports;
-}());
+exports.reset = function () {
+    exports.loaded = false;
+};
 
-if (typeof module !== 'undefined') {
-    module.exports = settings_muting;
-}
+window.settings_muting = exports;

@@ -20,7 +20,7 @@ below, and add more to your repertoire as needed.
 
 * **New stream message**: `c` — Start a new topic in the current stream.
 
-* **New private message**: `C`
+* **New private message**: `x`
 
 * **Cancel compose**: `Esc` or `Ctrl + [` — Close the compose box and save
   the unsent message as a draft.
@@ -37,15 +37,13 @@ below, and add more to your repertoire as needed.
 
 * **Next unread private message**: `p`
 
-* **All private messages**: `P`
-
 * **Search messages**: `/`
 
 * **Toggle keyboard shortcuts view**: `?`
 
 ## Navigation
 
-* **Search messages**: `/`
+* **Search messages**: `/` or `Ctrl+k`
 
 * **Search streams**: `q`
 
@@ -72,13 +70,15 @@ below, and add more to your repertoire as needed.
 
 * **Narrow to stream**: `s`
 
-* **Narrow to topic**: `S`
+* **Narrow to topic or PM conversation**: `S`
 
 * **Narrow to all private messages**: `P`
 
 * **Cycle between stream narrows**: `A` (previous) and `D` (next)
 
 * **Narrow to all messages**: `Esc` or `Ctrl` + `[` — Shows all unmuted messages.
+
+* **Narrow to current compose box recipient**: `Ctrl` + `.`
 
 ## Composing messages
 
@@ -93,24 +93,28 @@ below, and add more to your repertoire as needed.
 
 * **New stream message**: `c` — For starting a new topic in a stream.
 
-* **New private message**: `C`
+* **New private message**: `x`
 
 ### In the compose box
 
 * **Send message**: `Enter`, `Tab` then `Enter`, and/or `Ctrl` + `Enter`,
   depending on your settings. See
-  [enable or disable pressing enter to send](https://zulipchat.com/help/enable-or-disable-pressing-enter-to-send).
+  [enable enter to send](https://zulip.com/help/enable-enter-to-send).
 
 * **Insert new line**: `Enter`, or `Shift` + `Enter`, depending on your
   settings. See
-  [enable or disable pressing enter to send](https://zulipchat.com/help/enable-or-disable-pressing-enter-to-send).
+  [enable enter to send](https://zulip.com/help/enable-enter-to-send).
+
+* **Insert italic text**: `*italic*` or `Ctrl + I`
+* **Insert bold text**: `**bold**` or `Ctrl + B`
+* **Insert link**: `[Zulip website](https://zulip.org)` or `Ctrl + Shift + L`
 
 * **Cancel compose**: `Esc` or `Ctrl + [` — Close the compose box and save
   the unsent message as a draft.
 
 ## Message actions
 
-* **Edit last message**: `⇽` — Open the last editable message in the current
+* **Edit last message**: `←` — Open the last editable message in the current
   view (if any).
 
 ### For a selected message (outlined in blue)
@@ -119,9 +123,9 @@ below, and add more to your repertoire as needed.
 
 * **View image**: `v`
 
-* **Edit message**: `i` then `Enter`
+* **Edit message**: `e`
 
-* **Star message**: `*`
+* **Star message**: `Ctrl + s`
 
 * **React with <img alt=":thumbs_up:" class="emoji"
 src="/static/generated/emoji/images/emoji/unicode/1f44d.png"
@@ -132,6 +136,14 @@ title="thumbs up"/>**: `+`
 * **Toggle topic mute**: `M` — Muted topics don't show up in any views
   (including All messages), and don't contribute to unread counts. Read more about
   [muting topics](/help/mute-a-topic).
+
+## Recent Topics
+
+* **View Recent Topics**: `t`
+* **Hide Recent Topics**: `Esc`
+
+Keyboard navigation (e.g. arrow keys) works as expected.
+Use `Enter` to engage with elements.
 
 ## Drafts
 
@@ -165,7 +177,7 @@ Keyboard navigation (e.g. arrow keys) works as expected.
         Pressing `↑` from the first stream in the list moves
         you to the **Filter streams** input.
 
-* **Switch between tabs**: `⇽` and `⇾` — Switch between the
+* **Switch between tabs**: `←` and `→` — Switch between the
 **Subscribed** and **All streams** tabs.
 
 * **Create new stream**: `n`

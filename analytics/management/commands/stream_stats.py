@@ -1,11 +1,11 @@
 from argparse import ArgumentParser
 from typing import Any
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 
-from zerver.models import Message, Realm, \
-    Recipient, Stream, Subscription, get_realm
+from zerver.models import Message, Realm, Recipient, Stream, Subscription, get_realm
+
 
 class Command(BaseCommand):
     help = "Generate statistics on the streams for a realm."
@@ -19,26 +19,38 @@ class Command(BaseCommand):
             try:
                 realms = [get_realm(string_id) for string_id in options['realms']]
             except Realm.DoesNotExist as e:
-                print(e)
-                exit(1)
+                raise CommandError(e)
         else:
             realms = Realm.objects.all()
 
         for realm in realms:
-            print(realm.string_id)
-            print("------------")
-            print("%25s %15s %10s" % ("stream", "subscribers", "messages"))
             streams = Stream.objects.filter(realm=realm).exclude(Q(name__istartswith="tutorial-"))
-            invite_only_count = 0
+            # private stream count
+            private_count = 0
+            # public stream count
+            public_count = 0
             for stream in streams:
                 if stream.invite_only:
-                    invite_only_count += 1
-                    continue
-                print("%25s" % (stream.name,), end=' ')
+                    private_count += 1
+                else:
+                    public_count += 1
+            print("------------")
+            print(realm.string_id, end=' ')
+            print("{:>10} {} public streams and".format("(", public_count), end=' ')
+            print(f"{private_count} private streams )")
+            print("------------")
+            print("{:>25} {:>15} {:>10} {:>12}".format("stream", "subscribers", "messages", "type"))
+
+            for stream in streams:
+                if stream.invite_only:
+                    stream_type = 'private'
+                else:
+                    stream_type = 'public'
+                print(f"{stream.name:>25}", end=' ')
                 recipient = Recipient.objects.filter(type=Recipient.STREAM, type_id=stream.id)
-                print("%10d" % (len(Subscription.objects.filter(recipient=recipient,
-                                                                active=True)),), end=' ')
+                print("{:10}".format(len(Subscription.objects.filter(recipient=recipient,
+                                                                     active=True))), end=' ')
                 num_messages = len(Message.objects.filter(recipient=recipient))
-                print("%12d" % (num_messages,))
-            print("%d invite-only streams" % (invite_only_count,))
+                print(f"{num_messages:12}", end=' ')
+                print(f"{stream_type:>15}")
             print("")

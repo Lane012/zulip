@@ -67,17 +67,19 @@ this?". Good choices include
 
 ## Things to look for
 
-* *The Travis CI build.* The tests need to pass. One can investigate
+* *The CI build.* The tests need to pass. One can investigate
   any failures and figure out what to fix by clicking on a red X next
   to the commit hash or the Detail links on a pull request. (Example:
-  in [#1219](https://github.com/zulip/zulip/pull/1219), click the red
-  X next to `f1f474e` to see the build jobs for that commit, at least
-  one of which has failed. Click on the link for Travis continuous
-  integrations details to see [the tests Travis ran on that
-  commit](https://travis-ci.org/zulip/zulip/builds/144300899), at
-  least one of which failed, and go to [one of the failing
-  tests](https://travis-ci.org/zulip/zulip/jobs/144300901) to see the
-  error.)
+  in [#10618](https://github.com/zulip/zulip/pull/10618), browse to
+  bottom and click the red X next to `c6044ee` to see the build jobs
+  for that commit. You can see that there are 5 build jobs in total.
+  All the 5 jobs run in CircleCI. You can see what caused
+  the job to fail by clicking on the failed job. This will open
+  up a page in the CI that has more details on why the job failed.
+  For example [this](https://circleci.com/gh/zulip/zulip/16617)
+  is the page of the `bionic-python-3.6` job. See our docs on
+  [continuous integration](../testing/continuous-integration.md)
+  to learn more.
 
 * *Technical design.* There are a lot of considerations here:
   security, migration paths/backwards compatibility, cost of new
@@ -102,8 +104,8 @@ this?". Good choices include
   user input, and potential bugs that are likely for the type of
   change being made.  Tests that exclude whole classes of potential
   bugs are preferred when possible (e.g., the common test suite
-  `test_bugdown.py` between the Zulip server's [frontend and backend
-  Markdown processors](../subsystems/markdown.html), or the `GetEventsTest` test for
+  `test_markdown.py` between the Zulip server's [frontend and backend
+  Markdown processors](../subsystems/markdown.md), or the `GetEventsTest` test for
   buggy race condition handling).
 
 * *Translation.* Make sure that the strings are marked for
@@ -166,7 +168,7 @@ Some points specific to the Zulip server codebase:
 
 * *mypy annotations.* New functions should be annotated using [mypy]
   and existing annotations should be updated.  Use of `Any`, `ignore`,
-  and unparameterized containser should be limited to cases where a
+  and unparameterized containers should be limited to cases where a
   more precise type cannot be specified.
 
 ## Tooling
@@ -185,18 +187,18 @@ the maintainer time and get the PR merged quicker.
 
 We also strongly recommend reviewers to go through the following resources.
 
-* [The Gentle Art of Patch Review](http://sarah.thesharps.us/2014/09/01/the-gentle-art-of-patch-review/)
+* [The Gentle Art of Patch Review](https://sage.thesharps.us/2014/09/01/the-gentle-art-of-patch-review/)
   article by Sarah Sharp
 * [Zulip & Good Code Review](https://www.harihareswara.net/sumana/2016/05/17/0)
   article by Sumana Harihareswara
 * [Code Review - A consolidation of advice and stuff from the
    sinternet](https://gist.github.com/porterjamesj/002fb27dd70df003646df46f15e898de)
   article by James J. Porter
-* [Zulip Code of Conduct](../code-of-conduct.html)
+* [Zulip Code of Conduct](../code-of-conduct.md)
 
-[code-style]: ../contributing/code-style.html
+[code-style]: ../contributing/code-style.md
 [commit-messages]: ../contributing/version-control.html#commit-messages
-[test-writing]: ../testing/testing.html
-[mypy]: ../contributing/mypy.html
+[test-writing]: ../testing/testing.md
+[mypy]: ../testing/mypy.md
 [git tool]: ../git/zulip-tools.html#fetch-a-pull-request-and-rebase
-[translation]: ../translating/translating.html
+[translation]: ../translating/translating.md

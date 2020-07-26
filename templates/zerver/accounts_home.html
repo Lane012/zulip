@@ -4,12 +4,10 @@
 {# This is where we pitch the app and solicit signups. #}
 
 {% block portico_content %}
-<script type="text/javascript">
-$(function () {
-    common.autofocus('#email');
-});
-</script>
 
+<!-- The following empty tag has unique data-page-id so that this
+page can be easily identified in it's respective JavaScript file -->
+<div data-page-id="accounts-home"></div>
 <div class="app register-page split-view flex full-page new-style">
     <div class="inline-block">
         <div class="lead">
@@ -31,7 +29,7 @@ $(function () {
                     </div>
 
                     <div class="invite-required">
-                        <hr />
+                        <hr>
                         <i class="fa fa-lock"></i>{{ _("You need an invitation to join this organization.") }}
                     </div>
                 </div>
@@ -53,11 +51,11 @@ $(function () {
                     {% else %}
                         {% if password_auth_enabled %}
                             <form class="form-inline" id="send_confirm" name="email_form"
-                                action="{{ current_url() }}" method="post">
+                              action="{{ current_url() }}" method="post">
                                 {{ csrf_input }}
 
                                 <div class="input-box no-validate">
-                                    <input type="email" id="email" class="email" name="email" value="" required />
+                                    <input type="email" id="email" class="email" name="email" value="" autofocus required />
                                     <label for="email">Email</label>
                                     <div class="alert alert-error email-frontend-error"></div>
                                     {% if form.email.errors %}
@@ -67,30 +65,25 @@ $(function () {
                                     {% endif %}
                                 </div>
 
-                                <button class="full-width" type="submit" name="">{{ _('Sign up') }}</button>
+                                <button class="full-width" type="submit">{{ _('Sign up') }}</button>
                             </form>
 
-                            {% if any_oauth_backend_enabled %}
-                            <div class="or">or</div>
+                            {% if any_social_backend_enabled %}
+                            <div class="or"><span>{{ _('OR') }}</span></div>
                             {% endif %}
                         {% endif %}
 
-                        {% if google_auth_enabled %}
-                        <div class="register-google">
-                            <form class="form-inline" action="{{ url('zerver.views.auth.start_google_oauth2') }}" method="get">
-                                <input type='hidden' name='is_signup' value='1' />
-                                <button class="login-social-button login-google-button full-width">{{ _('Sign up with Google') }}</button>
+                        {% for backend in page_params.external_authentication_methods %}
+                        <div class="login-social">
+                            <form class="form-inline" action="{{ backend.signup_url }}" method="get">
+                                <input type='hidden' name='multiuse_object_key' value='{{ multiuse_object_key }}' />
+                                <button id="register_{{ backend.button_id_suffix }}" class="login-social-button full-width"
+                                  {% if backend.display_icon %} style="background-image:url({{ backend.display_icon }})"  {% endif %}>
+                                    {{ _('Sign up with %(identity_provider)s', identity_provider=backend.display_name) }}
+                                </button>
                             </form>
                         </div>
-                        {% endif %}
-
-                        {% if github_auth_enabled %}
-                        <div class="login-github">
-                            <form class="form-inline github-wrapper" action="{{ url('signup-social', args=('github',)) }}" method="get">
-                                <button class="login-social-button login-github-button github">{{ _('Sign up with GitHub') }}</button>
-                            </form>
-                        </div>
-                        {% endif %}
+                        {% endfor %}
                     {% endif %}
                 </div>
             </div>
@@ -98,9 +91,4 @@ $(function () {
     </div>
 </div>
 
-<script type="text/javascript">
-if (window.location.hash.substring(0, 1) === "#") {
-    document.email_form.action += window.location.hash;
-}
-</script>
 {% endblock %}

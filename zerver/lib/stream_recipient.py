@@ -1,8 +1,10 @@
-
-from typing import (Dict, List)
+from typing import Dict, List
 
 from django.db import connection
+from psycopg2.sql import SQL
+
 from zerver.models import Recipient
+
 
 class StreamRecipientMap:
     '''
@@ -17,35 +19,16 @@ class StreamRecipientMap:
     Note that this class uses raw SQL, because we want to highly
     optimize page loads.
     '''
+
     def __init__(self) -> None:
-        self.recip_to_stream = dict()  # type: Dict[int, int]
-        self.stream_to_recip = dict()  # type: Dict[int, int]
+        self.recip_to_stream: Dict[int, int] = dict()
+        self.stream_to_recip: Dict[int, int] = dict()
 
-    def populate_for_stream_ids(self, stream_ids: List[int]) -> None:
-        stream_ids = sorted([
-            stream_id for stream_id in stream_ids
-            if stream_id not in self.stream_to_recip
-        ])
-
-        if not stream_ids:
-            return
-
-        # see comment at the top of the class
-        id_list = ', '.join(str(stream_id) for stream_id in stream_ids)
-        query = '''
-            SELECT
-                zerver_recipient.id as recipient_id,
-                zerver_stream.id as stream_id
-            FROM
-                zerver_stream
-            INNER JOIN zerver_recipient ON
-                zerver_stream.id = zerver_recipient.type_id
-            WHERE
-                zerver_recipient.type = %d
-            AND
-                zerver_stream.id in (%s)
-            ''' % (Recipient.STREAM, id_list)
-        self._process_query(query)
+    def populate_with(self, *, stream_id: int, recipient_id: int) -> None:
+        # We use * to enforce using named arguments when calling this function,
+        # to avoid confusion about the ordering of the two integers.
+        self.recip_to_stream[recipient_id] = stream_id
+        self.stream_to_recip[stream_id] = recipient_id
 
     def populate_for_recipient_ids(self, recipient_ids: List[int]) -> None:
         recipient_ids = sorted([
@@ -57,26 +40,23 @@ class StreamRecipientMap:
             return
 
         # see comment at the top of the class
-        id_list = ', '.join(str(recip_id) for recip_id in recipient_ids)
-        query = '''
+        query = SQL('''
             SELECT
                 zerver_recipient.id as recipient_id,
-                zerver_stream.id as stream_id
+                zerver_recipient.type_id as stream_id
             FROM
                 zerver_recipient
-            INNER JOIN zerver_stream ON
-                zerver_stream.id = zerver_recipient.type_id
             WHERE
-                zerver_recipient.type = %d
+                zerver_recipient.type = %(STREAM)s
             AND
-                zerver_recipient.id in (%s)
-            ''' % (Recipient.STREAM, id_list)
+                zerver_recipient.id in %(recipient_ids)s
+        ''')
 
-        self._process_query(query)
-
-    def _process_query(self, query: str) -> None:
         cursor = connection.cursor()
-        cursor.execute(query)
+        cursor.execute(query, {
+            "STREAM": Recipient.STREAM,
+            "recipient_ids": tuple(recipient_ids),
+        })
         rows = cursor.fetchall()
         cursor.close()
         for recip_id, stream_id in rows:

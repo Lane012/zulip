@@ -1,4 +1,3 @@
-
 import logging
 import signal
 import sys
@@ -8,10 +7,11 @@ from types import FrameType
 from typing import Any, List
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import autoreload
 
 from zerver.worker.queue_processors import get_active_worker_queues, get_worker
+
 
 class Command(BaseCommand):
     def add_arguments(self, parser: ArgumentParser) -> None:
@@ -46,7 +46,7 @@ class Command(BaseCommand):
                 logger.info("Not using RabbitMQ queue workers in the test suite.")
             else:
                 logger.error("Cannot run a queue processor when USING_RABBITMQ is False!")
-            sys.exit(1)
+            raise CommandError
 
         def run_threaded_workers(queues: List[str], logger: logging.Logger) -> None:
             cnt = 0
@@ -57,25 +57,25 @@ class Command(BaseCommand):
                 td = Threaded_worker(queue_name)
                 td.start()
             assert len(queues) == cnt
-            logger.info('%d queue worker threads were launched' % (cnt,))
+            logger.info('%d queue worker threads were launched', cnt)
 
         if options['all']:
             signal.signal(signal.SIGUSR1, exit_with_three)
-            autoreload.main(run_threaded_workers, (get_active_worker_queues(), logger))
+            autoreload.run_with_reloader(run_threaded_workers, get_active_worker_queues(), logger)
         elif options['multi_threaded']:
             signal.signal(signal.SIGUSR1, exit_with_three)
             queues = options['multi_threaded']
-            autoreload.main(run_threaded_workers, (queues, logger))
+            autoreload.run_with_reloader(run_threaded_workers, queues, logger)
         else:
             queue_name = options['queue_name']
             worker_num = options['worker_num']
 
-            logger.info("Worker %d connecting to queue %s" % (worker_num, queue_name))
+            logger.info("Worker %d connecting to queue %s", worker_num, queue_name)
             worker = get_worker(queue_name)
             worker.setup()
 
             def signal_handler(signal: int, frame: FrameType) -> None:
-                logger.info("Worker %d disconnecting from queue %s" % (worker_num, queue_name))
+                logger.info("Worker %d disconnecting from queue %s", worker_num, queue_name)
                 worker.stop()
                 sys.exit(0)
             signal.signal(signal.SIGTERM, signal_handler)

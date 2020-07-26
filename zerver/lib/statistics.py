@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
-
-from zerver.models import UserProfile, UserActivity, UserActivityInterval, Message
-
-from django.utils.timezone import utc
-from typing import Any, Dict, List, Sequence, Set
-
 from datetime import datetime, timedelta
+
+from zerver.models import UserActivityInterval, UserProfile
+
 
 # Return the amount of Zulip usage for this user between the two
 # given dates

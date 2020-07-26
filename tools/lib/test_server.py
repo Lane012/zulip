@@ -1,55 +1,57 @@
-
 import os
 import subprocess
 import sys
 import time
-
 from contextlib import contextmanager
-
-from typing import (Any, Iterator, Optional)
+from typing import Iterator, Optional
 
 # Verify the Zulip venv is available.
 from tools.lib import sanity_check
+
 sanity_check.check_venv(__file__)
 
 import django
 import requests
 
+MAX_SERVER_WAIT = 180
+
 TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, os.path.dirname(TOOLS_DIR))
 
-from zerver.lib.test_fixtures import is_template_database_current
+from scripts.lib.zulip_tools import get_or_create_dev_uuid_var_path
+from zerver.lib.test_fixtures import update_test_databases_if_required
 
-def set_up_django(external_host):
-    # type: (str) -> None
+
+def set_up_django(external_host: str) -> None:
     os.environ['EXTERNAL_HOST'] = external_host
     os.environ["TORNADO_SERVER"] = "http://127.0.0.1:9983"
+    os.environ["LOCAL_UPLOADS_DIR"] = get_or_create_dev_uuid_var_path(
+        'test-backend/test_uploads')
     os.environ['DJANGO_SETTINGS_MODULE'] = 'zproject.test_settings'
     django.setup()
     os.environ['PYTHONUNBUFFERED'] = 'y'
 
-def assert_server_running(server, log_file):
-    # type: (subprocess.Popen, Optional[str]) -> None
+def assert_server_running(server: "subprocess.Popen[bytes]", log_file: Optional[str]) -> None:
     """Get the exit code of the server, or None if it is still running."""
     if server.poll() is not None:
         message = 'Server died unexpectedly!'
         if log_file:
-            message += '\nSee %s\n' % (log_file,)
+            message += f'\nSee {log_file}\n'
         raise RuntimeError(message)
 
-def server_is_up(server, log_file):
-    # type: (subprocess.Popen, Optional[str]) -> bool
+def server_is_up(server: "subprocess.Popen[bytes]", log_file: Optional[str]) -> bool:
     assert_server_running(server, log_file)
     try:
         # We could get a 501 error if the reverse proxy is up but the Django app isn't.
-        return requests.get('http://127.0.0.1:9981/accounts/home').status_code == 200
+        # Note that zulipdev.com is mapped via DNS to 127.0.0.1.
+        return requests.get('http://zulipdev.com:9981/accounts/home').status_code == 200
     except Exception:
         return False
 
 @contextmanager
 def test_server_running(force: bool=False, external_host: str='testserver',
-                        log_file: Optional[str]=None, dots: bool=False, use_db: bool=True
+                        log_file: Optional[str]=None, dots: bool=False, use_db: bool=True,
                         ) -> Iterator[None]:
     log = sys.stdout
     if log_file:
@@ -62,13 +64,10 @@ def test_server_running(force: bool=False, external_host: str='testserver',
     set_up_django(external_host)
 
     if use_db:
-        generate_fixtures_command = ['tools/setup/generate-fixtures']
-        if not is_template_database_current():
-            generate_fixtures_command.append('--force')
-        subprocess.check_call(generate_fixtures_command)
+        update_test_databases_if_required(rebuild_test_database=True)
 
     # Run this not through the shell, so that we have the actual PID.
-    run_dev_server_command = ['tools/run-dev.py', '--test']
+    run_dev_server_command = ['tools/run-dev.py', '--test', '--streamlined']
     if force:
         run_dev_server_command.append('--force')
     server = subprocess.Popen(run_dev_server_command,
@@ -79,11 +78,14 @@ def test_server_running(force: bool=False, external_host: str='testserver',
         sys.stdout.write('\nWaiting for test server (may take a while)')
         if not dots:
             sys.stdout.write('\n\n')
+        t = time.time()
         while not server_is_up(server, log_file):
             if dots:
                 sys.stdout.write('.')
                 sys.stdout.flush()
-            time.sleep(0.1)
+            time.sleep(0.4)
+            if time.time() - t > MAX_SERVER_WAIT:
+                raise Exception('Timeout waiting for server')
         sys.stdout.write('\n\n--- SERVER IS UP! ---\n\n')
 
         # DO OUR ACTUAL TESTING HERE!!!

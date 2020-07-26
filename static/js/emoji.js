@@ -1,166 +1,197 @@
-var emoji = (function () {
+const emoji_codes = require("../generated/emoji/emoji_codes.json");
 
-var exports = {};
+const util = require("./util");
 
-exports.emojis = [];
-exports.all_realm_emojis = {};
-exports.active_realm_emojis = {};
-exports.emojis_by_name = {};
-exports.default_emoji_aliases = {};
+// `emojis_by_name` is the central data source that is supposed to be
+// used by every widget in the webapp for gathering data for displaying
+// emojis. Emoji picker uses this data to derive data for its own use.
+exports.emojis_by_name = new Map();
 
-var default_emojis = [];
+exports.all_realm_emojis = new Map();
+exports.active_realm_emojis = new Map();
+exports.default_emoji_aliases = new Map();
 
-var zulip_emoji = {
-    id: 'zulip',
-    emoji_name: 'zulip',
-    emoji_url: '/static/generated/emoji/images/emoji/unicode/zulip.png',
+// For legacy reasons we track server_realm_emoji_data,
+// since our settings code builds off that format.  We
+// should move it to use all_realm_emojis, which requires
+// adding author_id here and then changing the settings code
+// in a slightly non-trivial way.
+exports.server_realm_emoji_data = {};
+
+// We really want to deprecate this, too.
+exports.get_server_realm_emoji_data = () => exports.server_realm_emoji_data;
+
+const emoticon_translations = (() => {
+    /*
+
+    Build a data structure that looks like something
+    like this:
+
+    [
+        { regex: /(\:\))/g, replacement_text: ':smile:' },
+        { regex: /(\(\:)/g, replacement_text: ':smile:' },
+        { regex: /(\:\/)/g, replacement_text: ':confused:' },
+        { regex: /(<3)/g, replacement_text: ':heart:' },
+        { regex: /(\:\()/g, replacement_text: ':frown:' },
+        { regex: /(\:\|)/g, replacement_text: ':expressionless:' }
+    ]
+
+        We build up this list of ~6 emoticon translations
+        even if page_params.translate_emoticons is false, since
+        that setting can be flipped via live update events.
+        On the other hand, we assume that emoticon_conversions
+        won't change until the next reload, which is fine for
+        now (and we want to avoid creating new regexes on
+        every new message).
+    */
+
+    const translations = [];
+    for (const [emoticon, replacement_text] of Object.entries(emoji_codes.emoticon_conversions)) {
+        const regex = new RegExp("(" + util.escape_regexp(emoticon) + ")", "g");
+
+        translations.push({
+            regex,
+            replacement_text,
+        });
+    }
+
+    return translations;
+})();
+
+const zulip_emoji = {
+    id: "zulip",
+    emoji_name: "zulip",
+    emoji_url: "/static/generated/emoji/images/emoji/unicode/zulip.png",
     is_realm_emoji: true,
     deactivated: false,
 };
 
-// Emoticons, and which emoji they should become (without colons). Duplicate
-// emoji are allowed. Changes here should be mimicked in `zerver/lib/emoji.py`
-// and `templates/zerver/help/enable-emoticon-translations.md`.
-exports.EMOTICON_CONVERSIONS = {
-    ':)': 'smiley',
-    '(:': 'smiley',
-    ':(': 'slightly_frowning_face',
-    '<3': 'heart',
-    ':|': 'expressionless',
-    ':/': 'confused',
+exports.get_emoji_name = (codepoint) => {
+    // get_emoji_name('1f384') === 'holiday_tree'
+    if (Object.prototype.hasOwnProperty.call(emoji_codes.codepoint_to_name, codepoint)) {
+        return emoji_codes.codepoint_to_name[codepoint];
+    }
 };
 
-exports.update_emojis = function update_emojis(realm_emojis) {
+exports.get_emoji_codepoint = (emoji_name) => {
+    // get_emoji_codepoint('avocado') === '1f951'
+    if (Object.prototype.hasOwnProperty.call(emoji_codes.name_to_codepoint, emoji_name)) {
+        return emoji_codes.name_to_codepoint[emoji_name];
+    }
+};
+
+exports.get_realm_emoji_url = (emoji_name) => {
+    // If the emoji name is a realm emoji, returns the URL for it.
+    // Returns undefined for unicode emoji.
+    // get_realm_emoji_url('shrug') === '/user_avatars/2/emoji/images/31.png'
+
+    const data = exports.active_realm_emojis.get(emoji_name);
+
+    if (!data) {
+        // Not all emojis have urls, plus the user
+        // may have hand-typed an invalid emoji.
+        // The caller can check the result for falsiness
+        // and then try alternate ways of parsing the
+        // emoji (in the case of markdown) or just do
+        // whatever makes sense for the caller.
+        return;
+    }
+
+    return data.emoji_url;
+};
+
+exports.update_emojis = function (realm_emojis) {
+    // The settings code still works with the
+    // server format of the data.
+    exports.server_realm_emoji_data = realm_emojis;
+
     // exports.all_realm_emojis is emptied before adding the realm-specific emoji
     // to it. This makes sure that in case of deletion, the deleted realm_emojis
     // don't persist in exports.active_realm_emojis.
-    exports.all_realm_emojis = {};
-    exports.active_realm_emojis = {};
+    exports.all_realm_emojis.clear();
+    exports.active_realm_emojis.clear();
 
-    // Copy the default emoji list and add realm-specific emoji to it
-    exports.emojis = default_emojis.slice(0);
-    _.each(realm_emojis, function (data) {
-        exports.all_realm_emojis[data.id] = {id: data.id,
-                                             emoji_name: data.name,
-                                             emoji_url: data.source_url,
-                                             deactivated: data.deactivated};
+    for (const data of Object.values(realm_emojis)) {
+        exports.all_realm_emojis.set(data.id, {
+            id: data.id,
+            emoji_name: data.name,
+            emoji_url: data.source_url,
+            deactivated: data.deactivated,
+        });
         if (data.deactivated !== true) {
-            // export.emojis are used in composebox autocomplete. This condition makes sure
-            // that deactivated emojis don't appear in the autocomplete.
-            exports.emojis.push({emoji_name: data.name,
-                                 emoji_url: data.source_url,
-                                 is_realm_emoji: true});
-            exports.active_realm_emojis[data.name] = {id: data.id,
-                                                      emoji_name: data.name,
-                                                      emoji_url: data.source_url};
+            exports.active_realm_emojis.set(data.name, {
+                id: data.id,
+                emoji_name: data.name,
+                emoji_url: data.source_url,
+            });
         }
-    });
+    }
     // Add the Zulip emoji to the realm emojis list
-    exports.emojis.push(zulip_emoji);
-    exports.all_realm_emojis.zulip = zulip_emoji;
-    exports.active_realm_emojis.zulip = zulip_emoji;
+    exports.all_realm_emojis.set("zulip", zulip_emoji);
+    exports.active_realm_emojis.set("zulip", zulip_emoji);
 
-    exports.emojis_by_name = {};
-    _.each(default_emojis, function (emoji) {
-        exports.emojis_by_name[emoji.emoji_name] = emoji.emoji_url;
-    });
+    exports.build_emoji_data(exports.active_realm_emojis);
 };
 
-exports.initialize = function initialize() {
+exports.initialize = function initialize(params) {
+    for (const value of emoji_codes.names) {
+        const base_name = exports.get_emoji_codepoint(value);
 
-    _.each(emoji_codes.names, function (value) {
-        var base_name = emoji_codes.name_to_codepoint[value];
-        default_emojis.push({emoji_name: value,
-                             codepoint: emoji_codes.name_to_codepoint[value]});
-
-        if (exports.default_emoji_aliases.hasOwnProperty(base_name)) {
-            exports.default_emoji_aliases[base_name].push(value);
+        if (exports.default_emoji_aliases.has(base_name)) {
+            exports.default_emoji_aliases.get(base_name).push(value);
         } else {
-            exports.default_emoji_aliases[base_name] = [value];
+            exports.default_emoji_aliases.set(base_name, [value]);
         }
-    });
+    }
 
-    exports.update_emojis(page_params.realm_emoji);
-
-    // Load the sprite image in the background so that the browser
-    // can cache it for later use.
-    var sprite = new Image();
-    sprite.src = '/static/generated/emoji/sheet_' + page_params.emojiset + '_64.png';
+    exports.update_emojis(params.realm_emoji);
 };
 
-exports.build_emoji_upload_widget = function () {
+exports.build_emoji_data = function (realm_emojis) {
+    exports.emojis_by_name.clear();
+    for (const [realm_emoji_name, realm_emoji] of realm_emojis) {
+        const emoji_dict = {
+            name: realm_emoji_name,
+            display_name: realm_emoji_name,
+            aliases: [realm_emoji_name],
+            is_realm_emoji: true,
+            url: realm_emoji.emoji_url,
+            has_reacted: false,
+        };
+        exports.emojis_by_name.set(realm_emoji_name, emoji_dict);
+    }
 
-    var get_file_input = function () {
-        return $('#emoji_file_input');
-    };
-
-    var file_name_field = $('#emoji-file-name');
-    var input_error = $('#emoji_file_input_error');
-    var clear_button = $('#emoji_image_clear_button');
-    var upload_button = $('#emoji_upload_button');
-
-    return upload_widget.build_widget(
-        get_file_input,
-        file_name_field,
-        input_error,
-        clear_button,
-        upload_button
-    );
+    for (const codepoints of Object.values(emoji_codes.emoji_catalog)) {
+        for (const codepoint of codepoints) {
+            const emoji_name = exports.get_emoji_name(codepoint);
+            if (emoji_name !== undefined && !exports.emojis_by_name.has(emoji_name)) {
+                const emoji_dict = {
+                    name: emoji_name,
+                    display_name: emoji_name,
+                    aliases: exports.default_emoji_aliases.get(codepoint),
+                    is_realm_emoji: false,
+                    emoji_code: codepoint,
+                    has_reacted: false,
+                };
+                exports.emojis_by_name.set(emoji_name, emoji_dict);
+            }
+        }
+    }
 };
 
 exports.get_canonical_name = function (emoji_name) {
-    if (exports.active_realm_emojis.hasOwnProperty(emoji_name)) {
+    if (exports.active_realm_emojis.has(emoji_name)) {
         return emoji_name;
     }
-    if (!emoji_codes.name_to_codepoint.hasOwnProperty(emoji_name)) {
+    const codepoint = exports.get_emoji_codepoint(emoji_name);
+    if (codepoint === undefined) {
         blueslip.error("Invalid emoji name: " + emoji_name);
         return;
     }
-    var codepoint = emoji_codes.name_to_codepoint[emoji_name];
 
-    return emoji_codes.codepoint_to_name[codepoint];
+    return exports.get_emoji_name(codepoint);
 };
 
-// Translates emoticons in a string to their colon syntax.
-exports.translate_emoticons_to_names = function translate_emoticons_to_names(text) {
-    var translated = text;
-    var replacement_text;
-    var terminal_symbols = ',.;?!()[] "\'\n\t'; // From composebox_typeahead
-    var symbols_except_space = terminal_symbols.replace(' ', '');
+exports.get_emoticon_translations = () => emoticon_translations;
 
-    var emoticon_replacer = function (match, g1, offset, str) {
-        var prev_char = str[offset - 1];
-        var next_char = str[offset + match.length];
-
-        var symbol_at_start = terminal_symbols.indexOf(prev_char) !== -1;
-        var symbol_at_end = terminal_symbols.indexOf(next_char) !== -1;
-        var non_space_at_start = symbols_except_space.indexOf(prev_char) !== -1;
-        var non_space_at_end = symbols_except_space.indexOf(next_char) !== -1;
-        var valid_start = symbol_at_start || offset === 0;
-        var valid_end = symbol_at_end || offset === str.length - match.length;
-
-        if (non_space_at_start && non_space_at_end) { // Hello!:)?
-            return match;
-        }
-        if (valid_start && valid_end) {
-            return replacement_text;
-        }
-        return match;
-    };
-
-    for (var emoticon in exports.EMOTICON_CONVERSIONS) {
-        if (exports.EMOTICON_CONVERSIONS.hasOwnProperty(emoticon)) {
-            replacement_text = ':' + exports.EMOTICON_CONVERSIONS[emoticon] + ':';
-            var emoticon_regex = new RegExp('(' + util.escape_regexp(emoticon) + ')', 'g');
-            translated = translated.replace(emoticon_regex, emoticon_replacer);
-        }
-    }
-
-    return translated;
-};
-
-return exports;
-}());
-if (typeof module !== 'undefined') {
-    module.exports = emoji;
-}
+window.emoji = exports;

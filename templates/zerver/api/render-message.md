@@ -1,71 +1,38 @@
 # Render message
 
-Render a message to HTML.
-
-`POST {{ api_url }}/v1/messages/render`
+{generate_api_description(/messages/render:post)}
 
 ## Usage examples
-<div class="code-section" markdown="1">
-<ul class="nav">
-<li data-language="python">Python</li>
-<li data-language="javascript">JavaScript</li>
-<li data-language="curl">curl</li>
-</ul>
-<div class="blocks">
 
-<div data-language="curl" markdown="1">
+{start_tabs}
+{tab|python}
 
-```
-curl {{ api_url }}/v1/messages/render \
-    -u BOT_EMAIL_ADDRESS:BOT_API_KEY \
-    -d "content=**foo**"
+{generate_code_example(python)|/messages/render:post|example}
 
-```
-</div>
+{tab|js}
 
-<div data-language="python" markdown="1">
-
-{generate_code_example(python)|render-message|example}
-
-</div>
-
-<div data-language="javascript" markdown="1">
 More examples and documentation can be found [here](https://github.com/zulip/zulip-js).
-```js
-const zulip = require('zulip-js');
 
-// Download zuliprc-dev from your dev server
-const config = {
-    zuliprc: 'zuliprc-dev',
-};
+{generate_code_example(javascript)|/messages/render:post|example}
 
-zulip(config).then((client) => {
-    // Render a message
-    const params = {
-        content: '**foo**',
-    };
+{tab|curl}
 
-    client.messages.render(params).then(console.log);
-});
-```
-</div>
+{generate_code_example(curl)|/messages/render:post|example}
 
-</div>
+{end_tabs}
 
-</div>
+## Parameters
 
-## Arguments
-
-{generate_api_arguments_table|arguments.json|render-message.md}
+{generate_api_arguments_table|zulip.yaml|/messages/render:post}
 
 ## Response
 
 #### Return values
 
-* `rendered`: The rendered HTML.
+{generate_return_values_table|zulip.yaml|/messages/render:post}
 
 #### Example response
 
 A typical successful JSON response may look like:
 
-{generate_code_example|render-message|fixture}
+{generate_code_example|/messages/render:post|fixture(200)}

@@ -1,58 +1,57 @@
-set_global('$', global.make_zjquery());
-set_global('i18n', global.stub_i18n);
-set_global('window', {});
+set_global("$", global.make_zjquery());
 
-zrequire('localstorage');
-zrequire('drafts');
-zrequire('XDate', 'xdate');
-zrequire('timerender');
-zrequire('Handlebars', 'handlebars');
-zrequire('util');
+zrequire("localstorage");
+zrequire("drafts");
+set_global("XDate", zrequire("XDate", "xdate"));
+zrequire("timerender");
+set_global("Handlebars", global.make_handlebars());
+zrequire("stream_color");
+zrequire("colorspace");
 
-var ls_container = {};
-var noop = function () { return; };
+const ls_container = new Map();
+const noop = function () {
+    return;
+};
 
-set_global('localStorage', {
-    getItem: function (key) {
-        return ls_container[key];
+set_global("localStorage", {
+    getItem(key) {
+        return ls_container.get(key);
     },
-    setItem: function (key, val) {
-        ls_container[key] = val;
+    setItem(key, val) {
+        ls_container.set(key, val);
     },
-    removeItem: function (key) {
-        delete ls_container[key];
+    removeItem(key) {
+        ls_container.delete(key);
     },
-    clear: function () {
-        ls_container = {};
+    clear() {
+        ls_container.clear();
     },
 });
-set_global('compose', {});
-set_global('compose_state', {});
-set_global('stream_data', {
-    get_color: function () {
-        return '#FFFFFF';
+set_global("compose", {});
+set_global("compose_state", {});
+set_global("stream_data", {
+    get_color() {
+        return "#FFFFFF";
     },
 });
-set_global('blueslip', {});
-set_global('people', {
+set_global("people", {
     // Mocking get_by_email function, here we are
     // just returning string before `@` in email
-    get_by_email: function (email) {
+    get_by_email(email) {
         return {
-            full_name: email.split('@')[0],
+            full_name: email.split("@")[0],
         };
     },
 });
-set_global('templates', {});
-set_global('markdown', {
+set_global("markdown", {
     apply_markdown: noop,
 });
-set_global('page_params', {
+set_global("page_params", {
     twenty_four_hour_time: false,
 });
 
 function stub_timestamp(timestamp, func) {
-    var original_func = Date.prototype.getTime;
+    const original_func = Date.prototype.getTime;
     Date.prototype.getTime = function () {
         return timestamp;
     };
@@ -60,72 +59,96 @@ function stub_timestamp(timestamp, func) {
     Date.prototype.getTime = original_func;
 }
 
-var draft_1 = {
+const legacy_draft = {
     stream: "stream",
-    subject: "topic",
+    subject: "lunch",
+    type: "stream",
+    content: "whatever",
+};
+
+const compose_args_for_legacy_draft = {
+    stream: "stream",
+    topic: "lunch",
+    type: "stream",
+    content: "whatever",
+};
+
+const draft_1 = {
+    stream: "stream",
+    topic: "topic",
     type: "stream",
     content: "Test Stream Message",
 };
-var draft_2 = {
+const draft_2 = {
     private_message_recipient: "aaron@zulip.com",
     reply_to: "aaron@zulip.com",
     type: "private",
     content: "Test Private Message",
 };
+const short_msg = {
+    stream: "stream",
+    subject: "topic",
+    type: "stream",
+    content: "a",
+};
 
-(function test_draft_model() {
-    var draft_model = drafts.draft_model;
-    var ls = localstorage();
+run_test("legacy", () => {
+    assert.deepEqual(drafts.restore_message(legacy_draft), compose_args_for_legacy_draft);
+});
+
+run_test("draft_model", () => {
+    const draft_model = drafts.draft_model;
+    const ls = localstorage();
 
     localStorage.clear();
     (function test_get() {
-        var expected = { id1: draft_1, id2: draft_2 };
+        const expected = {id1: draft_1, id2: draft_2};
         ls.set("drafts", expected);
 
         assert.deepEqual(draft_model.get(), expected);
-    }());
+    })();
 
     localStorage.clear();
     (function test_get() {
-        ls.set("drafts", { id1: draft_1 });
+        ls.set("drafts", {id1: draft_1});
 
         assert.deepEqual(draft_model.getDraft("id1"), draft_1);
         assert.equal(draft_model.getDraft("id2"), false);
-    }());
+    })();
 
     localStorage.clear();
     (function test_addDraft() {
-         stub_timestamp(1, function () {
-             var expected = _.clone(draft_1);
-             expected.updatedAt = 1;
-             var id = draft_model.addDraft(_.clone(draft_1));
+        stub_timestamp(1, () => {
+            const expected = {...draft_1};
+            expected.updatedAt = 1;
+            const id = draft_model.addDraft({...draft_1});
 
-             assert.deepEqual(ls.get("drafts")[id], expected);
-         });
-    }());
+            assert.deepEqual(ls.get("drafts")[id], expected);
+        });
+    })();
 
     localStorage.clear();
     (function test_editDraft() {
-         stub_timestamp(2, function () {
-             ls.set("drafts", { id1: draft_1 });
-             var expected = _.clone(draft_2);
-             expected.updatedAt = 2;
-             draft_model.editDraft("id1", _.clone(draft_2));
+        stub_timestamp(2, () => {
+            ls.set("drafts", {id1: draft_1});
+            const expected = {...draft_2};
+            expected.updatedAt = 2;
+            draft_model.editDraft("id1", {...draft_2});
 
-             assert.deepEqual(ls.get("drafts").id1, expected);
-         });
-    }());
+            assert.deepEqual(ls.get("drafts").id1, expected);
+        });
+    })();
 
     localStorage.clear();
     (function test_deleteDraft() {
-         ls.set("drafts", { id1: draft_1 });
-         draft_model.deleteDraft("id1");
+        ls.set("drafts", {id1: draft_1});
+        draft_model.deleteDraft("id1");
 
-         assert.deepEqual(ls.get("drafts"), {});
-    }());
-}());
+        assert.deepEqual(ls.get("drafts"), {});
+    })();
+});
 
-(function test_snapshot_message() {
+run_test("snapshot_message", () => {
     function stub_draft(draft) {
         global.compose_state.get_message_type = function () {
             return draft.type;
@@ -136,14 +159,14 @@ var draft_2 = {
         global.compose_state.message_content = function () {
             return draft.content;
         };
-        global.compose_state.recipient = function () {
+        global.compose_state.private_message_recipient = function () {
             return draft.private_message_recipient;
         };
         global.compose_state.stream_name = function () {
             return draft.stream;
         };
-        global.compose_state.subject = function () {
-            return draft.subject;
+        global.compose_state.topic = function () {
+            return draft.topic;
         };
     }
 
@@ -153,72 +176,77 @@ var draft_2 = {
     stub_draft(draft_2);
     assert.deepEqual(drafts.snapshot_message(), draft_2);
 
+    stub_draft(short_msg);
+    assert.deepEqual(drafts.snapshot_message(), undefined);
+
     stub_draft({});
     assert.equal(drafts.snapshot_message(), undefined);
-}());
+});
 
-(function test_initialize() {
-    var message_content = $("#compose-textarea");
-    message_content.focusout = function (f) {
-        assert.equal(f, drafts.update_draft);
-        f();
-    };
-
+run_test("initialize", () => {
     global.window.addEventListener = function (event_name, f) {
         assert.equal(event_name, "beforeunload");
-        var called = false;
-        drafts.update_draft = function () { called = true; };
+        let called = false;
+        drafts.update_draft = function () {
+            called = true;
+        };
         f();
         assert(called);
     };
 
     drafts.initialize();
-}());
 
-(function test_remove_old_drafts() {
-    var draft_3 = {
+    const message_content = $("#compose-textarea");
+    assert.equal(message_content.get_on_handler("focusout"), drafts.update_draft);
+    message_content.trigger("focusout");
+});
+
+run_test("remove_old_drafts", () => {
+    const draft_3 = {
         stream: "stream",
         subject: "topic",
         type: "stream",
         content: "Test Stream Message",
         updatedAt: Date.now(),
     };
-    var draft_4 = {
+    const draft_4 = {
         private_message_recipient: "aaron@zulip.com",
         reply_to: "aaron@zulip.com",
         type: "private",
         content: "Test Private Message",
         updatedAt: new Date().setDate(-30),
     };
-    var draft_model = drafts.draft_model;
-    var ls = localstorage();
+    const draft_model = drafts.draft_model;
+    const ls = localstorage();
     localStorage.clear();
-    var data = {id3: draft_3, id4: draft_4};
+    const data = {id3: draft_3, id4: draft_4};
     ls.set("drafts", data);
     assert.deepEqual(draft_model.get(), data);
 
     drafts.remove_old_drafts();
     assert.deepEqual(draft_model.get(), {id3: draft_3});
-}());
+});
 
-(function test_format_drafts() {
-    draft_1.updatedAt = new Date(1549958107000).getTime();      // 2/12/2019 07:55:07 AM (UTC+0)
+run_test("format_drafts", (override) => {
+    override("drafts.remove_old_drafts", noop);
+
+    draft_1.updatedAt = new Date(1549958107000).getTime(); // 2/12/2019 07:55:07 AM (UTC+0)
     draft_2.updatedAt = new Date(1549958107000).setDate(-1);
-    var draft_3 = {
+    const draft_3 = {
         stream: "stream 2",
         subject: "topic",
         type: "stream",
         content: "Test Stream Message 2",
         updatedAt: new Date(1549958107000).setDate(-10),
     };
-    var draft_4 = {
+    const draft_4 = {
         private_message_recipient: "aaron@zulip.com",
         reply_to: "iago@zulip.com",
         type: "private",
         content: "Test Private Message 2",
         updatedAt: new Date(1549958107000).setDate(-5),
     };
-    var draft_5 = {
+    const draft_5 = {
         private_message_recipient: "aaron@zulip.com",
         reply_to: "zoe@zulip.com",
         type: "private",
@@ -226,70 +254,75 @@ var draft_2 = {
         updatedAt: new Date(1549958107000).setDate(-2),
     };
 
-    var expected = {
-        id3: {
-            draft_id: 'id3',
+    const expected = [
+        {
+            draft_id: "id1",
             is_stream: true,
-            stream: 'stream 2',
-            stream_color: '#FFFFFF',
-            topic: 'topic',
-            raw_content: 'Test Stream Message 2',
-            time_stamp: 'Jan 21',
+            stream: "stream",
+            stream_color: "#FFFFFF",
+            dark_background: "",
+            topic: "topic",
+            raw_content: "Test Stream Message",
+            time_stamp: "7:55 AM",
         },
-        id4: {
-            draft_id: 'id4',
+        {
+            draft_id: "id2",
             is_stream: false,
-            recipients: 'aaron',
-            raw_content: 'Test Private Message 2',
-            time_stamp: 'Jan 26',
+            recipients: "aaron",
+            raw_content: "Test Private Message",
+            time_stamp: "Jan 30",
         },
-        id5: {
-            draft_id: 'id5',
+        {
+            draft_id: "id5",
             is_stream: false,
-            recipients: 'aaron',
-            raw_content: 'Test Private Message 3',
-            time_stamp: 'Jan 29',
+            recipients: "aaron",
+            raw_content: "Test Private Message 3",
+            time_stamp: "Jan 29",
         },
-        id2: {
-            draft_id: 'id2',
+        {
+            draft_id: "id4",
             is_stream: false,
-            recipients: 'aaron',
-            raw_content: 'Test Private Message',
-            time_stamp: 'Jan 30',
+            recipients: "aaron",
+            raw_content: "Test Private Message 2",
+            time_stamp: "Jan 26",
         },
-        id1: {
-            draft_id: 'id1',
+        {
+            draft_id: "id3",
             is_stream: true,
-            stream: 'stream',
-            stream_color: '#FFFFFF',
-            topic: 'topic',
-            raw_content: 'Test Stream Message',
-            time_stamp: '7:55 AM',
+            stream: "stream 2",
+            stream_color: "#FFFFFF",
+            dark_background: "",
+            topic: "topic",
+            raw_content: "Test Stream Message 2",
+            time_stamp: "Jan 21",
         },
-    };
+    ];
 
-    blueslip.error = noop;
-    $('#drafts_table').append = noop;
+    $("#drafts_table").append = noop;
 
-    var draft_model = drafts.draft_model;
-    var ls = localstorage();
+    const draft_model = drafts.draft_model;
+    const ls = localstorage();
     localStorage.clear();
-    var data = { id1: draft_1, id2: draft_2, id3: draft_3, id4: draft_4, id5: draft_5 };
+    const data = {id1: draft_1, id2: draft_2, id3: draft_3, id4: draft_4, id5: draft_5};
     ls.set("drafts", data);
     assert.deepEqual(draft_model.get(), data);
 
-    var stub_render_now = timerender.render_now;
+    const stub_render_now = timerender.render_now;
     timerender.render_now = function (time) {
         return stub_render_now(time, new XDate(1549958107000));
     };
 
-    global.templates.render = function (template_name, data) {
-        assert.equal(template_name, 'draft_table_body');
+    global.stub_templates((template_name, data) => {
+        assert.equal(template_name, "draft_table_body");
         // Tests formatting and sorting of drafts
         assert.deepEqual(data.drafts, expected);
-        return '<draft table stub>';
-    };
+        return "<draft table stub>";
+    });
 
-    drafts.setup_page();
+    override("drafts.open_overlay", noop);
+    drafts.set_initial_element = noop;
+    $("#drafts_table .draft-row").length = 0;
+
+    drafts.launch();
     timerender.render_now = stub_render_now;
-}());
+});

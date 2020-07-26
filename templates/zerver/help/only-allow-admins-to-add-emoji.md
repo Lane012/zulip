@@ -1,15 +1,19 @@
-# Only allow admins to add emoji
+# Change who can add custom emoji
 
 {!admin-only.md!}
 
-By default, any user in your Zulip organization can add custom emoji to the
-organization. You can change your organization's settings to only allow
-administrators to add new emoji.
+By default, anyone other than guests can [add custom emoji](/help/add-custom-emoji) to the
+organization. However, you can change your organization's settings to only
+allow administrators to add new emoji.
 
-{!go-to-the.md!} [Organization permissions](/#organization/organization-permissions)
-{!admin.md!}
+### Change who can add custom emoji
 
-2. Select the **Prevent users from adding custom emoji** checkbox under the
-**Streams & custom emoji** section.
+{start_tabs}
 
-{!save-changes.md!} organization settings.
+{settings_tab|organization-permissions}
+
+2. Under **Other permissions**, configure **Who can add custom emoji**.
+
+{!save-changes.md!}
+
+{end_tabs}

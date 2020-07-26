@@ -6,7 +6,7 @@ There are three disjoint sets of users you care about
 for typical Zulip realms:
 
 - active users in your realm
-- cross-realm users like feedback@zulip.com
+- cross-realm users like welcome-bot@zulip.com
 - deactivated users in your realm
 
 You can also think in terms of these user populations:
@@ -45,4 +45,3 @@ if a user sends a message to a user we don't yet know about,
 the third party will confirm that the user exists, and we
 subsequently create a "mirror dummy" user on-demand for that
 account.)
-

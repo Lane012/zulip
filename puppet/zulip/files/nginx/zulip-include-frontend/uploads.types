@@ -1,9 +1,10 @@
-
 types {
     text/plain                            txt;
 
+    application/pdf                       pdf;
+
     image/gif                             gif;
-    image/jpeg                            jpeg jpg;
+    image/jpeg                            jpeg jpg jpe;
     image/png                             png;
     image/tiff                            tif tiff;
     image/webp                            webp;

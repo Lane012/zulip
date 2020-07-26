@@ -1,15 +1,27 @@
-# Change the default language
+# Set the default language for new users
 
 {!admin-only.md!}
 
-{!follow-steps.md!} change the default language of your organization.
+Zulip has been translated or partially translated into a number of different
+languages. You can see which languages Zulip supports, and help add support
+for new languages on **[Transifex](https://www.transifex.com/zulip/zulip/)**.
 
-{!go-to-the.md!} [Organization settings](/#organization/organization-settings)
-{!admin.md!}
+If your organization usually uses a language other than English, you can set
+a default language for new users. This setting will not affect existing
+users, and new users can still
+[manage their individual language setting](change-your-language).
 
-2. Find and click on the **Default language** option under the
-**Language & notifications** section.
+### Set the default language for new users
 
-3. Select the appropriate option from the dropdown menu that appears.
+{start_tabs}
 
-{!save-changes.md!} organization settings.
+{settings_tab|organization-settings}
+
+2. Under **Default user settings**, change the **Default language**.
+
+{!save-changes.md!}
+
+{end_tabs}
+
+Note that users can always send and read messages in any language, regardless
+of their language setting.

@@ -1,5 +1,5 @@
 # Webhooks for external integrations.
-from typing import Text, Dict, Any, List, Tuple, Union
+from typing import Any, Dict, List
 
 from django.http import HttpRequest, HttpResponse
 
@@ -7,37 +7,37 @@ from zerver.decorator import api_key_only_webhook_view
 from zerver.lib.request import REQ, has_request_variables
 from zerver.lib.response import json_success
 from zerver.lib.webhooks.common import check_send_webhook_message
-from zerver.models import UserProfile, get_client
+from zerver.models import UserProfile
 
-subject_types = {
+subject_types: Dict[str, List[List[str]]] = {
     'app': [  # Object type name
         ['name'],  # Title
         ['html_url'],  # Automatically put into title
         ['language'],  # Other properties.
-        ['framework']
+        ['framework'],
     ],
     'base': [
         ['title'],
         ['html_url'],
         ['#summary'],
-        ['subject']
+        ['subject'],
     ],
     'comment': [
         [''],
-        ['subject']
+        ['subject'],
     ],
     'errorgroup': [
         ['E#{}', 'number'],
         ['html_url'],
-        ['last_occurrence:error']
+        ['last_occurrence:error'],
     ],
     'error': [
         [''],
         ['">**Most recent Occurrence**'],
         ['in {}', 'extra/pathname'],
-        ['!message']
-    ]
-}  # type: Dict[str, List[List[str]]]
+        ['!message'],
+    ],
+}
 
 
 def get_value(_obj: Dict[str, Any], key: str) -> str:
@@ -52,11 +52,11 @@ def get_value(_obj: Dict[str, Any], key: str) -> str:
 def format_object(
     obj: Dict[str, Any],
     subject_type: str,
-    message: str
+    message: str,
 ) -> str:
     if subject_type not in subject_types.keys():
         return message
-    keys = subject_types[subject_type][1:]  # type: List[List[str]]
+    keys: List[List[str]] = subject_types[subject_type][1:]
     title = subject_types[subject_type][0]
     if title[0] != '':
         title_str = ''
@@ -65,29 +65,29 @@ def format_object(
         else:
             title_str = obj[title[0]]
         if obj['html_url'] is not None:
-            url = obj['html_url']  # type: str
+            url: str = obj['html_url']
             if 'opbeat.com' not in url:
                 url = 'https://opbeat.com/' + url.lstrip('/')
-            message += '\n**[{}]({})**'.format(title_str, url)
+            message += f'\n**[{title_str}]({url})**'
         else:
-            message += '\n**{}**'.format(title_str)
+            message += f'\n**{title_str}**'
     for key_list in keys:
         if len(key_list) > 1:
             value = key_list[0].format(get_value(obj, key_list[1]))
-            message += '\n>{}'.format(value)
+            message += f'\n>{value}'
         else:
             key = key_list[0]
             key_raw = key.lstrip('!').lstrip('#').lstrip('"')
             if key_raw != 'html_url' and key_raw != 'subject' and ':' not in key_raw:
                 value = get_value(obj, key_raw)
                 if key.startswith('!'):
-                    message += '\n>{}'.format(value)
+                    message += f'\n>{value}'
                 elif key.startswith('#'):
-                    message += '\n{}'.format(value)
+                    message += f'\n{value}'
                 elif key.startswith('"'):
-                    message += '\n{}'.format(key_raw)
+                    message += f'\n{key_raw}'
                 else:
-                    message += '\n>{}: {}'.format(key, value)
+                    message += f'\n>{key}: {value}'
             if key == 'subject':
                 message = format_object(
                     obj['subject'], obj['subject_type'], message + '\n')

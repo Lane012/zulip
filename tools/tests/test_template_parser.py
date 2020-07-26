@@ -1,7 +1,6 @@
-from typing import Optional, Any
-
 import sys
 import unittest
+from typing import Optional
 
 try:
     from tools.lib.template_parser import (
@@ -191,6 +190,54 @@ class ParserTest(unittest.TestCase):
             '''
         validate(text=my_html)
 
+    def test_validate_jinja2_whitespace_markers_1(self) -> None:
+        my_html = '''
+        {% if foo -%}
+        this is foo
+        {% endif %}
+        '''
+        validate(text=my_html)
+
+    def test_validate_jinja2_whitespace_markers_2(self) -> None:
+        my_html = '''
+        {% if foo %}
+        this is foo
+        {%- endif %}
+        '''
+        validate(text=my_html)
+
+    def test_validate_jinja2_whitespace_markers_3(self) -> None:
+        my_html = '''
+        {% if foo %}
+        this is foo
+        {% endif -%}
+        '''
+        validate(text=my_html)
+
+    def test_validate_jinja2_whitespace_markers_4(self) -> None:
+        my_html = '''
+        {%- if foo %}
+        this is foo
+        {% endif %}
+        '''
+        validate(text=my_html)
+
+    def test_validate_mismatch_jinja2_whitespace_markers_1(self) -> None:
+        my_html = '''
+        {% if foo %}
+        this is foo
+        {%- if bar %}
+        '''
+        self._assert_validate_error('Missing end tag', text=my_html)
+
+    def test_validate_jinja2_whitespace_type2_markers(self) -> None:
+        my_html = '''
+        {%- if foo -%}
+        this is foo
+        {% endif %}
+        '''
+        validate(text=my_html)
+
     def test_tokenize(self) -> None:
         tag = '<meta whatever>bla'
         token = tokenize(tag)[0]
@@ -201,7 +248,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(token.kind, 'html_start')
         self.assertEqual(token.tag, 'a')
 
-        tag = '<br />bla'
+        tag = '<br>bla'
         token = tokenize(tag)[0]
         self.assertEqual(token.kind, 'html_singleton')
         self.assertEqual(token.tag, 'br')
@@ -239,4 +286,19 @@ class ParserTest(unittest.TestCase):
         tag = '{% endif %}bla'
         token = tokenize(tag)[0]
         self.assertEqual(token.kind, 'django_end')
+        self.assertEqual(token.tag, 'if')
+
+        tag = '{% if foo -%}bla'
+        token = tokenize(tag)[0]
+        self.assertEqual(token.kind, 'jinja2_whitespace_stripped_start')
+        self.assertEqual(token.tag, 'if')
+
+        tag = '{%- endif %}bla'
+        token = tokenize(tag)[0]
+        self.assertEqual(token.kind, 'jinja2_whitespace_stripped_end')
+        self.assertEqual(token.tag, 'if')
+
+        tag = '{%- if foo -%}bla'
+        token = tokenize(tag)[0]
+        self.assertEqual(token.kind, 'jinja2_whitespace_stripped_type2_start')
         self.assertEqual(token.tag, 'if')

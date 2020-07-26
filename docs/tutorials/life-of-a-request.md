@@ -7,7 +7,7 @@ Zulip codebase, and dive deep into how each part works.
 We will use as our example the creation of users through the API, but we
 will also highlight how alternative requests are handled.
 
-## A request is sent to the server, and handled by [Nginx](http://nginx.org/en/docs/)
+## A request is sent to the server, and handled by [Nginx](https://nginx.org/en/docs/)
 
 When Zulip is deployed in production, all requests go through nginx.
 For the most part we don't need to know how this works, except for when
@@ -17,14 +17,6 @@ itself for static content).
 
 In development, `tools/run-dev.py` fills the role of nginx. Static files
 are in your git checkout under `static`, and are served unminified.
-
-## Nginx secures traffic with [SSL](../production/install.html)
-
-If you visit your Zulip server in your browser and discover that your
-traffic isn't being properly encrypted, an [nginx misconfiguration][nginx-config] is the
-likely culprit.
-
-[nginx-config]: https://github.com/zulip/zulip/blob/master/puppet/zulip/files/nginx/sites-available/zulip-enterprise
 
 ## Static files are [served directly][served-directly] by Nginx
 
@@ -66,7 +58,7 @@ There are various
 [urls.py](https://docs.djangoproject.com/en/1.8/topics/http/urls/)
 files throughout the server codebase, which are covered in more detail
 in
-[the directory structure doc](../overview/directory-structure.html).
+[the directory structure doc](../overview/directory-structure.md).
 
 The main Zulip Django app is `zerver`. The routes are found in
 ```
@@ -86,17 +78,17 @@ we can see something called `i18n_urls`. These urls show up in the
 address bar of the browser, and serve HTML.
 
 For example, the `/features` page (preview
-[here](https://zulipchat.com/features/)) gets translated in Chinese at
+[here](https://zulip.com/features/)) gets translated in Chinese at
 `zh-hans/features/` (preview
-[here](https://zulipchat.com/zh-hans/features/)).
+[here](https://zulip.com/zh-hans/features/)).
 
 Note the `zh-hans` prefix--that url pattern gets added by `i18n_patterns`.
 
-## API endpoints use [REST](http://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm)
+## API endpoints use [REST](https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm)
 
 Our example is a REST API endpoint. It's a PUT to `/users`.
 
-With the exception of Webhooks (which we do not usually control the
+With the exception of incoming webhooks (which we do not usually control the
 format of), legacy endpoints, and logged-out endpoints, Zulip uses REST
 for its API. This means that we use:
 
@@ -122,7 +114,7 @@ idempotent, and we like to write API endpoints in an idempotent fashion,
 as much as possible.
 
 This [cookbook](http://restcookbook.com/) and
-[tutorial](http://www.restapitutorial.com/) can be helpful if you are
+[tutorial](https://www.restapitutorial.com/) can be helpful if you are
 new to REST web applications.
 
 ### PUT is only for creating new things
@@ -148,7 +140,7 @@ yields a response with this HTTP header:
 
 We can see this reflected in [zproject/urls.py](https://github.com/zulip/zulip/blob/master/zproject/urls.py):
 
-    url(r'^users$', 'zerver.lib.rest.rest_dispatch',
+    path('users', 'zerver.lib.rest.rest_dispatch',
         {'GET': 'zerver.views.users.get_members_backend',
          'PUT': 'zerver.views.users.create_user_backend'}),
 
@@ -162,7 +154,7 @@ mind. They are used extensively by the web client, and use POST.
 You can see them in
 [zproject/legacy_urls.py](https://github.com/zulip/zulip/blob/master/zproject/legacy_urls.py).
 
-### Webhook integrations may not be RESTful
+### Incoming webhook integrations may not be RESTful
 
 Zulip endpoints that are called by other services for integrations have
 to conform to the service's request format. They are likely to use
@@ -196,7 +188,7 @@ find the correct view to show:
 
 ## The view will authorize the user, extract request variables, and validate them
 
-This is covered in good detail in the [writing views doc](writing-views.html).
+This is covered in good detail in the [writing views doc](writing-views.md).
 
 ## Results are given as JSON
 

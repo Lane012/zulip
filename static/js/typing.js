@@ -1,5 +1,4 @@
-var typing = (function () {
-var exports = {};
+const typing_status = require("../shared/js/typing_status");
 
 // This module handles the outbound side of typing indicators.
 // We detect changes in the compose box and notify the server
@@ -7,54 +6,32 @@ var exports = {};
 //
 // See docs/subsystems/typing-indicators.md for details on typing indicators.
 
-function send_typing_notification_ajax(recipients, operation) {
+function send_typing_notification_ajax(user_ids_array, operation) {
     channel.post({
-        url: '/json/typing',
+        url: "/json/typing",
         data: {
-            to: recipients,
+            to: JSON.stringify(user_ids_array),
             op: operation,
         },
-        success: function () {},
-        error: function (xhr) {
+        success() {},
+        error(xhr) {
             blueslip.warn("Failed to send typing event: " + xhr.responseText);
         },
     });
 }
 
-function get_recipient() {
-    var compose_recipient = compose_state.recipient();
-    if (compose_recipient === "") {
-        return;
+function get_user_ids_array() {
+    const user_ids_string = compose_pm_pill.get_user_ids_string();
+    if (user_ids_string === "") {
+        return null;
     }
-    return compose_recipient;
+
+    return people.user_ids_string_to_ids_array(user_ids_string);
 }
 
-function is_valid_conversation(recipient) {
-    // TODO: Check to make sure we're in a PM conversation
-    //       with valid emails.
-    if (!recipient) {
-        return false;
-    }
-
-    var compose_empty = !compose_state.has_message_content();
+function is_valid_conversation() {
+    const compose_empty = !compose_state.has_message_content();
     if (compose_empty) {
-        return false;
-    }
-
-    if (compose_state.get_message_type() !== 'private') {
-        // We only use typing indicators in PMs for now.
-        // There was originally some support for having
-        // typing indicators related to stream conversations,
-        // but the initial rollout led to users being
-        // confused by them.  We may revisit this.
-        return false;
-    }
-
-    if (compose.get_invalid_recipient_emails().length > 0) {
-        // If we have invalid recipient emails, it's highly
-        // likely the user is either still deciding who to
-        // compose to, or is confused.  Also, the server
-        // will just reject our requests.
         return false;
     }
 
@@ -62,42 +39,37 @@ function is_valid_conversation(recipient) {
 }
 
 function get_current_time() {
-    return new Date();
+    return new Date().getTime();
 }
 
-function notify_server_start(recipients) {
-    send_typing_notification_ajax(recipients, "start");
+function notify_server_start(user_ids_array) {
+    send_typing_notification_ajax(user_ids_array, "start");
 }
 
-function notify_server_stop(recipients) {
-    send_typing_notification_ajax(recipients, "stop");
+function notify_server_stop(user_ids_array) {
+    send_typing_notification_ajax(user_ids_array, "stop");
 }
 
+exports.get_recipient = get_user_ids_array;
 exports.initialize = function () {
-    var worker = {
-        get_recipient: get_recipient,
-        is_valid_conversation: is_valid_conversation,
-        get_current_time: get_current_time,
-        notify_server_start: notify_server_start,
-        notify_server_stop: notify_server_stop,
+    const worker = {
+        get_current_time,
+        notify_server_start,
+        notify_server_stop,
     };
 
-    $(document).on('input', '#compose-textarea', function () {
+    $(document).on("input", "#compose-textarea", () => {
         // If our previous state was no typing notification, send a
         // start-typing notice immediately.
-        typing_status.handle_text_input(worker);
+        const new_recipient = is_valid_conversation() ? exports.get_recipient() : null;
+        typing_status.update(worker, new_recipient);
     });
 
     // We send a stop-typing notification immediately when compose is
     // closed/cancelled
-    $(document).on('compose_canceled.zulip compose_finished.zulip', function () {
-        typing_status.stop(worker);
+    $(document).on("compose_canceled.zulip compose_finished.zulip", () => {
+        typing_status.update(worker, null);
     });
 };
 
-return exports;
-}());
-
-if (typeof module !== 'undefined') {
-    module.exports = typing;
-}
+window.typing = exports;

@@ -1,17 +1,35 @@
 # Star a message
+
 Starring messages is a good way to keep track of important messages, such as
 tasks you need to go back to or documents you reference often.
 
-{!message-actions.md!} star (<i class="icon-vector-star-empty"></i>) icon.
+### Star a message
 
-2. After starring a message, a filled star (<i class="icon-vector-star"></i>)
-icon appears next to the timestamp of the message, confirming that the message has been
-starred.
+{start_tabs}
 
-    You can click on the filled star (<i class="icon-vector-star"></i>) icon
-    next to a starred message to unstar the message.
+{!message-actions.md!}
 
-!!! tip ""
-    You can narrow your view to show all starred messages by searching for
-    messages with the search operator `is:starred` or clicking on the
-    **Starred Messages** option on the left sidebar.
+1. Click the star (<i class="fa fa-star-o"></i>) icon.
+
+{end_tabs}
+
+Starred messages have a filled in star (<i class="fa fa-star"></i>) to
+their right. Click on it to unstar the message.
+
+## Access your starred messages
+
+You can access your starred messages by clicking **Starred Messages** in the
+left sidebar, or by [searching](/help/search-for-messages) for `is:starred`.
+
+## Display the number of starred messages
+
+{start_tabs}
+
+{settings_tab|display-settings}
+
+1. Under **Display settings**, select **Show counts for starred messages**.
+
+{end_tabs}
+
+Zulip will add a number to the right of **Starred messages** in the left
+sidebar.

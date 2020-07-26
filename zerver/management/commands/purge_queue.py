@@ -1,4 +1,3 @@
-
 from argparse import ArgumentParser
 from typing import Any
 
@@ -7,6 +6,7 @@ from django.core.management.base import BaseCommand
 
 from zerver.lib.queue import SimpleQueueClient
 from zerver.worker.queue_processors import get_active_worker_queues
+
 
 class Command(BaseCommand):
     def add_arguments(self, parser: ArgumentParser) -> None:
@@ -20,8 +20,7 @@ class Command(BaseCommand):
     def handle(self, *args: Any, **options: str) -> None:
         def purge_queue(queue_name: str) -> None:
             queue = SimpleQueueClient()
-            queue.ensure_queue(queue_name, lambda: None)
-            queue.channel.queue_purge(queue_name)
+            queue.ensure_queue(queue_name, lambda channel: channel.queue_purge(queue_name))
 
         if options['all']:
             for queue_name in get_active_worker_queues():
@@ -31,11 +30,11 @@ class Command(BaseCommand):
             raise CommandError("Missing queue_name argument!")
         else:
             queue_name = options['queue_name']
-            if queue_name not in ['notify_tornado', 'tornado_return',
-                                  ] + get_active_worker_queues():
-                raise CommandError("Unknown queue %s" % (queue_name,))
+            if not (queue_name in get_active_worker_queues() or
+                    queue_name.startswith("notify_tornado")):
+                raise CommandError(f"Unknown queue {queue_name}")
 
-            print("Purging queue %s" % (queue_name,))
+            print(f"Purging queue {queue_name}")
             purge_queue(queue_name)
 
         print("Done")

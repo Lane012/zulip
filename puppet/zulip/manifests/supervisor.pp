@@ -1,66 +1,98 @@
 class zulip::supervisor {
-  $supervisor_packages = [# Needed to run supervisor
-                          "supervisor",
-                          ]
-  package { $supervisor_packages: ensure => "installed" }
-  # Depending on the environment, ignoreSupervisorService is set, meaning we
-  # don't want/need supervisor to be started/stopped
+  package { 'supervisor': ensure => 'installed' }
+
+  if $::osfamily == 'redhat' {
+    file { $zulip::common::supervisor_conf_dir:
+      ensure => 'directory',
+      owner  => 'root',
+      group  => 'root',
+    }
+  }
+
+  $supervisor_service = $zulip::common::supervisor_service
+
+  # In the dockervoyager environment, we don't want/need supervisor to be started/stopped
   # /bin/true is used as a decoy command, to maintain compatibility with other
   # code using the supervisor service.
-  if $ignoreSupervisorService != undef and $ignoreSupervisorService {
-    service { "supervisor":
+  #
+  # This logic is definitely a hack, but it's less bad than the old hack :(
+  $puppet_classes = zulipconf('machine', 'puppet_classes', undef)
+  if $puppet_classes == 'zulip::dockervoyager' {
+    service { $supervisor_service:
       ensure     => running,
       require    => [
-        File["/var/log/zulip"],
-        Package["supervisor"],
+        File['/var/log/zulip'],
+        Package['supervisor'],
       ],
       hasstatus  => true,
-      status     => "/bin/true",
+      status     => '/bin/true',
       hasrestart => true,
-      restart => "/bin/true"
+      restart    => '/bin/true',
+    }
+    exec { 'supervisor-restart':
+      refreshonly => true,
+      command     => '/bin/true',
     }
   } else {
-    service { "supervisor":
-      ensure => running,
-      require => [
-        File["/var/log/zulip"],
-        Package["supervisor"],
+    service { $supervisor_service:
+      ensure     => running,
+      require    => [
+        File['/var/log/zulip'],
+        Package['supervisor'],
       ],
-      hasstatus => true,
-      status => "supervisorctl status",
-      # The "restart" option in the init script does not work.  We could
-      # tell Puppet to fall back to stop/start, which does work, but the
-      # better option is to tell supervisord to reread its config via
-      # supervisorctl and then to "update".  You need to do both --
-      # after a "reread", supervisor won't actually take actual based on
-      # the changed configuration until you do an "update" (I assume
-      # this is so you can check if your config file parses without
-      # doing anything, but it's really confusing)
+      hasstatus  => true,
+      status     => 'supervisorctl status',
+      # Restarting the whole supervisorctl on every update to its
+      # configuration files has the unfortunate side-effect of
+      # restarting all of the services it controls; this results in an
+      # unduly large disruption.  The better option is to tell
+      # supervisord to reread its config via supervisorctl and then to
+      # "update".  You need to do both -- after a "reread", supervisor
+      # won't actually take action based on the changed configuration
+      # until you do an "update" (I assume this is so you can check if
+      # your config file parses without doing anything, but it's
+      # really confusing).
       #
-      # Also, to handle the case that supervisord wasn't running at all,
-      # we check if it is not running and if so, start it.
+      # If restarting supervisor itself is necessary, see
+      # Exec['supervisor-restart']
       #
-      # We use supervisor[d] as the pattern so the bash/grep commands don't match.
+      # Also, to handle the case that supervisord wasn't running at
+      # all, we check if it is not running and if so, start it.
+      #
+      # We use supervisor[d] as the pattern so the bash/grep commands
+      # don't match.
       hasrestart => true,
-      restart => "bash -c 'if pgrep -f supervisor[d] >/dev/null; then supervisorctl reread && supervisorctl update; else /etc/init.d/supervisor start; fi'"
+      # lint:ignore:140chars
+      restart    => "bash -c 'if pgrep -f supervisor[d] >/dev/null; then supervisorctl reread && supervisorctl update; else ${zulip::common::supervisor_start}; fi'",
+      # lint:endignore
+    }
+    exec { 'supervisor-restart':
+      refreshonly => true,
+      command     => $zulip::common::supervisor_reload,
     }
   }
 
-  file { "/etc/supervisor/supervisord.conf":
+  file { $zulip::common::supervisor_conf_file:
+    ensure  => file,
     require => Package[supervisor],
-    ensure => file,
-    owner => "root",
-    group => "root",
-    mode => 644,
-    source => "puppet:///modules/zulip/supervisor/supervisord.conf",
-    notify => Service["supervisor"],
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    source  => 'puppet:///modules/zulip/supervisor/supervisord.conf',
+    notify  => Exec['supervisor-restart'],
   }
 
-  if $zulip::base::release_name == "xenial" {
-    exec {"enable supervisor":
-      unless => "systemctl is-enabled supervisor",
-      command => "systemctl enable supervisor",
-      require => Package["supervisor"],
+  # We need a block here to handle deleting the old thumbor.conf file,
+  # unless zulip::thumbor has been enabled. It would be cleaner
+  # to use tidy instead of exec here, but notify is broken with it
+  # (https://tickets.puppetlabs.com/browse/PUP-6021)
+  # so we wouldn't be able to notify the supervisor service.
+  $thumbor_enabled = defined(Class['zulip::thumbor'])
+  if !$thumbor_enabled {
+    exec { 'cleanup_thumbor_supervisor_conf_file':
+      command => "rm ${zulip::common::supervisor_conf_dir}/thumbor.conf",
+      onlyif  => "test -e ${zulip::common::supervisor_conf_dir}/thumbor.conf",
+      notify  => Service[$zulip::common::supervisor_service],
     }
   }
 }

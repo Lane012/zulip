@@ -51,6 +51,14 @@ iterative development, but you can override this behavior with the
 the `--rerun` option, which will rerun just the tests that failed in
 the last test run.
 
+**Webhook integrations**.  For performance, `test-backend` with no
+arguments will not run webhook integration tests (`zerver/webhooks/`),
+which would otherwise account for about 25% of the total runtime.
+When working on webhooks, we recommend instead running `test-backend
+zerver/webhooks` manually (or better, the direction for the specific
+webhooks you're working on).  And of course our CI is configured to
+always use `test-backend --include-webhooks` and run all of the tests.
+
 ## Writing tests
 
 Before you write your first tests of Zulip, it is worthwhile to read
@@ -98,14 +106,43 @@ influence tests results.)
 Here are some example action methods that tests may use for data setup:
 
 - check_send_message
-- do_change_is_admin
+- do_change_user_role
 - do_create_user
 - do_make_stream_private
 
+### Testing code that accesses the filesystem
+
+Some tests need to access the filesystem (e.g. `test_upload.py` tests
+for `LocalUploadBackend` and the data import tests).  Doing
+this correctly requires care to avoid problems like:
+* Leaking files after every test (which are clutter and can eventually
+run the development environment out of disk) or
+* Interacting with other parallel processes of this `test-backend` run
+(or another `test-backend` run), or with later tests run by this
+process.
+
+To avoid these problems, you can do the following:
+
+* Use a subdirectory of `settings.TEST_WORKER_DIR`; this is a
+  subdirectory of `/var/<uuid>/test-backend` that is unique to the
+  test worker thread and will be automatically deleted when the
+  relevant `test-backend` process finishes.
+* Delete any files created by the test in the test class's `tearDown`
+  method (which runs even if the test fails); this is valuable to
+  avoid conflicts with other tests run later by the same test process.
+
+Our common testing infrastructure handles some of this for you,
+e.g. it replaces `settings.LOCAL_UPLOADS_DIR` for each test process
+with a unique path under `/var/<uuid>/test-backend`.  And
+`UploadSerializeMixin` manages some of the cleanup work for
+`test_upload.py`.
+
 ### Testing with mocks
 
-This section is a beginner's guide to mocking with Python's `unittest.mock` library. It will give you answers
-to the most common questions around mocking, and a selection of commonly used mocking techniques.
+This section is a beginner's guide to mocking with Python's
+`unittest.mock` library. It will give you answers to the most common
+questions around mocking, and a selection of commonly used mocking
+techniques.
 
 #### What is mocking?
 
@@ -158,7 +195,7 @@ Say you have a method `greet(name_key)` defined as follows:
 
 -> **Solution**: You mock `fetch_database()`. This is also referred to as "mocking out" `fetch_database()`.
 
-    from unittest.mock import MagickMock # Our mocking class that will replace `fetch_database()`
+    from unittest.mock import MagicMock # Our mocking class that will replace `fetch_database()`
 
     def test_greet() -> None:
         # Mock `fetch_database()` with an object that acts like a shell: It still accepts calls like `fetch_database()`,
@@ -174,7 +211,7 @@ More generally, you should only mock those functions you explicitly don't want t
 #### How does mocking work under the hood?
 
 Since Python 3.3, the standard mocking library is `unittest.mock`. `unittest.mock` implements the basic mocking class `Mock`.
-It also implements `MagickMock`, which is the same as `Mock`, but contains many default magic methods (in Python,
+It also implements `MagicMock`, which is the same as `Mock`, but contains many default magic methods (in Python,
 those are the ones starting with with a dunder `__`). From the docs:
 
 > In most of these examples the Mock and MagicMock classes are interchangeable. As the MagicMock is the more capable class
@@ -197,7 +234,7 @@ is *not* going to throw any errors. Our mock silently accepts all these calls an
 Finally, `unittest.mock` also provides a method to mock objects only within a scope: `patch()`. We can use `patch()` either
 as a decorator or as a context manager. In both cases, the mock created by `patch()` will apply for the scope of the decorator /
 context manager. `patch()` takes only one required argument `target`. `target` is a string in dot notation that *refers to
-the name of the object you want to mock*. It will then assign a `MagickMock()` to that object.
+the name of the object you want to mock*. It will then assign a `MagicMock()` to that object.
 As an example, look at the following code:
 
     from unittest import mock
@@ -319,7 +356,7 @@ reads a bunch of sample inputs from a JSON fixture file, feeds them
 to our GitHub integration code, and then verifies the output against
 expected values from the same JSON fixture file.
 
-Our fixtures live in `zerver/fixtures`.
+Our fixtures live in `zerver/tests/fixtures`.
 
 ### Mocks and stubs
 
@@ -361,7 +398,7 @@ below some threshold.
 The Zulip back end has a mechanism where it will fetch initial data
 for a client from the database, and then it will subsequently apply
 some queued up events to that data to the data structure before notifying
-the client.  The `EventsRegisterTest.do_test()` helper helps tests
+the client.  The `BaseAction.do_test()` helper helps tests
 verify that the application of those events via apply_events() produces
 the same data structure as performing an action that generates said event.
 

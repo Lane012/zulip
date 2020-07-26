@@ -28,11 +28,11 @@ to claim; **@zulipbot** will assign you to the issue and label the issue as
     `@zulipbot abandon` to abandon an issue.
 
 * **Label your issues** — Add appropriate labels to issues that you opened by
-including `@zulipbot label` in an issue comment or the body of your issue
+including `@zulipbot add` in an issue comment or the body of your issue
 followed by the desired labels enclosed within double quotes (`""`).
 
     * For example, to add the **bug** and **help wanted** labels to your
-    issue, comment or include `@zulipbot label "bug" "help wanted"` in the
+    issue, comment or include `@zulipbot add "bug" "help wanted"` in the
     issue body.
 
     * You'll receive an error message if you try to add any labels to your issue
@@ -43,7 +43,7 @@ followed by the desired labels enclosed within double quotes (`""`).
     (`""`).
 
 * **Find unclaimed issues** — Use the [GitHub search
-feature](https://help.github.com/articles/using-search-to-filter-issues-and-pull-requests/)
+feature](https://help.github.com/en/articles/using-search-to-filter-issues-and-pull-requests)
 to find unclaimed issues by adding one of the following filters to your search:
 
     * `-label: "in progress"` (excludes issues labeled with the **in progress** label)
@@ -85,16 +85,10 @@ assignee(s) if they are still working on the issue.
     issue's current assignee(s) and the "in progress" label to allow others to
     work on an inactive issue.
 
-* **Receive Travis build status notifications** — If you would like to receive
-a notification whenever the build status of your pull request is updated, label
-your pull request with the "travis updates" label using the command `@zulipbot
-label "travis updates"`, and **@zulipbot** will let you know the build status
-(e.g. passed, failed, errored) of your pull request once all tests finish.
-
 ### Contributing
 
 If you wish to help develop and contribute to **@zulipbot**, check out the
 [zulip/zulipbot](https://github.com/zulip/zulipbot) repository on GitHub and read
 the project's [contributing
-guidelines](https://github.com/zulip/zulipbot/blob/master/.github/CONTRIBUTING.md) for
+guidelines](https://github.com/zulip/zulipbot/blob/master/.github/CONTRIBUTING.md#contributing) for
 more information.

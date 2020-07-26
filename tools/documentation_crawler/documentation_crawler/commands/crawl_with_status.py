@@ -1,22 +1,21 @@
-from scrapy.commands.crawl import Command
-from scrapy.exceptions import UsageError
-from typing import List, Any
+import optparse
+from typing import List, Union
+
+from scrapy.commands import crawl
+from scrapy.crawler import Crawler
 
 
-class StatusCommand(Command):
-    def run(self, args: List[str], opts: Any) -> None:
-        if len(args) < 1:
-            raise UsageError()
-        elif len(args) > 1:
-            raise UsageError(
-                "running 'scrapy crawl' with more than one spider is no longer supported")
-        spname = args[0]
+class Command(crawl.Command):
+    def run(self, args: List[str], opts: optparse.Values) -> None:
+        crawlers = []
+        real_create_crawler = self.crawler_process.create_crawler
 
-        crawler = self.crawler_process.create_crawler(spname)
-        self.crawler_process.crawl(crawler)
-        self.crawler_process.start()
-        # Get exceptions quantity from crawler stat data
+        def create_crawler(crawler_or_spidercls: Union[Crawler, str]) -> Crawler:
+            crawler = real_create_crawler(crawler_or_spidercls)
+            crawlers.append(crawler)
+            return crawler
 
-        if crawler.spider.has_error:
-            # Return non-zero exit code if exceptions are contained
+        self.crawler_process.create_crawler = create_crawler
+        super().run(args, opts)
+        if any(crawler.stats.get_value("log_count/ERROR") for crawler in crawlers):
             self.exitcode = 1

@@ -72,11 +72,14 @@ $ git reset --hard 13bea0e
 HEAD is now at 13bea0e test commit for docs.
 ```
 
-**Important:** `git reset --hard <commit>` will discard all changes in your
-working directory and index since the commit you're resetting to with
-*<commit>*. *This is the main way you can lose work in Git*. If you need to
-keep any changes that are in your working directory or that you have committed,
-use `git reset --merge <commit>` instead.
+```eval_rst
+.. important::
+    ``git reset --hard <commit>`` will discard all changes in your
+    working directory and index since the commit you're resetting to with
+    ``<commit>``. *This is the main way you can lose work in Git*. If you need
+    to keep any changes that are in your working directory or that you have
+    committed, use ``git reset --merge <commit>`` instead.
+```
 
 You can also use the relative reflog `HEAD@{1}` instead of the commit hash,
 just keep in mind that this changes as you run git commands.
@@ -277,4 +280,4 @@ whichever branch you need to update.
 [gitbook-basic-merge-conflicts]: https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging#Basic-Merge-Conflicts
 [gitbook-git-cherry-pick]: https://git-scm.com/docs/git-cherry-pick
 [gitbook-reset]: https://git-scm.com/docs/git-reset
-[github-help-resolve-merge-conflict]: https://help.github.com/articles/resolving-a-merge-conflict-using-the-command-line/
+[github-help-resolve-merge-conflict]: https://help.github.com/en/articles/resolving-a-merge-conflict-using-the-command-line

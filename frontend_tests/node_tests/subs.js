@@ -1,191 +1,297 @@
 global.stub_out_jquery();
 
-set_global('ui', {
-    update_scrollbar: function () {},
+set_global("ui", {
+    get_content_element: (element) => element,
+    get_scroll_element: (element) => element,
+});
+zrequire("stream_data");
+zrequire("search_util");
+set_global("page_params", {});
+
+set_global("location", {
+    hash: "#streams/1/announce",
 });
 
-set_global('i18n', global.stub_i18n);
-set_global('channel', {});
+zrequire("subs");
 
-zrequire('stream_data');
-zrequire('Handlebars', 'handlebars');
-zrequire('templates');
-zrequire('subs');
+set_global("$", global.make_zjquery());
+set_global("hash_util", {
+    by_stream_uri: () => {},
+});
 
-var jsdom = require("jsdom");
-var window = jsdom.jsdom().defaultView;
-global.$ = require('jquery')(window);
-set_global('window', window);
-zrequire('bootstrap', 'third/bootstrap/js/bootstrap');
+run_test("filter_table", () => {
+    const stream_list = $(".streams-list");
 
-subs.stream_name_match_stream_ids = [];
-subs.stream_description_match_stream_ids = [];
-
-(function test_filter_table() {
-    var denmark = {
-        subscribed: false,
-        name: 'Denmark',
-        stream_id: 1,
-        description: 'Copenhagen',
-    };
-    var poland = {
-        subscribed: true,
-        name: 'Poland',
-        stream_id: 2,
-        description: 'monday',
-    };
-    var pomona = {
-        subscribed: true,
-        name: 'Pomona',
-        stream_id: 3,
-        description: 'college',
-    };
-    var cpp = {
-        subscribed: true,
-        name: 'C++',
-        stream_id: 4,
+    let scrolltop_called = false;
+    stream_list.scrollTop = function (set) {
+        scrolltop_called = true;
+        if (!set) {
+            return 10;
+        }
+        assert.equal(set, 10);
     };
 
-    var elem_1 = $(global.render_template("subscription", denmark));
-    var elem_2 = $(global.render_template("subscription", poland));
-    var elem_3 = $(global.render_template("subscription", pomona));
-    var elem_4 = $(global.render_template("subscription", cpp));
+    // set-up sub rows stubs
+    const sub_row_data = [
+        {
+            elem: "denmark",
+            subscribed: false,
+            name: "Denmark",
+            stream_id: 1,
+            description: "Copenhagen",
+            subscribers: {size: 1},
+            stream_weekly_traffic: null,
+        },
+        {
+            elem: "poland",
+            subscribed: true,
+            name: "Poland",
+            stream_id: 2,
+            description: "monday",
+            subscribers: {size: 3},
+            stream_weekly_traffic: 13,
+        },
+        {
+            elem: "pomona",
+            subscribed: true,
+            name: "Pomona",
+            stream_id: 3,
+            description: "college",
+            subscribers: {size: 0},
+            stream_weekly_traffic: 0,
+        },
+        {
+            elem: "cpp",
+            subscribed: true,
+            name: "C++",
+            stream_id: 4,
+            description: "programming lang",
+            subscribers: {size: 2},
+            stream_weekly_traffic: 6,
+        },
+        {
+            elem: "zzyzx",
+            subscribed: true,
+            name: "Zzyzx",
+            stream_id: 5,
+            description: "california town",
+            subscribers: {size: 2},
+            stream_weekly_traffic: 6,
+        },
+    ];
 
-    $("body").empty();
-    $("body").append('<div id="subscriptions_table"></div>');
-    var streams_list = $('<div class="streams-list"></div>');
-    $("#subscriptions_table").append(streams_list);
+    for (const sub of sub_row_data) {
+        stream_data.add_sub(sub);
+    }
 
-    stream_data.add_sub("Denmark", denmark);
-    stream_data.add_sub("Poland", poland);
-    stream_data.add_sub("Pomona", pomona);
-    stream_data.add_sub("C++", cpp);
+    let populated_subs;
 
-    streams_list.append(elem_1);
-    streams_list.append(elem_2);
-    streams_list.append(elem_3);
+    global.stub_templates((fn, data) => {
+        assert.equal(fn, "subscriptions");
+        populated_subs = data.subscriptions;
+    });
+
+    subs.populate_stream_settings_left_panel();
+
+    const sub_stubs = [];
+
+    for (const data of populated_subs) {
+        const sub_row = ".stream-row-" + data.elem;
+        sub_stubs.push(sub_row);
+
+        $(sub_row).attr("data-stream-id", data.stream_id);
+        $(sub_row).set_find_results(
+            '.sub-info-box [class$="-bar"] [class$="-count"]',
+            $(".tooltip"),
+        );
+        $(sub_row).detach = function () {
+            return sub_row;
+        };
+    }
+
+    let tooltip_called = false;
+    $(".tooltip").tooltip = function (obj) {
+        tooltip_called = true;
+        assert.deepEqual(obj, {
+            placement: "left",
+            animation: false,
+        });
+    };
+
+    $.stub_selector("#subscriptions_table .stream-row", sub_stubs);
+
+    const sub_table = $("#subscriptions_table .streams-list");
+    let sub_table_append = [];
+    sub_table.append = function (rows) {
+        sub_table_append.push(rows);
+    };
+
+    let ui_called = false;
+    ui.reset_scrollbar = function (elem) {
+        ui_called = true;
+        assert.equal(elem, $("#subscription_overlay .streams-list"));
+    };
 
     // Search with single keyword
     subs.filter_table({input: "Po", subscribed_only: false});
-    assert(elem_1.hasClass("notdisplayed"));
-    assert(!elem_2.hasClass("notdisplayed"));
-    assert(!elem_3.hasClass("notdisplayed"));
+    assert($(".stream-row-denmark").hasClass("notdisplayed"));
+    assert(!$(".stream-row-poland").hasClass("notdisplayed"));
+    assert(!$(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
+
+    // assert these once and call it done
+    assert(ui_called);
+    assert(scrolltop_called);
+    assert(tooltip_called);
+    assert.deepEqual(sub_table_append, [
+        ".stream-row-poland",
+        ".stream-row-pomona",
+        ".stream-row-cpp",
+        ".stream-row-zzyzx",
+        ".stream-row-denmark",
+    ]);
 
     // Search with multiple keywords
     subs.filter_table({input: "Denmark, Pol", subscribed_only: false});
-    assert(!elem_1.hasClass("notdisplayed"));
-    assert(!elem_2.hasClass("notdisplayed"));
-    assert(elem_3.hasClass("notdisplayed"));
+    assert(!$(".stream-row-denmark").hasClass("notdisplayed"));
+    assert(!$(".stream-row-poland").hasClass("notdisplayed"));
+    assert($(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
 
     subs.filter_table({input: "Den, Pol", subscribed_only: false});
-    assert(!elem_1.hasClass("notdisplayed"));
-    assert(!elem_2.hasClass("notdisplayed"));
-    assert(elem_3.hasClass("notdisplayed"));
+    assert(!$(".stream-row-denmark").hasClass("notdisplayed"));
+    assert(!$(".stream-row-poland").hasClass("notdisplayed"));
+    assert($(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
 
     // Search is case-insensitive
     subs.filter_table({input: "po", subscribed_only: false});
-    assert(elem_1.hasClass("notdisplayed"));
-    assert(!elem_2.hasClass("notdisplayed"));
-    assert(!elem_3.hasClass("notdisplayed"));
+    assert($(".stream-row-denmark").hasClass("notdisplayed"));
+    assert(!$(".stream-row-poland").hasClass("notdisplayed"));
+    assert(!$(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
 
     // Search handles unusual characters like C++
     subs.filter_table({input: "c++", subscribed_only: false});
-    assert(elem_1.hasClass("notdisplayed"));
-    assert(elem_2.hasClass("notdisplayed"));
-    assert(elem_3.hasClass("notdisplayed"));
-    assert(!elem_4.hasClass("notdisplayed"));
+    assert($(".stream-row-denmark").hasClass("notdisplayed"));
+    assert($(".stream-row-poland").hasClass("notdisplayed"));
+    assert($(".stream-row-pomona").hasClass("notdisplayed"));
+    assert(!$(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
 
     // Search subscribed streams only
     subs.filter_table({input: "d", subscribed_only: true});
-    assert(elem_1.hasClass("notdisplayed"));
-    assert(!elem_2.hasClass("notdisplayed"));
-    assert(elem_3.hasClass("notdisplayed"));
-
-    // data-temp-view condition
-    elem_1.attr("data-temp-view", "true");
-
-    subs.filter_table({input: "d", subscribed_only: true});
-    assert(!elem_1.hasClass("notdisplayed"));
-    assert(!elem_2.hasClass("notdisplayed"));
-    assert(elem_3.hasClass("notdisplayed"));
-
-    elem_1.attr("data-temp-view", "false");
-
-    subs.filter_table({input: "d", subscribed_only: true});
-    assert(elem_1.hasClass("notdisplayed"));
-    assert(!elem_2.hasClass("notdisplayed"));
-    assert(elem_3.hasClass("notdisplayed"));
-
-    elem_1.removeAttr("data-temp-view");
-
-    // active stream-row is not included in results
-    elem_1.addClass("active");
-    $("#subscriptions_table").append($('<div class="right"></div>'));
-    $(".right").append($('<div class="settings"></div>'));
-    $(".right").append($('<div class="nothing-selected"></div>').hide());
-
-    subs.filter_table({input: "d", subscribed_only: true});
-    assert(!elem_1.hasClass("active"));
-    assert.equal($(".right .settings").css("display"), "none");
-    assert.notEqual($(".right .nothing-selected").css("display"), "none");
+    assert($(".stream-row-denmark").hasClass("notdisplayed"));
+    assert(!$(".stream-row-poland").hasClass("notdisplayed"));
+    assert($(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
 
     // Search terms match stream description
     subs.filter_table({input: "Co", subscribed_only: false});
-    assert(!elem_1.hasClass("notdisplayed"));
-    assert(elem_2.hasClass("notdisplayed"));
-    assert(!elem_3.hasClass("notdisplayed"));
+    assert(!$(".stream-row-denmark").hasClass("notdisplayed"));
+    assert($(".stream-row-poland").hasClass("notdisplayed"));
+    assert(!$(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
+
+    // Search names AND descriptions
+    sub_table_append = [];
 
     subs.filter_table({input: "Mon", subscribed_only: false});
-    assert(elem_1.hasClass("notdisplayed"));
-    assert(!elem_2.hasClass("notdisplayed"));
-    assert(!elem_3.hasClass("notdisplayed"));
+    assert($(".stream-row-denmark").hasClass("notdisplayed"));
+    assert(!$(".stream-row-poland").hasClass("notdisplayed"));
+    assert(!$(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
+    assert.deepEqual(sub_table_append, [
+        ".stream-row-pomona",
+        ".stream-row-poland",
+        ".stream-row-cpp",
+        ".stream-row-zzyzx",
+        ".stream-row-denmark",
+    ]);
 
-    subs.filter_table({input: "p", subscribed_only: false});
-    assert.equal(subs.stream_name_match_stream_ids.length, 2);
-    assert.equal(subs.stream_description_match_stream_ids, 1);
-    assert.equal(subs.stream_name_match_stream_ids[0], 2);
-    assert.equal(subs.stream_name_match_stream_ids[1], 3);
-    assert.equal(subs.stream_description_match_stream_ids[0], 1);
+    // Explicitly order streams by name
+    sub_table_append = [];
+    subs.filter_table({input: "", subscribed_only: false, sort_order: "by-stream-name"});
+    assert.deepEqual(sub_table_append, [
+        ".stream-row-cpp",
+        ".stream-row-denmark",
+        ".stream-row-poland",
+        ".stream-row-pomona",
+        ".stream-row-zzyzx",
+    ]);
 
-    subs.filter_table({input: "d", subscribed_only: false});
-    assert.equal(subs.stream_name_match_stream_ids.length, 2);
-    assert.equal(subs.stream_description_match_stream_ids, 0);
-    assert.equal(subs.stream_name_match_stream_ids[0], 1);
-    assert.equal(subs.stream_name_match_stream_ids[1], 2);
-}());
+    // Order streams by subscriber count
+    sub_table_append = [];
+    subs.filter_table({input: "", subscribed_only: false, sort_order: "by-subscriber-count"});
+    assert.deepEqual(sub_table_append, [
+        ".stream-row-poland",
+        ".stream-row-cpp",
+        ".stream-row-zzyzx",
+        ".stream-row-denmark",
+        ".stream-row-pomona",
+    ]);
 
-(function test_sub_or_unsub() {
-    var denmark = {
-        subscribed: false,
-        name: 'Denmark',
-        stream_id: 1,
-        description: 'Copenhagen',
+    // Order streams by weekly traffic
+    sub_table_append = [];
+    subs.filter_table({input: "", subscribed_only: false, sort_order: "by-weekly-traffic"});
+    assert.deepEqual(sub_table_append, [
+        ".stream-row-poland",
+        ".stream-row-cpp",
+        ".stream-row-zzyzx",
+        ".stream-row-pomona",
+        ".stream-row-denmark",
+    ]);
+
+    // Showing subscribed streams only puts un-subscribed DOM elements last
+    sub_table_append = [];
+    subs.filter_table({input: "", subscribed_only: true, sort_order: "by-subscriber-count"});
+    assert.deepEqual(sub_table_append, [
+        ".stream-row-poland",
+        ".stream-row-cpp",
+        ".stream-row-zzyzx",
+        ".stream-row-pomona",
+        ".stream-row-denmark",
+    ]);
+
+    // active stream-row is not included in results
+    $(".stream-row-denmark").addClass("active");
+    $(".stream-row.active").hasClass = function (cls) {
+        assert.equal(cls, "notdisplayed");
+        return $(".stream-row-denmark").hasClass("active");
     };
-    stream_data.clear_subscriptions();
-    stream_data.add_sub("Denmark", denmark);
-
-    var post_params;
-
-    global.channel.post = function (params) {
-        post_params = params;
+    $(".stream-row.active").removeClass = function (cls) {
+        assert.equal(cls, "active");
+        $(".stream-row-denmark").removeClass("active");
     };
 
-    subs.sub_or_unsub(denmark);
-    assert.equal(post_params.url, '/json/users/me/subscriptions');
-    assert.deepEqual(post_params.data,
-        {subscriptions: '[{"name":"Denmark"}]'});
+    subs.filter_table({input: "d", subscribed_only: true});
+    assert(!$(".stream-row-denmark").hasClass("active"));
+    assert(!$(".right .settings").visible());
+    assert($(".nothing-selected").visible());
 
-    global.channel.post = undefined;
+    subs.filter_table({input: "d", subscribed_only: true});
+    assert($(".stream-row-denmark").hasClass("notdisplayed"));
+    assert(!$(".stream-row-poland").hasClass("notdisplayed"));
+    assert($(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
 
-    global.channel.del = function (params) {
-        post_params = params;
-    };
+    subs.filter_table({input: "d", subscribed_only: true});
+    assert($(".stream-row-denmark").hasClass("notdisplayed"));
+    assert(!$(".stream-row-poland").hasClass("notdisplayed"));
+    assert($(".stream-row-pomona").hasClass("notdisplayed"));
+    assert($(".stream-row-cpp").hasClass("notdisplayed"));
+    assert($(".stream-row-zzyzx").hasClass("notdisplayed"));
 
-    stream_data.get_sub_by_id(denmark.stream_id).subscribed = true;
-    subs.sub_or_unsub(denmark);
-    assert.equal(post_params.url, '/json/users/me/subscriptions');
-    assert.deepEqual(post_params.data,
-        {subscriptions: '["Denmark"]'});
-
-}());
-
+    // test selected row set to active
+    $(".stream-row[data-stream-id='1']").removeClass("active");
+    subs.filter_table({input: "", subscribed_only: false});
+    assert($(".stream-row[data-stream-id='1']").hasClass("active"));
+});

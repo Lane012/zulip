@@ -1,44 +1,49 @@
 {% extends "zerver/emails/compiled/email_base_default.html" %}
 
 {% block illustration %}
-<img src="{{ email_images_base_uri }}/email_logo.png"/>
+<img src="{{ email_images_base_uri }}/email_logo.png" alt=""/>
 {% endblock %}
 
 {% block content %}
-<p>Hi there,</p>
-
-<p>Welcome to Zulip!</p>
-<p>
-    Zulip is the team communication solution that combines the real-time
-    ease of chat with the threaded organization of email. At its core, Zulip
-    is about productivity&mdash;making communication fun and easy, while
-    avoiding the distracting and disorganized conversations of chatrooms.
-</p>
+<p>{{ _('Welcome to Zulip!') }}</p>
 
 <p>
-    We hope you love using Zulip as much as we do. Zulip works best when
-    it's always open, so we suggest pinning a browser tab or downloading
-    our <a href="https://zulipchat.com/apps">desktop and mobile apps</a>.
-    If you're new to Zulip's threading, we recommend starting with the
-    desktop or browser experience, and using mobile for notifications on the
-    go.
-    {% if is_realm_admin %}
-    If this is your first Zulip organization, we also recommend giving
-    our <a href="{{ organization_setup_advice_link }}">guide for new
-    admins</a> a spin.
+    {% if realm_creation %}
+        {% trans %}You've created the new Zulip organization <b>{{ realm_name }}</b>.{% endtrans %}
+    {% else %}
+        {% trans %}You've joined the Zulip organization <b>{{ realm_name }}</b>.{% endtrans %}
     {% endif %}
 </p>
 
 <p>
-    If you have any feedback, or want to see how we use Zulip for managing
-    the Zulip project itself, swing by
-    <a href="chat.zulip.org">chat.zulip.org</a> and say hi!
+    {{ _('Your account details:') }}
+    <li>{{ _('Organization URL:') }} {{ realm_uri }}<br></li>
+    {% if ldap %}
+        {% if ldap_username %}
+        <li>{{ _('Username:') }} {{ ldap_username }}<br></li>
+        {% else %}
+        <li>{{ _('Use your LDAP account to login') }}<br></li>
+        {% endif %}
+    {% else %}
+        <li>{{ _('Email:') }} {{ email }}<br></li>
+    {% endif %}
+    {% trans apps_page_link="https://zulip.com/apps" %}(you'll need these to sign in to the <a href="{{ apps_page_link }}">mobile and desktop</a> apps){% endtrans %}
 </p>
 
-<p>Cheers,<br/>Team Zulip</p>
+<p>
+    {% if is_realm_admin %}
+        {% trans %}Check out our <a href="{{ getting_started_link }}">guide for admins</a>, become a Zulip pro with a few <a href="{{ keyboard_shortcuts_link }}">keyboard shortcuts</a>, or <a href="{{ realm_uri }}">dive right in</a>!{% endtrans %}
+    {% else %}
+        {% trans %}<a href="{{ getting_started_link }}">Learn more</a> about Zulip, become a pro with a few <a href="{{ keyboard_shortcuts_link }}">keyboard shortcuts</a>, or <a href="{{ realm_uri }}">dive right in</a>!{% endtrans %}
+    {% endif %}
+</p>
 
 <p>
-    PS: Check us out on <a href="https://twitter.com/zulip">Twitter</a>
-    or star us on <a href="https://github.com/zulip/zulip">GitHub</a>!
+    {{ _("Cheers,") }}<br>
+    {{ _("Team Zulip") }}
+</p>
+
+<p>
+    {% trans %}PS: Follow us on <a href="https://twitter.com/zulip">Twitter</a>, star us on <a href="https://github.com/zulip/zulip">GitHub</a>, or chat with us live on the <a href="https://chat.zulip.org">Zulip community server</a>!{% endtrans %}
 </p>
 {% endblock %}

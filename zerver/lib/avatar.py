@@ -1,28 +1,30 @@
+import urllib
+from typing import Any, Dict, Optional
+
 from django.conf import settings
 
-if False:
-    from zerver.models import UserProfile
-
-from typing import Any, Dict, Optional, Text
-
-from zerver.lib.avatar_hash import gravatar_hash, user_avatar_path_from_ids
-from zerver.lib.upload import upload_backend, MEDIUM_AVATAR_SIZE
+from zerver.lib.avatar_hash import (
+    gravatar_hash,
+    user_avatar_content_hash,
+    user_avatar_path_from_ids,
+)
+from zerver.lib.upload import MEDIUM_AVATAR_SIZE, upload_backend
 from zerver.models import UserProfile
-import urllib
 
-def avatar_url(user_profile: UserProfile, medium: bool=False, client_gravatar: bool=False) -> Text:
+
+def avatar_url(user_profile: UserProfile, medium: bool=False, client_gravatar: bool=False) -> Optional[str]:
 
     return get_avatar_field(
         user_id=user_profile.id,
         realm_id=user_profile.realm_id,
-        email=user_profile.email,
+        email=user_profile.delivery_email,
         avatar_source=user_profile.avatar_source,
         avatar_version=user_profile.avatar_version,
         medium=medium,
         client_gravatar=client_gravatar,
     )
 
-def avatar_url_from_dict(userdict: Dict[str, Any], medium: bool=False) -> Text:
+def avatar_url_from_dict(userdict: Dict[str, Any], medium: bool=False) -> str:
     '''
     DEPRECATED: We should start using
                 get_avatar_field to populate users,
@@ -36,16 +38,16 @@ def avatar_url_from_dict(userdict: Dict[str, Any], medium: bool=False) -> Text:
         userdict['realm_id'],
         email=userdict['email'],
         medium=medium)
-    url += '&version=%d' % (userdict['avatar_version'],)
+    url += '&version={:d}'.format(userdict['avatar_version'])
     return url
 
 def get_avatar_field(user_id: int,
                      realm_id: int,
-                     email: Text,
-                     avatar_source: Text,
+                     email: str,
+                     avatar_source: str,
                      avatar_version: int,
                      medium: bool,
-                     client_gravatar: bool) -> Optional[Text]:
+                     client_gravatar: bool) -> Optional[str]:
     '''
     Most of the parameters to this function map to fields
     by the same name in UserProfile (avatar_source, realm_id,
@@ -85,33 +87,49 @@ def get_avatar_field(user_id: int,
         email=email,
         medium=medium,
     )
-    url += '&version=%d' % (avatar_version,)
+    url += f'&version={avatar_version:d}'
     return url
 
-def get_gravatar_url(email: Text, avatar_version: int, medium: bool=False) -> Text:
+def get_gravatar_url(email: str, avatar_version: int, medium: bool=False) -> str:
     url = _get_unversioned_gravatar_url(email, medium)
-    url += '&version=%d' % (avatar_version,)
+    url += f'&version={avatar_version:d}'
     return url
 
-def _get_unversioned_gravatar_url(email: Text, medium: bool) -> Text:
+def _get_unversioned_gravatar_url(email: str, medium: bool) -> str:
     if settings.ENABLE_GRAVATAR:
-        gravitar_query_suffix = "&s=%s" % (MEDIUM_AVATAR_SIZE,) if medium else ""
+        gravitar_query_suffix = f"&s={MEDIUM_AVATAR_SIZE}" if medium else ""
         hash_key = gravatar_hash(email)
-        return "https://secure.gravatar.com/avatar/%s?d=identicon%s" % (hash_key, gravitar_query_suffix)
+        return f"https://secure.gravatar.com/avatar/{hash_key}?d=identicon{gravitar_query_suffix}"
     return settings.DEFAULT_AVATAR_URI+'?x=x'
 
 def _get_unversioned_avatar_url(user_profile_id: int,
-                                avatar_source: Text,
+                                avatar_source: str,
                                 realm_id: int,
-                                email: Optional[Text]=None,
-                                medium: bool=False) -> Text:
+                                email: Optional[str]=None,
+                                medium: bool=False) -> str:
     if avatar_source == 'U':
         hash_key = user_avatar_path_from_ids(user_profile_id, realm_id)
         return upload_backend.get_avatar_url(hash_key, medium=medium)
     assert email is not None
     return _get_unversioned_gravatar_url(email, medium)
 
-def absolute_avatar_url(user_profile: UserProfile) -> Text:
-    """Absolute URLs are used to simplify logic for applications that
-    won't be served by browsers, such as rendering GCM notifications."""
-    return urllib.parse.urljoin(user_profile.realm.uri, avatar_url(user_profile))
+def absolute_avatar_url(user_profile: UserProfile) -> str:
+    """
+    Absolute URLs are used to simplify logic for applications that
+    won't be served by browsers, such as rendering GCM notifications.
+    """
+    avatar = avatar_url(user_profile)
+    # avatar_url can return None if client_gravatar=True, however here we use the default value of False
+    assert avatar is not None
+    return urllib.parse.urljoin(user_profile.realm.uri, avatar)
+
+def is_avatar_new(ldap_avatar: bytes, user_profile: UserProfile) -> bool:
+    new_avatar_hash = user_avatar_content_hash(ldap_avatar)
+
+    if user_profile.avatar_hash:
+        if user_profile.avatar_hash == new_avatar_hash:
+            # If an avatar exists and is the same as the new avatar,
+            # then, no need to change the avatar.
+            return False
+
+    return True

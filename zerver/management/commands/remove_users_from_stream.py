@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from django.core.management.base import CommandParser
@@ -6,6 +5,7 @@ from django.core.management.base import CommandParser
 from zerver.lib.actions import bulk_remove_subscriptions
 from zerver.lib.management import ZulipBaseCommand
 from zerver.models import get_stream
+
 
 class Command(ZulipBaseCommand):
     help = """Remove some or all users in a realm from a stream."""
@@ -27,12 +27,12 @@ class Command(ZulipBaseCommand):
         stream_name = options["stream"].strip()
         stream = get_stream(stream_name, realm)
 
-        result = bulk_remove_subscriptions(user_profiles, [stream])
+        result = bulk_remove_subscriptions(user_profiles, [stream], self.get_client(), acting_user=None)
         not_subscribed = result[1]
         not_subscribed_users = {tup[0] for tup in not_subscribed}
 
         for user_profile in user_profiles:
             if user_profile in not_subscribed_users:
-                print("%s was not subscribed" % (user_profile.email,))
+                print(f"{user_profile.delivery_email} was not subscribed")
             else:
-                print("Removed %s from %s" % (user_profile.email, stream_name))
+                print(f"Removed {user_profile.delivery_email} from {stream_name}")

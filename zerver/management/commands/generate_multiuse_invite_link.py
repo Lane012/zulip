@@ -1,11 +1,10 @@
-
 from argparse import ArgumentParser
-from typing import Any, List, Text
+from typing import Any, List
 
-from confirmation.models import Confirmation, create_confirmation_link
-from zerver.lib.actions import ensure_stream, do_create_multiuse_invite_link
+from zerver.lib.actions import do_create_multiuse_invite_link, ensure_stream
 from zerver.lib.management import ZulipBaseCommand
-from zerver.models import Stream
+from zerver.models import PreregistrationUser, Stream
+
 
 class Command(ZulipBaseCommand):
     help = "Generates invite link that can be used for inviting multiple users"
@@ -31,13 +30,14 @@ class Command(ZulipBaseCommand):
         realm = self.get_realm(options)
         assert realm is not None  # Should be ensured by parser
 
-        streams = []  # type: List[Stream]
+        streams: List[Stream] = []
         if options["streams"]:
-            stream_names = set([stream.strip() for stream in options["streams"].split(",")])
+            stream_names = {stream.strip() for stream in options["streams"].split(",")}
             for stream_name in set(stream_names):
-                stream = ensure_stream(realm, stream_name)
+                stream = ensure_stream(realm, stream_name, acting_user=None)
                 streams.append(stream)
 
         referred_by = self.get_user(options['referred_by'], realm)
-        invite_link = do_create_multiuse_invite_link(referred_by, streams)
-        print("You can use %s to invite as many number of people to the organization." % (invite_link,))
+        invite_as = PreregistrationUser.INVITE_AS['MEMBER']
+        invite_link = do_create_multiuse_invite_link(referred_by, invite_as, streams)
+        print(f"You can use {invite_link} to invite as many number of people to the organization.")

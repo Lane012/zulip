@@ -1,4 +1,3 @@
-
 import sys
 from argparse import ArgumentParser
 from typing import IO, Any
@@ -7,6 +6,7 @@ import ujson
 from django.core.management.base import BaseCommand
 
 from zerver.lib.queue import queue_json_publish
+
 
 def error(*args: Any) -> None:
     raise Exception('We cannot enqueue because settings.USING_RABBITMQ is False.')
@@ -33,7 +33,7 @@ You can use "-" to represent stdin.
         file_name = options['file_name']
 
         if file_name == '-':
-            f = sys.stdin  # type: IO[str]
+            f: IO[str] = sys.stdin
         else:
             f = open(file_name)
 
@@ -48,7 +48,7 @@ You can use "-" to represent stdin.
             except IndexError:
                 payload = line
 
-            print('Queueing to queue %s: %s' % (queue_name, payload))
+            print(f'Queueing to queue {queue_name}: {payload}')
 
             # Verify that payload is valid json.
             data = ujson.loads(payload)
