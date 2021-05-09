@@ -1,32 +1,37 @@
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {mock_cjs, mock_esm, set_global, zrequire} = require("../zjsunit/namespace");
+const {make_stub} = require("../zjsunit/stub");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+const $ = require("../zjsunit/zjquery");
+const {page_params} = require("../zjsunit/zpage_params");
+
 // These unit tests for static/js/message_list.js emphasize the model-ish
 // aspects of the MessageList class.  We have to stub out a few functions
 // related to views and events to get the tests working.
 
 const noop = function () {};
 
-set_global("Filter", noop);
-global.stub_out_jquery();
-set_global("document", null);
-set_global("current_msg_list", {});
-set_global("narrow_state", {});
-set_global("stream_data", {});
+mock_cjs("jquery", $);
+set_global("document", {
+    to_$() {
+        return {
+            trigger() {},
+        };
+    },
+});
 
-zrequire("FetchStatus", "js/fetch_status");
-zrequire("muting");
-zrequire("MessageListData", "js/message_list_data");
-zrequire("MessageListView", "js/message_list_view");
-const MessageList = zrequire("message_list").MessageList;
+const narrow_state = mock_esm("../../static/js/narrow_state");
+const stream_data = mock_esm("../../static/js/stream_data");
 
-function accept_all_filter() {
-    const filter = {
-        predicate: () => () => true,
-    };
+const {MessageList} = zrequire("message_list");
+const {Filter} = zrequire("filter");
 
-    return filter;
-}
-
-run_test("basics", () => {
-    const filter = accept_all_filter();
+run_test("basics", (override) => {
+    const filter = new Filter();
 
     const list = new MessageList({
         filter,
@@ -68,9 +73,9 @@ run_test("basics", () => {
 
     assert.deepEqual(list.all_messages(), messages);
 
-    global.$.Event = function (ev) {
+    override($, "Event", (ev) => {
         assert.equal(ev, "message_selected.zulip");
-    };
+    });
     list.select_id(50);
 
     assert.equal(list.selected_id(), 50);
@@ -111,7 +116,7 @@ run_test("basics", () => {
 
     list.view.clear_table = function () {};
 
-    list.remove_and_rerender([{id: 60}]);
+    list.remove_and_rerender([60]);
     const removed = list.all_messages().filter((msg) => msg.id !== 60);
     assert.deepEqual(list.all_messages(), removed);
 
@@ -172,43 +177,6 @@ run_test("message_range", () => {
     assert.deepEqual(list.message_range(-1, 40), [{id: 30}, {id: 40}]);
 });
 
-run_test("updates", () => {
-    const list = new MessageList({});
-    list.view.rerender_preserving_scrolltop = noop;
-
-    const messages = [
-        {
-            id: 1,
-            sender_id: 100,
-            sender_full_name: "tony",
-            stream_id: 32,
-            stream: "denmark",
-            small_avatar_url: "http://zulip.spork",
-        },
-        {
-            id: 2,
-            sender_id: 39,
-            sender_full_name: "jeff",
-            stream_id: 64,
-            stream: "russia",
-            small_avatar_url: "http://github.com",
-        },
-    ];
-
-    list.append(messages, true);
-    list.update_user_full_name(100, "Anthony");
-    assert.equal(list.get(1).sender_full_name, "Anthony");
-    assert.equal(list.get(2).sender_full_name, "jeff");
-
-    list.update_user_avatar(100, "http://zulip.org");
-    assert.equal(list.get(1).small_avatar_url, "http://zulip.org");
-    assert.equal(list.get(2).small_avatar_url, "http://github.com");
-
-    list.update_stream_name(64, "Finland");
-    assert.equal(list.get(2).stream, "Finland");
-    assert.equal(list.get(1).stream, "denmark");
-});
-
 run_test("nth_most_recent_id", () => {
     const list = new MessageList({});
     list.append([{id: 10}, {id: 20}, {id: 30}]);
@@ -257,7 +225,7 @@ run_test("last_sent_by_me", () => {
     ];
 
     list.append(items);
-    set_global("page_params", {user_id: 3});
+    page_params.user_id = 3;
     // Look for the last message where user_id == 3 (our ID)
     assert.equal(list.get_last_message_sent_by_me().id, 2);
 });
@@ -339,115 +307,89 @@ run_test("bookend", (override) => {
     list.view.clear_trailing_bookend = noop;
     list.narrowed = true;
 
-    override("narrow_state.stream", () => "IceCream");
+    override(narrow_state, "stream", () => "IceCream");
 
-    override("stream_data.is_subscribed", () => true);
+    let is_subscribed = true;
+    let invite_only = false;
 
-    global.with_stub((stub) => {
+    override(stream_data, "is_subscribed", () => is_subscribed);
+    override(stream_data, "get_sub", () => ({invite_only}));
+
+    {
+        const stub = make_stub();
         list.view.render_trailing_bookend = stub.f;
         list.update_trailing_bookend();
+        assert.equal(stub.num_calls, 1);
         const bookend = stub.get_args("content", "subscribed", "show_button");
         assert.equal(bookend.content, expected);
         assert.equal(bookend.subscribed, true);
         assert.equal(bookend.show_button, true);
-    });
+    }
 
     expected = "translated: You unsubscribed from stream IceCream";
     list.last_message_historical = false;
-    override("stream_data.is_subscribed", () => false);
 
-    override("stream_data.get_sub", () => ({invite_only: false}));
+    is_subscribed = false;
 
-    global.with_stub((stub) => {
+    {
+        const stub = make_stub();
         list.view.render_trailing_bookend = stub.f;
         list.update_trailing_bookend();
+        assert.equal(stub.num_calls, 1);
         const bookend = stub.get_args("content", "subscribed", "show_button");
         assert.equal(bookend.content, expected);
         assert.equal(bookend.subscribed, false);
         assert.equal(bookend.show_button, true);
-    });
+    }
 
     // Test when the stream is privates (invite only)
     expected = "translated: You unsubscribed from stream IceCream";
-    override("stream_data.is_subscribed", () => false);
 
-    override("stream_data.get_sub", () => ({invite_only: true}));
+    invite_only = true;
 
-    global.with_stub((stub) => {
+    {
+        const stub = make_stub();
         list.view.render_trailing_bookend = stub.f;
         list.update_trailing_bookend();
+        assert.equal(stub.num_calls, 1);
         const bookend = stub.get_args("content", "subscribed", "show_button");
         assert.equal(bookend.content, expected);
         assert.equal(bookend.subscribed, false);
         assert.equal(bookend.show_button, false);
-    });
+    }
 
     expected = "translated: You are not subscribed to stream IceCream";
     list.last_message_historical = true;
 
-    global.with_stub((stub) => {
+    {
+        const stub = make_stub();
         list.view.render_trailing_bookend = stub.f;
         list.update_trailing_bookend();
+        assert.equal(stub.num_calls, 1);
         const bookend = stub.get_args("content", "subscribed", "show_button");
         assert.equal(bookend.content, expected);
         assert.equal(bookend.subscribed, false);
         assert.equal(bookend.show_button, true);
-    });
-});
-
-run_test("unmuted_messages", (override) => {
-    const list = new MessageList({});
-
-    const muted_stream_id = 999;
-
-    const unmuted = [
-        {
-            id: 50,
-            stream_id: muted_stream_id,
-            mentioned: true, // overrides mute
-            topic: "whatever",
-        },
-        {
-            id: 60,
-            stream_id: 42,
-            mentioned: false,
-            topic: "whatever",
-        },
-    ];
-    const muted = [
-        {
-            id: 70,
-            stream_id: muted_stream_id,
-            mentioned: false,
-            topic: "whatever",
-        },
-    ];
-
-    override("muting.is_topic_muted", (stream_id) => stream_id === muted_stream_id);
-
-    // Make sure unmuted_message filters out the "muted" entry,
-    // which we mark as having a muted topic, and not mentioned.
-    const test_unmuted = list.unmuted_messages(unmuted.concat(muted));
-    assert.deepEqual(unmuted, test_unmuted);
+    }
 });
 
 run_test("add_remove_rerender", () => {
-    const filter = accept_all_filter();
-
-    const list = new MessageList({filter});
+    const filter = new Filter();
+    const list = new MessageList({
+        filter,
+    });
 
     const messages = [{id: 1}, {id: 2}, {id: 3}];
 
-    list.data.unmuted_messages = function (msgs) {
-        return msgs;
-    };
     list.add_messages(messages);
     assert.equal(list.num_items(), 3);
 
-    global.with_stub((stub) => {
+    {
+        const stub = make_stub();
         list.rerender = stub.f;
-        list.remove_and_rerender(messages);
+        const message_ids = messages.map((msg) => msg.id);
+        list.remove_and_rerender(message_ids);
         assert.equal(stub.num_calls, 1);
         assert.equal(list.num_items(), 0);
-    });
+    }
 });

@@ -4,22 +4,22 @@ This guide is for mentors who want to help create remote Zulip dev servers
 for hackathon, GCI, or sprint participants.
 
 The machines (droplets) have been generously provided by
-[Digital Ocean](https://www.digitalocean.com/) to help Zulip contributors
-get up and running as easily as possible. Thank you Digital Ocean!
+[DigitalOcean](https://www.digitalocean.com/) to help Zulip contributors
+get up and running as easily as possible. Thank you DigitalOcean!
 
-The `create.py` create uses the Digital Ocean API to quickly create new virtual
+The `create.py` create uses the DigitalOcean API to quickly create new virtual
 machines (droplets) with the Zulip dev server already configured.
 
-## Step 1: Join Zulip Digital Ocean team
+## Step 1: Join Zulip DigitalOcean team
 
-We have created a team on Digital Ocean for Zulip mentors. Ask Rishi or Tim
-to be added. You need access to the team so you can create your Digital Ocean
+We have created a team on DigitalOcean for Zulip mentors. Ask Rishi or Tim
+to be added. You need access to the team so you can create your DigitalOcean
 API token.
 
-## Step 2: Create your Digital Ocean API token
+## Step 2: Create your DigitalOcean API token
 
 Once you've been added to the Zulip team,
-[login](https://cloud.digitalocean.com/droplets) to the Digital Ocean control
+[log in](https://cloud.digitalocean.com/droplets) to the DigitalOcean control
 panel and [create your personal API token][do-create-api-token]. **Make sure
 you create your API token under the Zulip team.** (It should look something
 like [this][image-zulip-team]).
@@ -81,12 +81,12 @@ the user.
 In order for the script to work, the GitHub user must have:
 
 - forked the [zulip/zulip][zulip-zulip] repository, and
-- created an ssh key pair and added it to their GitHub account.
+- created an SSH key pair and added it to their GitHub account.
 
 (Share [this link][how-to-request] with students if they need to do these
 steps.)
 
-The script will stop if it can't find the user's fork or ssh keys.
+The script will stop if it can't find the user's fork or SSH keys.
 
 Once the droplet is created, you will see something similar to this message:
 
@@ -96,7 +96,7 @@ Your remote Zulip dev server has been created!
 - Connect to your server by running
   `ssh zulipdev@<username>.zulipdev.org` on the command line
   (Terminal for macOS and Linux, Bash for Git on Windows).
-- There is no password; your account is configured to use your ssh keys.
+- There is no password; your account is configured to use your SSH keys.
 - Once you log in, you should see `(zulip-py3-venv) ~$`.
 - To start the dev server, `cd zulip` and then run `./tools/run-dev.py`.
 - While the dev server is running, you can see the Zulip server in your browser
@@ -131,11 +131,11 @@ Rough steps:
 1. `tools/provision`
 1. `git clean -f`, in case things were added/removed from `.gitignore`.
 1. `tools/run-dev.py`, let it run to completion, and then Ctrl-C (to clear
-   out anything in the Rabbit MQ queue, load messages, etc).
+   out anything in the RabbitMQ queue, load messages, etc).
 1. `tools/run-dev.py`, and check that `base.zulipdev.org:9991` is up and running.
 1. `> ~/.bash_history && history -c && sudo shutdown -h now` to clear any command
    line history (To reduce chance of confusing new contributors in case you made a typo)
-   and shutdown the droplet.
+   and shut down the droplet.
 1. Go to the Images tab on DigitalOcean, and "Take a Snapshot".
 1. Wait for several minutes.
 1. Do something like `curl -X GET -H "Content-Type: application/json"
@@ -155,9 +155,9 @@ Rough steps:
 
 1. Get the `ssh` key for `base.zulipdev.org` from Tim, Vishnu or Rishi.
 1. Log in to the Zulip organization view, rather than via your personal account.
-1. Create a new droplet in Digital Ocean with 2GB RAM and `base.zulipdev.org` as the
+1. Create a new droplet in DigitalOcean with 2GB RAM and `base.zulipdev.org` as the
    SSH authentication key.
-1. Login to the droplet as root user. Make sure to point the SSH program to the private
+1. Log in to the droplet as root user. Make sure to point the SSH program to the private
    key of `base.zulipdev.org` during this step.
 1. Create a user called `zulipdev` and add it to the `sudo` group.
 1. Make sudo of `zulipdev` user passwordless by including
@@ -192,7 +192,7 @@ Rough steps:
 ## Remotely debugging a droplet
 
 To SSH into a droplet, first make sure you have a SSH key associated with your
-github account, then ask the student to run the following in their
+GitHub account, then ask the student to run the following in their
 VM:
 
 ```
@@ -209,4 +209,13 @@ They can remove your SSH keys by running:
 
 ```
 $ python3 ~/zulip/tools/droplets/add_mentor.py <your username> --remove
+```
+
+
+# Creating a production droplet
+
+`create.py` can also create a production droplet quickly for testing purposes.
+
+```
+$ python3 create.py <username> --production
 ```

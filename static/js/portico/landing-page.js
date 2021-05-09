@@ -1,6 +1,8 @@
-import * as google_analytics from "./google-analytics.js";
-import {detect_user_os} from "./tabbed-instructions.js";
-import render_tabs from "./team.js";
+import $ from "jquery";
+
+import * as google_analytics from "./google-analytics";
+import {detect_user_os} from "./tabbed-instructions";
+import render_tabs from "./team";
 
 export function path_parts() {
     return window.location.pathname.split("/").filter((chunk) => chunk !== "");
@@ -22,33 +24,13 @@ const hello_events = function () {
 };
 
 const apps_events = function () {
-    const ELECTRON_APP_VERSION = page_params.electron_app_version;
-    const ELECTRON_APP_URL_LINUX =
-        "https://github.com/zulip/zulip-desktop/releases/download/v" +
-        ELECTRON_APP_VERSION +
-        "/Zulip-" +
-        ELECTRON_APP_VERSION +
-        "-x86_64.AppImage";
-    const ELECTRON_APP_URL_MAC =
-        "https://github.com/zulip/zulip-desktop/releases/download/v" +
-        ELECTRON_APP_VERSION +
-        "/Zulip-" +
-        ELECTRON_APP_VERSION +
-        ".dmg";
-    const ELECTRON_APP_URL_WINDOWS =
-        "https://github.com/zulip/zulip-desktop/releases/download/v" +
-        ELECTRON_APP_VERSION +
-        "/Zulip-Web-Setup-" +
-        ELECTRON_APP_VERSION +
-        ".exe";
-
     const info = {
         windows: {
             image: "/static/images/landing-page/microsoft.png",
             alt: "Windows",
             description:
                 "Zulip for Windows is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
-            link: ELECTRON_APP_URL_WINDOWS,
+            download_link: "/apps/download/windows",
             show_instructions: true,
             install_guide: "/help/desktop-app-install-guide",
             app_type: "desktop",
@@ -58,7 +40,8 @@ const apps_events = function () {
             alt: "macOS",
             description:
                 "Zulip on macOS is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
-            link: ELECTRON_APP_URL_MAC,
+            download_link: "/apps/download/mac",
+            mac_arm64_link: "/apps/download/mac-arm64",
             show_instructions: true,
             install_guide: "/help/desktop-app-install-guide",
             app_type: "desktop",
@@ -68,7 +51,9 @@ const apps_events = function () {
             alt: "Android",
             description: "Zulip's native Android app makes it easy to keep up while on the go.",
             show_instructions: false,
-            link: "https://play.google.com/store/apps/details?id=com.zulipmobile",
+            play_store_link: "https://play.google.com/store/apps/details?id=com.zulipmobile",
+            download_link:
+                "https://github.com/zulip/zulip-mobile/releases/latest/download/app-release.apk",
             app_type: "mobile",
         },
         ios: {
@@ -76,7 +61,7 @@ const apps_events = function () {
             alt: "iOS",
             description: "Zulip's native iOS app makes it easy to keep up while on the go.",
             show_instructions: false,
-            link: "https://itunes.apple.com/us/app/zulip/id1203036395",
+            app_store_link: "https://itunes.apple.com/us/app/zulip/id1203036395",
             app_type: "mobile",
         },
         linux: {
@@ -84,7 +69,7 @@ const apps_events = function () {
             alt: "Linux",
             description:
                 "Zulip on the Linux desktop is even better than Zulip on the web, with a cleaner look, tray integration, native notifications, and support for multiple Zulip accounts.",
-            link: ELECTRON_APP_URL_LINUX,
+            download_link: "/apps/download/linux",
             show_instructions: true,
             install_guide: "/help/desktop-app-install-guide",
             app_type: "desktop",
@@ -97,11 +82,11 @@ const apps_events = function () {
         let result;
         const parts = path_parts();
 
-        Object.keys(info).forEach((version) => {
+        for (const version of Object.keys(info)) {
             if (parts.includes(version)) {
                 result = version;
             }
-        });
+        }
 
         result = result || detect_user_os();
         return result;
@@ -122,14 +107,17 @@ const apps_events = function () {
         const $download_android_apk = $("#download-android-apk");
         const $download_from_google_play_store = $(".download-from-google-play-store");
         const $download_from_apple_app_store = $(".download-from-apple-app-store");
+        const $download_mac_arm64 = $("#download-mac-arm64");
         const $desktop_download_link = $(".desktop-download-link");
         const version_info = info[version];
 
         $(".info .platform").text(version_info.alt);
         $(".info .description").text(version_info.description);
-        $(".info .desktop-download-link").attr("href", version_info.link);
-        $(".download-from-google-play-store").attr("href", version_info.link);
-        $(".download-from-apple-app-store").attr("href", version_info.link);
+        $desktop_download_link.attr("href", version_info.download_link);
+        $download_from_google_play_store.attr("href", version_info.play_store_link);
+        $download_from_apple_app_store.attr("href", version_info.app_store_link);
+        $download_android_apk.attr("href", version_info.download_link);
+        $download_mac_arm64.attr("href", version_info.mac_arm64_link);
         $(".image img").attr("src", version_info.image);
         $download_instructions.find("a").attr("href", version_info.install_guide);
 
@@ -140,6 +128,7 @@ const apps_events = function () {
         $download_android_apk.toggle(version === "android");
         $download_from_google_play_store.toggle(version === "android");
         $download_from_apple_app_store.toggle(version === "ios");
+        $download_mac_arm64.toggle(version === "mac");
     };
 
     $(window).on("popstate", () => {
@@ -173,7 +162,7 @@ const events = function () {
     // pop the last element to get the current section (eg. `features`).
     const location = window.location.pathname.replace(/\/#*$/, "").split(/\//).pop();
 
-    $("[data-on-page='" + location + "']").addClass("active");
+    $(`[data-on-page='${CSS.escape(location)}']`).addClass("active");
 
     $("body").on("click", (e) => {
         const $e = $(e.target);

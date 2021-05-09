@@ -1,4 +1,12 @@
-exports.send_message = function (request, on_success, error) {
+import * as blueslip from "./blueslip";
+import * as channel from "./channel";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as reload from "./reload";
+import * as reload_state from "./reload_state";
+import * as sent_messages from "./sent_messages";
+
+export function send_message(request, on_success, error) {
     channel.post({
         url: "/json/messages",
         data: request,
@@ -27,9 +35,9 @@ exports.send_message = function (request, on_success, error) {
             error(response);
         },
     });
-};
+}
 
-exports.reply_message = function (opts) {
+export function reply_message(opts) {
     // This code does an application-triggered reply to a message (as
     // opposed to the user themselves doing it).  Its only use case
     // for now is experimental widget-aware bots, so treat this as
@@ -80,7 +88,7 @@ exports.reply_message = function (opts) {
         reply.content = content;
         reply.topic = message.topic;
 
-        exports.send_message(reply, success, error);
+        send_message(reply, success, error);
         return;
     }
 
@@ -91,11 +99,9 @@ exports.reply_message = function (opts) {
         reply.to = JSON.stringify(pm_recipient.split(","));
         reply.content = content;
 
-        exports.send_message(reply, success, error);
+        send_message(reply, success, error);
         return;
     }
 
     blueslip.error("unknown message type: " + message.type);
-};
-
-window.transmit = exports;
+}

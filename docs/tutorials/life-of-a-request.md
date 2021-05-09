@@ -1,4 +1,4 @@
-# Life of a Request
+# Life of a request
 
 It can sometimes be confusing to figure out how to write a new feature,
 or debug an existing one. Let us try to follow a request through the
@@ -16,7 +16,7 @@ application will serve the request (or deciding to serve the request
 itself for static content).
 
 In development, `tools/run-dev.py` fills the role of nginx. Static files
-are in your git checkout under `static`, and are served unminified.
+are in your Git checkout under `static`, and are served unminified.
 
 ## Static files are [served directly][served-directly] by Nginx
 
@@ -37,7 +37,7 @@ location /static/ {
 }
 ```
 
-## Nginx routes other requests [between django and tornado][tornado-django]
+## Nginx routes other requests [between Django and Tornado][tornado-django]
 
 [tornado-django]: ../overview/architecture-overview.html?highlight=tornado#django-and-tornado
 
@@ -140,9 +140,9 @@ yields a response with this HTTP header:
 
 We can see this reflected in [zproject/urls.py](https://github.com/zulip/zulip/blob/master/zproject/urls.py):
 
-    path('users', 'zerver.lib.rest.rest_dispatch',
-        {'GET': 'zerver.views.users.get_members_backend',
-         'PUT': 'zerver.views.users.create_user_backend'}),
+    rest_path('users',
+              GET=get_members_backend,
+              PUT=create_user_backend),
 
 In this way, the API is partially self-documenting.
 
@@ -167,7 +167,7 @@ its url patterns (see
 [zerver/lib/rest.py](https://github.com/zulip/zulip/blob/master/zerver/lib/rest.py))
 so that the action called is `rest_dispatch`. This method will
 authenticate the user, either through a session token from a cookie,
-or from an `email:api-key` string given via HTTP Basic Auth for API
+or from an `email:api-key` string given via HTTP basic auth for API
 clients.
 
 It will then look up what HTTP verb was used (GET, POST, etc) to make
@@ -176,11 +176,11 @@ the request, and then figure out which view to show from that.
 In our example,
 
 ```
-{'GET': 'zerver.views.users.get_members_backend',
- 'PUT': 'zerver.views.users.create_user_backend'}
+GET=get_members_backend,
+PUT=create_user_backend
 ```
 
-is supplied as an argument to `rest_dispatch`, along with the
+are supplied as arguments to `rest_path`, along with the
 [HTTPRequest](https://docs.djangoproject.com/en/1.8/ref/request-response/).
 The request has the HTTP verb `PUT`, which `rest_dispatch` can use to
 find the correct view to show:

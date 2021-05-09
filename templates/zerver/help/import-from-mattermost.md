@@ -109,7 +109,7 @@ Replace `<username>` and `<server_ip>` with the appropriate values below.
         exported_emoji/ export.json
     ```
 
-3. Exit your shell on the Gitlab Omnibus server.
+3. Exit your shell on the GitLab Omnibus server.
 
     `exit`
 
@@ -149,10 +149,10 @@ the most common configuration, run the following commands, replacing
 cd /home/zulip
 tar -xzvf export.tar.gz
 cd /home/zulip/deployments/current
-supervisorctl stop all  # Stop the Zulip server
+./scripts/stop-server
 ./manage.py convert_mattermost_data /home/zulip/mattermost --output /home/zulip/converted_mattermost_data
 ./manage.py import "" /home/zulip/converted_mattermost_data/<team-name>
-./scripts/restart-server
+./scripts/start-server
 ```
 
 This could take several minutes to run, depending on how much data

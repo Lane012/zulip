@@ -20,7 +20,7 @@ BAD_HTML = """
         <link rel="stylesheet" href="style.css" />
     </head>
     <body>
-      <div><p>Hello<br>world!</p></div>
+      <div><p>Hello<br />world!</p></div>
         <p>Goodbye<!-- test -->world!</p>
         <table>
            <tr>
@@ -52,7 +52,7 @@ GOOD_HTML = """
         <link rel="stylesheet" href="style.css" />
     </head>
     <body>
-        <div><p>Hello<br>world!</p></div>
+        <div><p>Hello<br />world!</p></div>
         <p>Goodbye<!-- test -->world!</p>
         <table>
             <tr>
@@ -338,7 +338,7 @@ BAD_HTML13 = """
     {{#if this.is_realm_emoji}}
       <img src="{{this.url}}" class="emoji" />
     {{else}}
-      <br>
+      <br />
     {{/if}}
   {{/if}}
   <div>{{this.count}}</div>
@@ -353,7 +353,7 @@ GOOD_HTML13 = """
         {{#if this.is_realm_emoji}}
         <img src="{{this.url}}" class="emoji" />
         {{else}}
-        <br>
+        <br />
         {{/if}}
     {{/if}}
     <div>{{this.count}}</div>
@@ -468,9 +468,10 @@ GOOD_HTML17 = """
 </div>
 """
 
+
 class TestPrettyPrinter(unittest.TestCase):
     def compare(self, a: str, b: str) -> None:
-        self.assertEqual(a.split('\n'), b.split('\n'))
+        self.assertEqual(a.split("\n"), b.split("\n"))
 
     def test_pretty_print(self) -> None:
         self.compare(pretty_print_html(GOOD_HTML), GOOD_HTML)

@@ -11,7 +11,7 @@ The feature articles serve a few different purposes:
 * Feature discovery, for someone browsing the `/help` page, and looking at
   the set of titles.
 * Public documentation of our featureset, for someone googling "can zulip do .."
-* Canned responses to support questions; if someone emails a zulip admin
+* Canned responses to support questions; if someone emails a Zulip admin
   asking "how do I change my name", they can reply with a link to the doc.
 * Feature explanations for new Zulip users and admins, especially for
   organization settings.
@@ -23,7 +23,7 @@ in-product, so it's important to keep the docs up to date.
 ## Editing and testing
 
 The user documentation is available under `/help/` on any Zulip server;
-(e.g. <https://chat.zulip.org/help/> or `http://localhost:9991/help/` in
+(e.g. <https://zulip.com/help/> or `http://localhost:9991/help/` in
 the Zulip development environment). The user documentation is not hosted on
 ReadTheDocs, since Zulip supports running a server completely disconnected
 from the Internet, and we'd like the documentation to be available in that
@@ -39,9 +39,9 @@ form `/help/foo`; with special cases for `/help/` going to `index.md` and
 are usually linked from `static/images/help/`.
 
 This means that you can contribute to the Zulip user documentation by just
-adding to or editing the collection of markdown files under
+adding to or editing the collection of Markdown files under
 `templates/zerver/help`.  If you have the Zulip development environment
-setup, you simply need to reload your browser on
+set up, you simply need to reload your browser on
 `http://localhost:9991/help/foo` to see the latest version of `foo.md`
 rendered.
 
@@ -75,7 +75,7 @@ documentation. It's worth remembering that for most articles, almost 100% of
 the users of the feature will never read the article. Instructions for
 filling out forms, interacting with UI widgets (e.g. typeaheads),
 interacting with modals, etc. should never go in user documentation.
-In such cases you may be able to fix the problem by adding text in-app,
+In such cases, you may be able to fix the problem by adding text in-app,
 where the user will see it as they are interacting with the feature.
 
 ### User interface
@@ -100,7 +100,7 @@ your documentation to help improve its readability:
 
 * Since raw HTML is supported in Markdown, you can include arbitrary
 HTML/CSS in your documentation as needed.
-* Code blocks allow you to highlight syntax, similar to Zulip's own markdown.
+* Code blocks allow you to highlight syntax, similar to Zulip's own Markdown.
 * Anchor tags can be used to link to headers in other documents.
 * [Images](#images) of Zulip UI can be added to documentation.
 * Inline [icons](#icons) used to refer to features in the Zulip UI.
@@ -108,12 +108,12 @@ HTML/CSS in your documentation as needed.
 documentation.
 * You can create special highlight warning blocks using
 [tips and warnings](#tips-and-warnings).
-* You can create tabs using [markdown tab switcher](#tab-switcher).
+* You can create tabs using [Markdown tab switcher](#tab-switcher).
 
 ### Images
 
 Images and screenshots should be included in user documentation only
-if it will help guide the user in how to do something (e.g. if the
+if they will help guide the user in how to do something (e.g. if the
 image will make it much clearer which element on the page the user
 should interact with).  For instance, an image of an element should
 not be included if the element the user needs to interact with is the
@@ -230,18 +230,18 @@ All tips/warnings should appear inside tip/warning blocks. There
 should be only one tip/warning inside each block, and they usually
 should be formatted as a continuation of a numbered step.
 
-###  Tab Switcher
+###  Tab switcher
 
-Our markdown processor supports easily creating a tab switcher widget
+Our Markdown processor supports easily creating a tab switcher widget
 design to easily show the instructions for different
 [platforms](https://zulip.com/help/logging-out) in user docs,
 languages in API docs, etc.  To create a tab switcher, write:
 
     {start_tabs}
     {tab|desktop-web}
-    # First Tab's content
+    # First tab's content
     {tab|ios}
-    # Second Tab's content
+    # Second tab's content
     {tab|android}
     # Third tab's content
     {end_tabs}
@@ -250,7 +250,7 @@ The tab identifiers (e.g. `desktop-web` above) and their mappings to
 the tabs' labels are declared in
 [zerver/lib/markdown/tabbed_sections.py][tabbed-sections-code].
 
-[tabbed-sections-code]: https://github.com/zulip/zulip/blob/master/zerver/lib/markdown/tabbed_sections.py#L37
+[tabbed-sections-code]: https://github.com/zulip/zulip/blob/master/zerver/lib/markdown/tabbed_sections.py
 
 This widget can also be used just to create a nice box around a set of
 instructions

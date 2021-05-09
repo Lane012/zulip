@@ -1,4 +1,5 @@
 import re
+import urllib
 from typing import Optional
 
 from django.conf import settings
@@ -24,31 +25,55 @@ def get_subdomain(request: HttpRequest) -> str:
     host = request.get_host().lower()
     return get_subdomain_from_hostname(host)
 
+
 def get_subdomain_from_hostname(host: str) -> str:
-    m = re.search(fr'\.{settings.EXTERNAL_HOST}(:\d+)?$',
-                  host)
+    m = re.search(fr"\.{settings.EXTERNAL_HOST}(:\d+)?$", host)
     if m:
-        subdomain = host[:m.start()]
+        subdomain = host[: m.start()]
         if subdomain in settings.ROOT_SUBDOMAIN_ALIASES:
             return Realm.SUBDOMAIN_FOR_ROOT_DOMAIN
         return subdomain
 
     for subdomain, realm_host in settings.REALM_HOSTS.items():
-        if re.search(fr'^{realm_host}(:\d+)?$',
-                     host):
+        if re.search(fr"^{realm_host}(:\d+)?$", host):
             return subdomain
 
     return Realm.SUBDOMAIN_FOR_ROOT_DOMAIN
 
+
 def is_subdomain_root_or_alias(request: HttpRequest) -> bool:
     return get_subdomain(request) == Realm.SUBDOMAIN_FOR_ROOT_DOMAIN
+
 
 def user_matches_subdomain(realm_subdomain: Optional[str], user_profile: UserProfile) -> bool:
     if realm_subdomain is None:
         return True  # nocoverage # This state may no longer be possible.
     return user_profile.realm.subdomain == realm_subdomain
 
+
 def is_root_domain_available() -> bool:
     if settings.ROOT_DOMAIN_LANDING_PAGE:
         return False
     return not Realm.objects.filter(string_id=Realm.SUBDOMAIN_FOR_ROOT_DOMAIN).exists()
+
+
+def is_static_or_current_realm_url(url: str, realm: Realm) -> bool:
+    split_url = urllib.parse.urlsplit(url)
+    split_static_url = urllib.parse.urlsplit(settings.STATIC_URL)
+
+    # The netloc check here is important to correctness if STATIC_URL
+    # does not contain a `/`; see the tests for why.
+    if split_url.netloc == split_static_url.netloc and url.startswith(settings.STATIC_URL):
+        return True
+
+    # HTTPS access to this Zulip organization's domain; our existing
+    # HTTPS protects this request, and there's no privacy benefit to
+    # using camo in front of the Zulip server itself.
+    if split_url.netloc == realm.host and f"{split_url.scheme}://" == settings.EXTERNAL_URI_SCHEME:
+        return True
+
+    # Relative URLs will be processed by the browser the same way as the above.
+    if split_url.netloc == "" and split_url.scheme == "":
+        return True
+
+    return False

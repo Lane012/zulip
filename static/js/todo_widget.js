@@ -1,7 +1,12 @@
-const render_widgets_todo_widget = require("../templates/widgets/todo_widget.hbs");
-const render_widgets_todo_widget_tasks = require("../templates/widgets/todo_widget_tasks.hbs");
+import $ from "jquery";
 
-class TaskData {
+import render_widgets_todo_widget from "../templates/widgets/todo_widget.hbs";
+import render_widgets_todo_widget_tasks from "../templates/widgets/todo_widget_tasks.hbs";
+
+import * as blueslip from "./blueslip";
+import {$t} from "./i18n";
+
+export class TaskData {
     task_map = new Map();
 
     get_new_index() {
@@ -61,7 +66,7 @@ class TaskData {
                 if (!this.name_in_use(task)) {
                     return event;
                 }
-                return;
+                return undefined;
             },
 
             inbound: (sender_id, data) => {
@@ -118,9 +123,8 @@ class TaskData {
         }
     }
 }
-exports.TaskData = TaskData;
 
-exports.activate = function (opts) {
+export function activate(opts) {
     const elem = opts.elem;
     const callback = opts.callback;
 
@@ -145,7 +149,7 @@ exports.activate = function (opts) {
 
             const task_exists = task_data.name_in_use(task);
             if (task_exists) {
-                elem.find(".widget-error").text(i18n.t("Task already exists"));
+                elem.find(".widget-error").text($t({defaultMessage: "Task already exists"}));
                 return;
             }
 
@@ -179,6 +183,4 @@ exports.activate = function (opts) {
 
     render();
     render_results();
-};
-
-window.todo_widget = exports;
+}

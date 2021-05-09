@@ -1,4 +1,14 @@
-const util = require("./util");
+import Handlebars from "handlebars/runtime";
+import _ from "lodash";
+
+import {$t} from "./i18n";
+import * as message_parser from "./message_parser";
+import * as message_store from "./message_store";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as stream_data from "./stream_data";
+import * as unread from "./unread";
+import * as util from "./util";
 
 function zephyr_stream_name_match(message, operand) {
     // Zephyr users expect narrowing to "social" to also show messages to /^(un)*social(.d)*$/
@@ -10,7 +20,7 @@ function zephyr_stream_name_match(message, operand) {
         base_stream_name = m[1];
     }
     const related_regexp = new RegExp(
-        /^(un)*/.source + util.escape_regexp(base_stream_name) + /(\.d)*$/.source,
+        /^(un)*/.source + _.escapeRegExp(base_stream_name) + /(\.d)*$/.source,
         "i",
     );
     return related_regexp.test(message.stream);
@@ -34,7 +44,7 @@ function zephyr_topic_name_match(message, operand) {
         related_regexp = /^(|personal|\(instance ""\))(\.d)*$/i;
     } else {
         related_regexp = new RegExp(
-            /^/.source + util.escape_regexp(base_topic) + /(\.d)*$/.source,
+            /^/.source + _.escapeRegExp(base_topic) + /(\.d)*$/.source,
             "i",
         );
     }
@@ -60,11 +70,11 @@ function message_matches_search_term(message, operator, operand) {
     switch (operator) {
         case "has":
             if (operand === "image") {
-                return message_util.message_has_image(message);
+                return message_parser.message_has_image(message);
             } else if (operand === "link") {
-                return message_util.message_has_link(message);
+                return message_parser.message_has_link(message);
             } else if (operand === "attachment") {
-                return message_util.message_has_attachment(message);
+                return message_parser.message_has_attachment(message);
             }
             return false; // has:something_else returns false
         case "is":
@@ -79,7 +89,7 @@ function message_matches_search_term(message, operator, operand) {
             } else if (operand === "unread") {
                 return unread.message_unread(message);
             }
-            return true; // is:whatever returns true
+            return false; // is:whatever returns false
 
         case "in":
             if (operand === "home") {
@@ -87,7 +97,7 @@ function message_matches_search_term(message, operator, operand) {
             } else if (operand === "all") {
                 return true;
             }
-            return true; // in:whatever returns true
+            return false; // in:whatever returns false
 
         case "near":
             // this is all handled server side
@@ -168,7 +178,7 @@ function message_matches_search_term(message, operator, operand) {
     return true; // unknown operators return true (effectively ignored)
 }
 
-class Filter {
+export class Filter {
     constructor(operators) {
         if (operators === undefined) {
             this._operators = [];
@@ -194,17 +204,9 @@ class Filter {
         return operator;
     }
 
-    static canonicalize_term(opts) {
-        let negated = opts.negated;
-        let operator = opts.operator;
-        let operand = opts.operand;
-
-        // Make negated be explicitly false for both clarity and
+    static canonicalize_term({negated = false, operator, operand}) {
+        // Make negated explicitly default to false for both clarity and
         // simplifying deepEqual checks in the tests.
-        if (!negated) {
-            negated = false;
-        }
-
         operator = Filter.canonicalize_operator(operator);
 
         switch (operator) {
@@ -237,7 +239,7 @@ class Filter {
                 operand = operand
                     .toString()
                     .toLowerCase()
-                    .replace(/[\u201c\u201d]/g, '"');
+                    .replace(/[\u201C\u201D]/g, '"');
                 break;
             default:
                 operand = operand.toString().toLowerCase();
@@ -380,10 +382,9 @@ class Filter {
     }
 
     operands(operator) {
-        return _.chain(this._operators)
+        return this._operators
             .filter((elem) => !elem.negated && elem.operator === operator)
-            .map((elem) => elem.operand)
-            .value();
+            .map((elem) => elem.operand);
     }
 
     has_negated_operand(operator, operand) {
@@ -409,6 +410,10 @@ class Filter {
 
     is_search() {
         return this.has_operator("search");
+    }
+
+    is_non_huddle_pm() {
+        return this.has_operator("pm-with") && this.operands("pm-with")[0].split(",").length === 1;
     }
 
     calc_can_mark_messages_read() {
@@ -578,6 +583,8 @@ class Filter {
                 return "at";
             case "pm-with":
                 return "envelope";
+            default:
+                return undefined;
         }
     }
 
@@ -589,29 +596,29 @@ class Filter {
             (term_types.length === 2 && _.isEqual(term_types, ["stream", "topic"]))
         ) {
             if (!this._sub) {
-                return i18n.t("Unknown stream");
+                return $t({defaultMessage: "Unknown stream"});
             }
             return this._sub.name;
         }
         if (term_types.length === 1 || (term_types.length === 2 && term_types[1] === "search")) {
             switch (term_types[0]) {
                 case "in-home":
-                    return i18n.t("All messages");
+                    return $t({defaultMessage: "All messages"});
                 case "in-all":
-                    return i18n.t("All messages including muted streams");
+                    return $t({defaultMessage: "All messages including muted streams"});
                 case "streams-public":
-                    return i18n.t("Public stream messages in organization");
+                    return $t({defaultMessage: "Public stream messages in organization"});
                 case "stream":
                     if (!this._sub) {
-                        return i18n.t("Unknown stream");
+                        return $t({defaultMessage: "Unknown stream"});
                     }
                     return this._sub.name;
                 case "is-starred":
-                    return i18n.t("Starred messages");
+                    return $t({defaultMessage: "Starred messages"});
                 case "is-mentioned":
-                    return i18n.t("Mentions");
+                    return $t({defaultMessage: "Mentions"});
                 case "is-private":
-                    return i18n.t("Private messages");
+                    return $t({defaultMessage: "Private messages"});
                 case "pm-with": {
                     const emails = this.operands("pm-with")[0].split(",");
                     const names = emails.map((email) => {
@@ -628,6 +635,8 @@ class Filter {
                 }
             }
         }
+        /* istanbul ignore next */
+        return undefined;
     }
 
     allow_use_first_unread_when_narrowing() {
@@ -670,7 +679,7 @@ class Filter {
         if (this.has_operator("has") && is_local_echo) {
             // The has: operators can be applied locally for messages
             // rendered by the backend; links, attachments, and images
-            // are not handled properly by the local echo markdown
+            // are not handled properly by the local echo Markdown
             // processor.
             return false;
         }
@@ -690,9 +699,7 @@ class Filter {
     }
 
     _fix_redundant_is_private(terms) {
-        const is_pm_with = (term) => Filter.term_type(term) === "pm-with";
-
-        if (!terms.some(is_pm_with)) {
+        if (!terms.some((term) => Filter.term_type(term) === "pm-with")) {
             return terms;
         }
 
@@ -727,7 +734,7 @@ class Filter {
 
     _build_sorted_term_types() {
         const terms = this._operators;
-        const term_types = terms.map(Filter.term_type);
+        const term_types = terms.map((term) => Filter.term_type(term));
         const sorted_terms = Filter.sorted_term_types(term_types);
         return sorted_terms;
     }
@@ -975,7 +982,3 @@ class Filter {
         return Handlebars.Utils.escapeExpression(Filter.describe_unescaped(operators));
     }
 }
-
-module.exports = Filter;
-
-window.Filter = Filter;

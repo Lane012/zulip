@@ -1,4 +1,11 @@
-const render_typing_notifications = require("../templates/typing_notifications.hbs");
+import $ from "jquery";
+
+import render_typing_notifications from "../templates/typing_notifications.hbs";
+
+import * as narrow_state from "./narrow_state";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as typing_data from "./typing_data";
 
 // See docs/subsystems/typing-indicators.md for details on typing indicators.
 
@@ -11,6 +18,10 @@ const render_typing_notifications = require("../templates/typing_notifications.h
 // How long before we assume a client has gone away
 // and expire its typing status
 const TYPING_STARTED_EXPIRY_PERIOD = 15000; // 15s
+
+// If number of users typing exceed this,
+// we render "Several people are typing..."
+const MAX_USERS_TO_DISPLAY_NAME = 3;
 
 // Note!: There are also timing constants in typing_status.js
 // that make typing indicators work.
@@ -32,7 +43,7 @@ function get_users_typing_for_narrow() {
         }
         const narrow_user_ids = narrow_user_ids_string
             .split(",")
-            .map((user_id_string) => parseInt(user_id_string, 10));
+            .map((user_id_string) => Number.parseInt(user_id_string, 10));
         const group = narrow_user_ids.concat([page_params.user_id]);
         return typing_data.get_group_typists(group);
     }
@@ -40,18 +51,25 @@ function get_users_typing_for_narrow() {
     return typing_data.get_all_typists();
 }
 
-exports.render_notifications_for_narrow = function () {
+export function render_notifications_for_narrow() {
     const user_ids = get_users_typing_for_narrow();
-    const users_typing = user_ids.map(people.get_by_user_id);
-    if (users_typing.length === 0) {
+    const users_typing = user_ids.map((user_id) => people.get_by_user_id(user_id));
+    const num_of_users_typing = users_typing.length;
+
+    if (num_of_users_typing === 0) {
         $("#typing_notifications").hide();
     } else {
-        $("#typing_notifications").html(render_typing_notifications({users: users_typing}));
+        $("#typing_notifications").html(
+            render_typing_notifications({
+                users: users_typing,
+                several_users: num_of_users_typing >= MAX_USERS_TO_DISPLAY_NAME,
+            }),
+        );
         $("#typing_notifications").show();
     }
-};
+}
 
-exports.hide_notification = function (event) {
+export function hide_notification(event) {
     const recipients = event.recipients.map((user) => user.user_id);
     recipients.sort();
 
@@ -60,11 +78,11 @@ exports.hide_notification = function (event) {
     const removed = typing_data.remove_typist(recipients, event.sender.user_id);
 
     if (removed) {
-        exports.render_notifications_for_narrow();
+        render_notifications_for_narrow();
     }
-};
+}
 
-exports.display_notification = function (event) {
+export function display_notification(event) {
     const recipients = event.recipients.map((user) => user.user_id);
     recipients.sort();
 
@@ -73,10 +91,9 @@ exports.display_notification = function (event) {
 
     typing_data.add_typist(recipients, sender_id);
 
-    exports.render_notifications_for_narrow();
+    render_notifications_for_narrow();
 
     typing_data.kickstart_inbound_timer(recipients, TYPING_STARTED_EXPIRY_PERIOD, () => {
-        exports.hide_notification(event);
+        hide_notification(event);
     });
-};
-window.typing_events = exports;
+}

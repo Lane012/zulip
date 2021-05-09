@@ -1,4 +1,4 @@
-# Testing Philosophy
+# Testing philosophy
 
 Zulip's automated tests are a huge part of what makes the project able
 to make progress.  This page records some of the key principles behind
@@ -27,7 +27,7 @@ For example, our [infrastructure for testing
 authentication](../development/authentication.md) allows using a mock
 LDAP database in both automated tests and the development environment,
 making it much easier now to refactor and improve this important part of
-the product than it was when you needed to setup an LDAP server and
+the product than it was when you needed to set up an LDAP server and
 populate it with some test data in order to test LDAP authentication.
 
 While not every part of Zulip has a great test suite, many components
@@ -66,9 +66,9 @@ these goals, but a few techniques are worth highlighting:
   outgoing HTTP requests are required to test something, we mock the
   responses with libraries like `responses`.
 * We carefully avoid the potential for contamination of data inside
-  services like postgres, redis, and memcached from different tests.
+  services like PostgreSQL, Redis, and memcached from different tests.
     * Every test case prepends a unique random prefix to all keys it
-      uses when accessing redis and memcached.
+      uses when accessing Redis and memcached.
     * Every test case runs inside a database transaction, which is
       aborted after the test completes.  Each test process interacts
       only with a fresh copy of a special template database used for
@@ -196,3 +196,49 @@ access to streams is not offering developers a way to get a Stream
 object in server code except as mediated through these security check
 functions.
 
+## Share test setup code
+
+It's very common to need to write tests for permission checking or
+error handling code. When doing this, it's best to share the test
+setup code between success and failure tests.
+
+For example, when testing a function that returns a boolean (as
+opposed to an exception with a specific error messages), it's often
+better to write a single test function, `test_foo`, that calls the
+function several times and verifies its output for each value of the
+test conditions.
+
+The benefit of this strategy is that you guarantee that the test setup
+only differs as intended: Done well, it helps avoid the otherwise
+extremely common failure mode where a `test_foo_failure` test passes
+for the wrong reason.  (E.g. the action fails not because of the
+permission check, but because a required HTTP parameter was only added
+to an adjacent `test_foo_success`).
+
+## What isn't tested probably doesn't work
+
+Even the very best programmers make mistakes constantly. Further, it's
+impossible to do large codebase refactors (which are important to
+having a readable, happy, correct codebase) if doing so has a high
+risk of creating subtle bugs.
+
+As a result, it's important to test every change. For business logic,
+the best option is usually a high-quality automated test, that is
+designed to be robust to future refactoring.
+
+But for some things, like documentation and CSS, the only way to test
+is to view the element in a browser and try things that might not
+work.  What to test will vary with what is likely to break.  For
+example, after a significant change to Zulip's Markdown documentation,
+if you haven't verified every special bit of formatting visually and
+clicked every new link, there's a good chance that you've introduced a
+bug.
+
+Manual testing not only catches bugs, but it also helps developers
+learn more about the system and think about the existing semantics of
+a feature they're working on.
+
+When submitting a pull request that affects UI, it's extremely helpful
+to show a screencast of your feature working, because that allows a
+reviewer to save time that would otherwise be spent manually testing
+your changes.

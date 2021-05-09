@@ -1,5 +1,5 @@
 ###################
-Zulip in Production
+Zulip in production
 ###################
 
 .. toctree::
@@ -15,10 +15,11 @@ Zulip in Production
    security-model
    authentication-methods
    export-and-import
-   postgres
+   postgresql
    upload-backends
    ssl-certificates
    email
    deployment
    email-gateway
-   zoom-configuration
+   video-calls
+   giphy-gif-integration

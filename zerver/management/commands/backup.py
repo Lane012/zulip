@@ -22,11 +22,9 @@ class Command(ZulipBaseCommand):
         return parser
 
     def add_arguments(self, parser: ArgumentParser) -> None:
-        parser.add_argument(
-            "--output", default=None, nargs="?", help="Filename of output tarball",
-        )
-        parser.add_argument("--skip-db", action='store_true', help="Skip database backup")
-        parser.add_argument("--skip-uploads", action='store_true', help="Skip uploads backup")
+        parser.add_argument("--output", help="Filename of output tarball")
+        parser.add_argument("--skip-db", action="store_true", help="Skip database backup")
+        parser.add_argument("--skip-uploads", action="store_true", help="Skip uploads backup")
 
     def handle(self, *args: Any, **options: Any) -> None:
         timestamp = timezone_now().strftime(TIMESTAMP_FORMAT)
@@ -66,15 +64,15 @@ class Command(ZulipBaseCommand):
                 members.append("/etc/zulip")
                 paths.append(("settings", "/etc/zulip"))
 
-            if not options['skip_db']:
+            if not options["skip_db"]:
                 pg_dump_command = [
                     "pg_dump",
                     "--format=directory",
-                    "--file", os.path.join(tmp, "zulip-backup", "database"),
-                    "--host", settings.DATABASES["default"]["HOST"],
-                    "--port", settings.DATABASES["default"]["PORT"],
-                    "--username", settings.DATABASES["default"]["USER"],
-                    "--dbname", settings.DATABASES["default"]["NAME"],
+                    "--file=" + os.path.join(tmp, "zulip-backup", "database"),
+                    "--host=" + settings.DATABASES["default"]["HOST"],
+                    "--port=" + settings.DATABASES["default"]["PORT"],
+                    "--username=" + settings.DATABASES["default"]["USER"],
+                    "--dbname=" + settings.DATABASES["default"]["NAME"],
                     "--no-password",
                 ]
                 os.environ["PGPASSWORD"] = settings.DATABASES["default"]["PASSWORD"]
@@ -85,8 +83,12 @@ class Command(ZulipBaseCommand):
                 )
                 members.append("zulip-backup/database")
 
-            if not options['skip_uploads'] and settings.LOCAL_UPLOADS_DIR is not None and os.path.exists(
-                os.path.join(settings.DEPLOY_ROOT, settings.LOCAL_UPLOADS_DIR),
+            if (
+                not options["skip_uploads"]
+                and settings.LOCAL_UPLOADS_DIR is not None
+                and os.path.exists(
+                    os.path.join(settings.DEPLOY_ROOT, settings.LOCAL_UPLOADS_DIR),
+                )
             ):
                 members.append(
                     os.path.join(settings.DEPLOY_ROOT, settings.LOCAL_UPLOADS_DIR),
@@ -101,7 +103,8 @@ class Command(ZulipBaseCommand):
             assert not any("|" in name or "|" in path for name, path in paths)
             transform_args = [
                 r"--transform=s|^{}(/.*)?$|zulip-backup/{}\1|x".format(
-                    re.escape(path), name.replace("\\", r"\\"),
+                    re.escape(path),
+                    name.replace("\\", r"\\"),
                 )
                 for name, path in paths
             ]
@@ -117,10 +120,15 @@ class Command(ZulipBaseCommand):
                     tarball_path = options["output"]
 
                 run(
-                    ["tar", "-C", tmp, "-cPzf", tarball_path]
-                    + transform_args
-                    + ["--"]
-                    + members,
+                    [
+                        "tar",
+                        f"--directory={tmp}",
+                        "-cPzf",
+                        tarball_path,
+                        *transform_args,
+                        "--",
+                        *members,
+                    ]
                 )
                 print(f"Backup tarball written to {tarball_path}")
             except BaseException:

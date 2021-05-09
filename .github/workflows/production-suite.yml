@@ -1,4 +1,4 @@
-name: Zulip Production Suite
+name: Zulip production suite
 
 on:
   push:
@@ -30,13 +30,13 @@ defaults:
 
 jobs:
   production_build:
-    name: Bionic Production Build
+    name: Bionic production build
     runs-on: ubuntu-latest
 
     # This docker image was created by a generated Dockerfile at:
     #   tools/ci/images/bionic/Dockerfile
     # Bionic ships with Python 3.6.
-    container: mepriyank/actions:bionic
+    container: zulip/ci:bionic
     steps:
       - name: Add required permissions
         run: |
@@ -73,7 +73,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: /srv/zulip-venv-cache
-          key: v1-venv-${{ github.job }}-${{ hashFiles('requirements/thumbor-dev.txt') }}-${{ hashFiles('requirements/dev.txt') }}
+          key: v1-venv-${{ github.job }}-${{ hashFiles('requirements/dev.txt') }}
           restore-keys: v1-venv-${{ github.job }}
 
       - name: Restore emoji cache
@@ -90,28 +90,47 @@ jobs:
           sudo sed -i '/^bind/s/bind.*/bind 0.0.0.0/' /etc/redis/redis.conf
 
       - name: Build production tarball
-        run: mispipe "./tools/ci/production-build 2>&1" ts
+        run: ./tools/ci/production-build
 
       - name: Upload production build artifacts for install jobs
         uses: actions/upload-artifact@v2
         with:
           name: production-tarball
           path: /tmp/production-build
+          retention-days: 14
+
+      - name: Report status
+        if: failure()
+        env:
+          ZULIP_BOT_KEY: ${{ secrets.ZULIP_BOT_KEY }}
+        run: tools/ci/send-failure-message
 
   production_install:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - docker_image: mepriyank/actions:bionic
-            name: Bionic Production Install
+          # Base images are built using `tools/ci/Dockerfile.template`.
+          # The comments at the top explain how to build and upload these images.
+          - docker_image: zulip/ci:bionic
+            name: Bionic production install
             is_bionic: true
             os: bionic
 
-          - docker_image: mepriyank/actions:focal
-            name: Focal Production Install
+          - docker_image: zulip/ci:focal
+            name: Focal production install
             is_focal: true
             os: focal
+
+          - docker_image: zulip/ci:buster
+            name: Buster production install
+            is_buster: true
+            os: buster
+
+          - docker_image: zulip/ci:bullseye
+            name: Bullseye production install
+            is_bullseye: true
+            os: bullseye
 
     name: ${{ matrix.name  }}
     container: ${{ matrix.docker_image }}
@@ -141,6 +160,7 @@ jobs:
           chmod +x /tmp/production-upgrade-pg
           chmod +x /tmp/production-install
           chmod +x /tmp/production-verify
+          chmod +x /tmp/send-failure-message
 
       - name: Create cache directories
         run: |
@@ -152,7 +172,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: /srv/zulip-npm-cache
-          key: v1-yarn-deps-${{ matrix.os }}-${{ hashFiles('package.json') }}-${{ hashFiles('yarn.lock') }}
+          key: v1-yarn-deps-${{ matrix.os }}-${{ hashFiles('/tmp/package.json') }}-${{ hashFiles('/tmp/yarn.lock') }}
           restore-keys: v1-yarn-deps-${{ matrix.os }}
 
       - name: Do Bionic hack
@@ -163,20 +183,26 @@ jobs:
           sudo sed -i '/^bind/s/bind.*/bind 0.0.0.0/' /etc/redis/redis.conf
 
       - name: Production extract tarball
-        run: mispipe "/tmp/production-extract-tarball 2>&1" ts
+        run: /tmp/production-extract-tarball
 
       - name: Install production
         run: |
           sudo service rabbitmq-server restart
-          sudo mispipe "/tmp/production-install 2>&1" ts
+          sudo /tmp/production-install
 
       - name: Verify install
-        run: sudo mispipe "/tmp/production-verify 2>&1" ts
+        run: sudo /tmp/production-verify
 
       - name: Upgrade postgresql
         if: ${{ matrix.is_bionic }}
-        run: sudo mispipe "/tmp/production-upgrade-pg 2>&1" ts
+        run: sudo /tmp/production-upgrade-pg
 
       - name: Verify install after upgrading postgresql
         if: ${{ matrix.is_bionic }}
-        run: sudo mispipe "/tmp/production-verify 2>&1" ts
+        run: sudo /tmp/production-verify
+
+      - name: Report status
+        if: failure()
+        env:
+          ZULIP_BOT_KEY: ${{ secrets.ZULIP_BOT_KEY }}
+        run: /tmp/send-failure-message

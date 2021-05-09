@@ -1,3 +1,5 @@
+import {$t} from "./i18n";
+
 const default_max_file_size = 5;
 
 const supported_types = ["image/jpeg", "image/png", "image/gif", "image/tiff"];
@@ -10,12 +12,17 @@ function is_image_format(file) {
     return supported_types.includes(type);
 }
 
-exports.build_widget = function (
-    get_file_input, // function returns a jQuery file input object
-    file_name_field, // jQuery object to show file name
-    input_error, // jQuery object for error text
-    clear_button, // jQuery button to clear last upload choice
-    upload_button, // jQuery button to open file dialog
+export function build_widget(
+    // function returns a jQuery file input object
+    get_file_input,
+    // jQuery object to show file name
+    file_name_field,
+    // jQuery object for error text
+    input_error,
+    // jQuery button to clear last upload choice
+    clear_button,
+    // jQuery button to open file dialog
+    upload_button,
     preview_text = null,
     preview_image = null,
     max_file_upload_size,
@@ -69,21 +76,22 @@ exports.build_widget = function (
             const file = e.target.files[0];
             if (file.size > max_file_upload_size * 1024 * 1024) {
                 input_error.text(
-                    i18n.t("File size must be < __max_file_size__Mb.", {
-                        max_file_size: max_file_upload_size,
-                    }),
+                    $t(
+                        {defaultMessage: "File size must be at most {max_file_size} MiB."},
+                        {max_file_size: max_file_upload_size},
+                    ),
                 );
                 input_error.show();
                 clear();
             } else if (!is_image_format(file)) {
-                input_error.text(i18n.t("File type is not supported."));
+                input_error.text($t({defaultMessage: "File type is not supported."}));
                 input_error.show();
                 clear();
             } else {
                 accept(file);
             }
         } else {
-            input_error.text(i18n.t("Please just upload one file."));
+            input_error.text($t({defaultMessage: "Please just upload one file."}));
         }
     });
 
@@ -108,11 +116,15 @@ exports.build_widget = function (
         // so you can release handlers.
         close,
     };
-};
-exports.build_direct_upload_widget = function (
-    get_file_input, // function returns a jQuery file input object
-    input_error, // jQuery object for error text
-    upload_button, // jQuery button to open file dialog
+}
+
+export function build_direct_upload_widget(
+    // function returns a jQuery file input object
+    get_file_input,
+    // jQuery object for error text
+    input_error,
+    // jQuery button to open file dialog
+    upload_button,
     upload_function,
     max_file_upload_size,
 ) {
@@ -153,21 +165,22 @@ exports.build_direct_upload_widget = function (
             const file = e.target.files[0];
             if (file.size > max_file_upload_size * 1024 * 1024) {
                 input_error.text(
-                    i18n.t("File size must be < __max_file_size__Mb.", {
-                        max_file_size: max_file_upload_size,
-                    }),
+                    $t(
+                        {defaultMessage: "File size must be at most {max_file_size} MiB."},
+                        {max_file_size: max_file_upload_size},
+                    ),
                 );
                 input_error.show();
                 clear();
             } else if (!is_image_format(file)) {
-                input_error.text(i18n.t("File type is not supported."));
+                input_error.text($t({defaultMessage: "File type is not supported."}));
                 input_error.show();
                 clear();
             } else {
                 accept();
             }
         } else {
-            input_error.text(i18n.t("Please just upload one file."));
+            input_error.text($t({defaultMessage: "Please just upload one file."}));
         }
     });
 
@@ -175,6 +188,4 @@ exports.build_direct_upload_widget = function (
         get_file_input().trigger("click");
         e.preventDefault();
     });
-};
-
-window.upload_widget = exports;
+}

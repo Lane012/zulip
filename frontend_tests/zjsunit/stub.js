@@ -1,4 +1,6 @@
-const assert = require("assert").strict;
+"use strict";
+
+const {strict: assert} = require("assert");
 
 // Stubs don't do any magical modifications to your namespace.  They
 // just provide you a function that records what arguments get passed
@@ -28,17 +30,11 @@ exports.make_stub = function () {
     return self;
 };
 
-exports.with_stub = function (f) {
-    const stub = exports.make_stub();
-    f(stub);
-    assert.equal(stub.num_calls, 1);
-};
-
 (function test_ourselves() {
-    exports.with_stub((stub) => {
-        stub.f("blue", 42);
-        const args = stub.get_args("color", "n");
-        assert.equal(args.color, "blue");
-        assert.equal(args.n, 42);
-    });
+    const stub = exports.make_stub();
+    stub.f("blue", 42);
+    assert.equal(stub.num_calls, 1);
+    const args = stub.get_args("color", "n");
+    assert.equal(args.color, "blue");
+    assert.equal(args.n, 42);
 })();

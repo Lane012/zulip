@@ -9,7 +9,7 @@
 * [Add an emoji reaction](/api/add-reaction)
 * [Remove an emoji reaction](/api/remove-reaction)
 * [Render a message](/api/render-message)
-* [Get a message's raw markdown](/api/get-raw-message)
+* [Get a message's raw Markdown](/api/get-raw-message)
 * [Check messages match narrow](/api/check-narrow-matches)
 * [Get a message's edit history](/api/get-message-history)
 * [Update personal message flags](/api/update-message-flags)
@@ -26,7 +26,7 @@
 * [Get stream ID](/api/get-stream-id)
 * [Create a stream](/api/create-stream)
 * [Update a stream](/api/update-stream)
-* [Delete a stream](/api/delete-stream)
+* [Archive a stream](/api/archive-stream)
 * [Get topics in a stream](/api/get-stream-topics)
 * [Topic muting](/api/mute-topic)
 
@@ -35,27 +35,39 @@
 * [Get all users](/api/get-users)
 * [Get own user](/api/get-own-user)
 * [Get a user](/api/get-user)
+* [Get a user by email](/api/get-user-by-email)
 * [Update a user](/api/update-user)
 * [Create a user](/api/create-user)
 * [Deactivate a user](/api/deactivate-user)
 * [Reactivate a user](/api/reactivate-user)
+* [Deactivate own user](/api/deactivate-own-user)
 * [Set "typing" status](/api/set-typing-status)
 * [Get user presence](/api/get-user-presence)
 * [Get attachments](/api/get-attachments)
+* [Update display settings](/api/update-display-settings)
 * [Update notification settings](/api/update-notification-settings)
 * [Get user groups](/api/get-user-groups)
 * [Create a user group](/api/create-user-group)
 * [Update a user group](/api/update-user-group)
 * [Delete a user group](/api/remove-user-group)
+* [Update user group members](/api/update-user-group-members)
+* [Mute a user](/api/mute-user)
+* [Unmute a user](/api/unmute-user)
 
 #### Server & organizations
 
 * [Get server settings](/api/get-server-settings)
 * [Get linkifiers](/api/get-linkifiers)
 * [Add a linkifier](/api/add-linkifier)
+* [Update a linkifier](/api/update-linkifier)
 * [Remove a linkifier](/api/remove-linkifier)
+* [Add a playground](/api/add-playground)
+* [Remove a playground](/api/remove-playground)
 * [Get all custom emoji](/api/get-custom-emoji)
 * [Upload custom emoji](/api/upload-custom-emoji)
+* [Get all custom profile fields](/api/get-custom-profile-fields)
+* [Reorder custom profile fields](/api/reorder-custom-profile-fields)
+* [Create a custom profile field](/api/create-custom-profile-field)
 
 #### Real-time events
 
@@ -65,4 +77,6 @@
 * [Delete an event queue](/api/delete-queue)
 
 #### Specialty endpoints
-* [Fetch a development API key](/api/dev-fetch-api-key)
+
+* [Fetch an API key (production)](/api/fetch-api-key)
+* [Fetch an API key (development only)](/api/dev-fetch-api-key)

@@ -1,15 +1,24 @@
-const FetchStatus = zrequire("fetch_status");
-set_global("message_scroll", {
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+
+mock_esm("../../static/js/message_scroll", {
     hide_loading_older: () => {},
+
     show_loading_older: () => {},
     hide_loading_newer: () => {},
     show_loading_newer: () => {},
 });
 
-let fetch_status = FetchStatus();
+const {FetchStatus} = zrequire("fetch_status");
+
+let fetch_status = new FetchStatus();
 
 function reset() {
-    fetch_status = FetchStatus();
+    fetch_status = new FetchStatus();
 }
 
 function can_load_newer() {

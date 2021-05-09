@@ -2,15 +2,16 @@
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-import ujson
+import orjson
 from defusedxml.ElementTree import fromstring as xml_fromstring
 from django.http import HttpRequest, HttpResponse
-from django.utils.translation import ugettext as _
+from django.utils.translation import gettext as _
 
-from zerver.decorator import api_key_only_webhook_view
+from zerver.decorator import webhook_view
+from zerver.lib.exceptions import UnsupportedWebhookEventType
 from zerver.lib.request import has_request_variables
 from zerver.lib.response import json_error, json_success
-from zerver.lib.webhooks.common import UnexpectedWebhookEventType, check_send_webhook_message
+from zerver.lib.webhooks.common import check_send_webhook_message
 from zerver.models import UserProfile
 
 
@@ -26,11 +27,11 @@ def api_pivotal_webhook_v3(request: HttpRequest, user_profile: UserProfile) -> T
         except AttributeError:
             return ""
 
-    event_type = payload.find('event_type').text
-    description = payload.find('description').text
-    project_id = payload.find('project_id').text
-    story_id = get_text(['stories', 'story', 'id'])
-    # Ugh, the URL in the XML data is not a clickable url that works for the user
+    event_type = payload.find("event_type").text
+    description = payload.find("description").text
+    project_id = payload.find("project_id").text
+    story_id = get_text(["stories", "story", "id"])
+    # Ugh, the URL in the XML data is not a clickable URL that works for the user
     # so we try to build one that the user can actually click on
     url = f"https://www.pivotaltracker.com/s/projects/{project_id}/stories/{story_id}"
 
@@ -44,22 +45,23 @@ def api_pivotal_webhook_v3(request: HttpRequest, user_profile: UserProfile) -> T
         name = "Story changed"  # Failed for an unknown reason, show something
     more_info = f" [(view)]({url})."
 
-    if event_type == 'story_update':
+    if event_type == "story_update":
         subject = name
         content = description + more_info
-    elif event_type == 'note_create':
+    elif event_type == "note_create":
         subject = "Comment added"
         content = description + more_info
-    elif event_type == 'story_create':
-        issue_desc = get_text(['stories', 'story', 'description'])
-        issue_type = get_text(['stories', 'story', 'story_type'])
-        issue_status = get_text(['stories', 'story', 'current_state'])
-        estimate = get_text(['stories', 'story', 'estimate'])
-        if estimate != '':
+    elif event_type == "story_create":
+        issue_desc = get_text(["stories", "story", "description"])
+        issue_type = get_text(["stories", "story", "story_type"])
+        issue_status = get_text(["stories", "story", "current_state"])
+        estimate = get_text(["stories", "story", "estimate"])
+        if estimate != "":
             estimate = f" worth {estimate} story points"
         subject = name
         content = f"{description} ({issue_status} {issue_type}{estimate}):\n\n~~~ quote\n{issue_desc}\n~~~\n\n{more_info}"
     return subject, content
+
 
 UNSUPPORTED_EVENT_TYPES = [
     "task_create_activity",
@@ -72,8 +74,9 @@ UNSUPPORTED_EVENT_TYPES = [
     "epic_update_activity",
 ]
 
+
 def api_pivotal_webhook_v5(request: HttpRequest, user_profile: UserProfile) -> Tuple[str, str]:
-    payload = ujson.loads(request.body)
+    payload = orjson.loads(request.body)
 
     event_type = payload["kind"]
 
@@ -109,7 +112,8 @@ def api_pivotal_webhook_v5(request: HttpRequest, user_profile: UserProfile) -> T
 
             if "current_state" in old_values and "current_state" in new_values:
                 content += "* state changed from **{}** to **{}**\n".format(
-                    old_values["current_state"], new_values["current_state"])
+                    old_values["current_state"], new_values["current_state"]
+                )
             if "estimate" in old_values and "estimate" in new_values:
                 old_estimate = old_values.get("estimate", None)
                 if old_estimate is None:
@@ -120,7 +124,8 @@ def api_pivotal_webhook_v5(request: HttpRequest, user_profile: UserProfile) -> T
                 content += f"* estimate {estimate} **{new_estimate} points**\n"
             if "story_type" in old_values and "story_type" in new_values:
                 content += "* type changed from **{}** to **{}**\n".format(
-                    old_values["story_type"], new_values["story_type"])
+                    old_values["story_type"], new_values["story_type"]
+                )
 
             comment = extract_comment(change)
             if comment is not None:
@@ -130,7 +135,9 @@ def api_pivotal_webhook_v5(request: HttpRequest, user_profile: UserProfile) -> T
         for change in changes:
             comment = extract_comment(change)
             if comment is not None:
-                content += f"{performed_by} added a comment to {story_info}:\n~~~quote\n{comment}\n~~~"
+                content += (
+                    f"{performed_by} added a comment to {story_info}:\n~~~quote\n{comment}\n~~~"
+                )
     elif event_type == "story_create_activity":
         content += f"{performed_by} created {story_type}: {story_info}\n"
         for change in changes:
@@ -145,17 +152,19 @@ def api_pivotal_webhook_v5(request: HttpRequest, user_profile: UserProfile) -> T
             old_values = change.get("original_values", {})
             new_values = change["new_values"]
             if "current_state" in old_values and "current_state" in new_values:
-                content += " from **{}** to **{}**.".format(old_values["current_state"],
-                                                            new_values["current_state"])
+                content += " from **{}** to **{}**.".format(
+                    old_values["current_state"], new_values["current_state"]
+                )
     elif event_type in UNSUPPORTED_EVENT_TYPES:
         # Known but unsupported Pivotal event types
         pass
     else:
-        raise UnexpectedWebhookEventType('Pivotal Tracker', event_type)
+        raise UnsupportedWebhookEventType(event_type)
 
     return subject, content
 
-@api_key_only_webhook_view("Pivotal")
+
+@webhook_view("Pivotal")
 @has_request_variables
 def api_pivotal_webhook(request: HttpRequest, user_profile: UserProfile) -> HttpResponse:
     subject = content = None

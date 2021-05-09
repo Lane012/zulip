@@ -1,24 +1,32 @@
-set_global("$", global.make_zjquery());
+"use strict";
 
-zrequire("Filter", "js/filter");
-zrequire("unread_ui");
-zrequire("people");
+const {strict: assert} = require("assert");
 
-zrequire("top_left_corner");
+const {mock_cjs, mock_esm, set_global, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const $ = require("../zjsunit/zjquery");
 
-run_test("narrowing", () => {
+mock_cjs("jquery", $);
+mock_esm("../../static/js/resize", {
+    resize_stream_filters_container: () => {},
+});
+
+const {Filter} = zrequire("../js/filter");
+const people = zrequire("people");
+const pm_list = zrequire("pm_list");
+const top_left_corner = zrequire("top_left_corner");
+
+run_test("narrowing", (override) => {
     // activating narrow
 
     let pm_expanded;
     let pm_closed;
 
-    set_global("pm_list", {
-        close() {
-            pm_closed = true;
-        },
-        expand() {
-            pm_expanded = true;
-        },
+    override(pm_list, "close", () => {
+        pm_closed = true;
+    });
+    override(pm_list, "expand", () => {
+        pm_expanded = true;
     });
 
     assert(!pm_expanded);
@@ -76,15 +84,24 @@ run_test("narrowing", () => {
     assert(!$(".top_left_mentions").hasClass("active-filter"));
     assert(!$(".top_left_private_messages").hasClass("active-filter"));
     assert(!$(".top_left_starred_messages").hasClass("active-filter"));
+    assert(!$(".top_left_recent_topics").hasClass("active-filter"));
     assert(pm_closed);
+
+    set_global("setTimeout", (f) => {
+        f();
+    });
+    top_left_corner.narrow_to_recent_topics();
+    assert(!$(".top_left_all_messages").hasClass("active-filter"));
+    assert(!$(".top_left_mentions").hasClass("active-filter"));
+    assert(!$(".top_left_private_messages").hasClass("active-filter"));
+    assert(!$(".top_left_starred_messages").hasClass("active-filter"));
+    assert($(".top_left_recent_topics").hasClass("active-filter"));
 });
 
 run_test("update_count_in_dom", () => {
-    function make_elem(elem, count_selector, value_selector) {
+    function make_elem(elem, count_selector) {
         const count = $(count_selector);
-        const value = $(value_selector);
-        elem.set_find_results(".count", count);
-        count.set_find_results(".value", value);
+        elem.set_find_results(".unread_count", count);
         count.set_parent(elem);
 
         return elem;
@@ -95,24 +112,24 @@ run_test("update_count_in_dom", () => {
         home_unread_messages: 333,
     };
 
-    make_elem($(".top_left_mentions"), "<mentioned-count>", "<mentioned-value>");
+    make_elem($(".top_left_mentions"), "<mentioned-count>");
 
-    make_elem($(".top_left_all_messages"), "<home-count>", "<home-value>");
+    make_elem($(".top_left_all_messages"), "<home-count>");
 
-    make_elem($(".top_left_starred_messages"), "<starred-count>", "<starred-value>");
+    make_elem($(".top_left_starred_messages"), "<starred-count>");
 
     top_left_corner.update_dom_with_unread_counts(counts);
     top_left_corner.update_starred_count(444);
 
-    assert.equal($("<mentioned-value>").text(), "222");
-    assert.equal($("<home-value>").text(), "333");
-    assert.equal($("<starred-value>").text(), "444");
+    assert.equal($("<mentioned-count>").text(), "222");
+    assert.equal($("<home-count>").text(), "333");
+    assert.equal($("<starred-count>").text(), "444");
 
     counts.mentioned_message_count = 0;
     top_left_corner.update_dom_with_unread_counts(counts);
     top_left_corner.update_starred_count(0);
 
     assert(!$("<mentioned-count>").visible());
-    assert.equal($("<mentioned-value>").text(), "");
-    assert.equal($("<starred-value>").text(), "");
+    assert.equal($("<mentioned-count>").text(), "");
+    assert.equal($("<starred-count>").text(), "");
 });

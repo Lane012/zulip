@@ -1,6 +1,22 @@
-zrequire("typing_data");
+"use strict";
 
-run_test("basics", () => {
+const {strict: assert} = require("assert");
+
+const {set_global, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+
+const muting = zrequire("muting");
+const typing_data = zrequire("typing_data");
+
+function test(label, f) {
+    run_test(label, (override) => {
+        typing_data.clear_for_testing();
+        muting.set_muted_users([]);
+        f(override);
+    });
+}
+
+test("basics", () => {
     // The typing_data needs to be robust with lists of
     // user ids being in arbitrary sorting order and
     // possibly in string form instead of integer. So all
@@ -45,7 +61,21 @@ run_test("basics", () => {
     assert.deepEqual(typing_data.get_group_typists([20, 40]), [20]);
 });
 
-run_test("timers", () => {
+test("muted_typists_excluded", () => {
+    typing_data.add_typist([5, 10, 15], 5);
+    typing_data.add_typist([5, 10, 15], 10);
+
+    // Nobody is muted.
+    assert.deepEqual(typing_data.get_group_typists([5, 10, 15]), [5, 10]);
+    assert.deepEqual(typing_data.get_all_typists(), [5, 10]);
+
+    // Mute a user, and test that the get_* functions exclude that user.
+    muting.add_muted_user(10);
+    assert.deepEqual(typing_data.get_group_typists([5, 10, 15]), [5]);
+    assert.deepEqual(typing_data.get_all_typists(), [5]);
+});
+
+test("timers", () => {
     const events = {};
 
     const stub_timer_id = "timer_id_stub";
@@ -81,8 +111,8 @@ run_test("timers", () => {
         typing_data.clear_inbound_timer(stub_group);
     }
 
-    global.patch_builtin("setTimeout", set_timeout);
-    global.patch_builtin("clearTimeout", clear_timeout);
+    set_global("setTimeout", set_timeout);
+    set_global("clearTimeout", clear_timeout);
 
     // first time, we set
     kickstart();

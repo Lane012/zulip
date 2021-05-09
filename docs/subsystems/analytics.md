@@ -10,7 +10,7 @@ designed around the following goals:
 - Efficient to query so that we can display data in-app (e.g. on the streams
   page) with minimum impact on the overall performance of those pages.
 - Storage size smaller than the size of the main Message/UserMessage
-  database tables, so that we can store the data in the main postgres
+  database tables, so that we can store the data in the main PostgreSQL
   database rather than using a specialized database platform.
 
 There are a few important things you need to understand in order to
@@ -64,7 +64,7 @@ summed to rows in InstallationCount with totals for pairs of (end_time,
 client).
 
 Note: In most cases, we do not store rows with value 0. See
-[Performance Strategy](#performance-strategy) below.
+[Performance strategy](#performance-strategy) below.
 
 ## CountStats
 
@@ -89,7 +89,7 @@ it's easy to end up processing a huge amount of data inefficiently and
 needing a system like Hadoop to manage it. For the built-in analytics in
 Zulip, we've designed something lightweight and fast that can be available
 on any Zulip server without any extra dependencies through the carefully
-designed set of tables in Postgres.
+designed set of tables in PostgreSQL.
 
 This requires some care to avoid making the analytics tables larger than the
 rest of the Zulip database or adding a ton of computational load, but with
@@ -123,7 +123,7 @@ efficient:
   year, most of whose values are 0. A related note is to be cautious about
   adding queries that are typically non-0 instead of being typically 0.
 
-## Backend Testing
+## Backend testing
 
 There are a few types of automated tests that are important for this sort of
 system:
@@ -156,13 +156,13 @@ statistics, etc.). There is currently a reference implementation of a
 
 ## Analytics UI development and testing
 
-### Setup and Testing
+### Setup and testing
 
 The main testing approach for the /stats page UI is manual testing.
 For most UI testing, you can visit `/stats/realm/analytics` while
 logged in as Iago (this is the server administrator view of stats for
 a given realm).  The only piece that you can't test here is the "Me"
-buttons, which won't have any data.  For those, you can instead login
+buttons, which won't have any data.  For those, you can instead log in
 as the `shylock@analytics.ds` in the `analytics` realm and visit
 `/stats` there (which is only a bit more work).  Note that the
 `analytics` realm is a shell with no streams, so you'll only want to

@@ -1,3 +1,5 @@
+import $ from "jquery";
+
 function collapse_spoiler(spoiler) {
     const spoiler_height = spoiler.height();
 
@@ -33,7 +35,7 @@ function expand_spoiler(spoiler) {
     });
 }
 
-exports.hide_spoilers_in_notification = (content) => {
+export const hide_spoilers_in_notification = (content) => {
     content.find(".spoiler-block").each((i, elem) => {
         $(elem).find(".spoiler-content").remove();
         let text = $(elem).find(".spoiler-header").text().trim();
@@ -46,14 +48,14 @@ exports.hide_spoilers_in_notification = (content) => {
     return content;
 };
 
-exports.initialize = function () {
+export function initialize() {
     $("body").on("click", ".spoiler-header", function (e) {
         const button = $(this).children(".spoiler-button");
         const arrow = button.children(".spoiler-arrow");
         const spoiler_content = $(this).siblings(".spoiler-content");
         const target = $(e.target);
 
-        // Spoiler headers can contain markdown, including links.  We
+        // Spoiler headers can contain Markdown, including links.  We
         // return so that clicking such links will be be processed by
         // the browser rather than opening the header.
         if (target.closest("a").length > 0) {
@@ -88,6 +90,4 @@ exports.initialize = function () {
             expand_spoiler(spoiler_content);
         }
     });
-};
-
-window.spoilers = exports;
+}

@@ -13,11 +13,12 @@ user, or anything else. Make sure to read the
 before posting. The Zulip community is also governed by a
 [code of conduct](https://zulip.readthedocs.io/en/latest/code-of-conduct.html).
 
-You can subscribe to zulip-devel-announce@googlegroups.com or our
-[Twitter](https://twitter.com/zulip) account for a lower traffic (~1
-email/month) way to hear about things like mentorship opportunities with Google
-Code-in, in-person sprints at conferences, and other opportunities to
-contribute.
+You can subscribe to
+[zulip-devel-announce@googlegroups.com](https://groups.google.com/g/zulip-devel-announce)
+or our [Twitter](https://twitter.com/zulip) account for a very low
+traffic (<1 email/month) way to hear about things like mentorship
+opportunities with Google Summer of Code, in-person sprints at
+conferences, and other opportunities to contribute.
 
 ## Ways to contribute
 
@@ -44,6 +45,7 @@ don't require touching the codebase at all. We list a few of them below:
 * [Reporting issues](#reporting-issues), including both feature requests and
   bug reports.
 * [Giving feedback](#user-feedback) if you are evaluating or using Zulip.
+* [Sponsor Zulip](https://github.com/sponsors/zulip) through the GitHub sponsors program.
 * [Translating](https://zulip.readthedocs.io/en/latest/translating/translating.html)
   Zulip.
 * [Outreach](#zulip-outreach): Star us on GitHub, upvote us
@@ -272,7 +274,7 @@ important parts of the project. We hope you apply!
 ### Google Summer of Code
 
 The largest outreach program Zulip participates in is GSoC (14
-students in 2017; 11 in 2018; 17 in 2019).  While we don't control how
+students in 2017; 11 in 2018; 17 in 2019; 18 in 2020).  While we don't control how
 many slots Google allocates to Zulip, we hope to mentor a similar
 number of students in future summers.
 
@@ -296,10 +298,10 @@ same as with GSoC, and it has no separate application process; your
 GSoC application is your ZSoC application.  If we'd like to select you
 for ZSoC, we'll contact you when the GSoC results are announced.
 
-[gsoc-guide]: https://zulip.readthedocs.io/en/latest/overview/gsoc-ideas.html
+[gsoc-guide]: https://zulip.readthedocs.io/en/latest/contributing/gsoc-ideas.html
 [gsoc-faq]: https://developers.google.com/open-source/gsoc/faq
 
-## Zulip Outreach
+## Zulip outreach
 
 **Upvoting Zulip**. Upvotes and reviews make a big difference in the public
 perception of projects like Zulip. We've collected a few sites below

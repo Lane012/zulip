@@ -4,7 +4,8 @@
 
 import path from "path";
 
-import webpack, {Template} from "webpack";
+import type webpack from "webpack";
+import {Template} from "webpack";
 
 export default class DebugRequirePlugin {
     apply(compiler: webpack.Compiler): void {
@@ -46,7 +47,7 @@ export default class DebugRequirePlugin {
                     resolver.resolve(
                         {},
                         __dirname,
-                        "./debug-require.js",
+                        "./debug-require",
                         {},
                         (err?: Error, result?: string) => (err ? reject(err) : resolve(result)),
                     ),
@@ -86,7 +87,11 @@ export default class DebugRequirePlugin {
                         source,
                         `${requireFn}(${JSON.stringify(
                             debugRequireId,
-                        )}).initialize(${JSON.stringify(Object.fromEntries(ids), null, "\t")});`,
+                        )}).initialize(${JSON.stringify(
+                            Object.fromEntries(ids),
+                            null,
+                            "\t",
+                        )}, modules);`,
                     ]);
                 },
             );

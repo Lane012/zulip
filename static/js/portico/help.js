@@ -1,7 +1,10 @@
+import $ from "jquery";
 import SimpleBar from "simplebar";
 
-import * as google_analytics from "./google-analytics.js";
-import {activate_correct_tab} from "./tabbed-instructions.js";
+import * as common from "../common";
+
+import * as google_analytics from "./google-analytics";
+import {activate_correct_tab} from "./tabbed-instructions";
 
 function registerCodeSection($codeSection) {
     const $li = $codeSection.find("ul.nav li");
@@ -16,10 +19,17 @@ function registerCodeSection($codeSection) {
         $blocks.removeClass("active");
         $blocks.filter("[data-language=" + language + "]").addClass("active");
     });
+
+    $li.on("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.target.click();
+        }
+    });
 }
 
 function highlight_current_article() {
     $(".help .sidebar a").removeClass("highlighted");
+    $(".help .sidebar a").attr("tabindex", "0");
     const path = window.location.pathname;
 
     if (!path) {
@@ -27,16 +37,17 @@ function highlight_current_article() {
     }
 
     const hash = window.location.hash;
-    let article = $('.help .sidebar a[href="' + path + hash + '"]');
+    let article = $(`.help .sidebar a[href="${CSS.escape(path + hash)}"]`);
     if (!article.length) {
         // If there isn't an entry in the left sidebar that matches
-        // the full url+hash pair, instead highlight an entry in the
-        // left sidebar that just matches the url part.
-        article = $('.help .sidebar a[href="' + path + '"]');
+        // the full URL+hash pair, instead highlight an entry in the
+        // left sidebar that just matches the URL part.
+        article = $(`.help .sidebar a[href="${CSS.escape(path)}"]`);
     }
     // Highlight current article link and the heading of the same
     article.closest("ul").css("display", "block");
     article.addClass("highlighted");
+    article.attr("tabindex", "-1");
 }
 
 function render_code_sections() {
@@ -65,7 +76,7 @@ function scrollToHash(simplebar) {
     }
 }
 
-const html_map = new Map();
+const cache = new Map();
 const loading = {
     name: null,
 };
@@ -75,23 +86,26 @@ const markdownSB = new SimpleBar($(".markdown")[0]);
 const fetch_page = function (path, callback) {
     $.get(path, (res) => {
         const $html = $(res).find(".markdown .content");
+        const title = $(res).filter("title").text();
 
-        callback($html.html().trim());
+        callback({html: $html.html().trim(), title});
         render_code_sections();
     });
 };
 
-const update_page = function (html_map, path) {
-    if (html_map.has(path)) {
-        $(".markdown .content").html(html_map.get(path));
+const update_page = function (cache, path) {
+    if (cache.has(path)) {
+        $(".markdown .content").html(cache.get(path).html);
+        document.title = cache.get(path).title;
         render_code_sections();
         scrollToHash(markdownSB);
     } else {
         loading.name = path;
-        fetch_page(path, (res) => {
-            html_map.set(path, res);
-            $(".markdown .content").html(res);
+        fetch_page(path, (article) => {
+            cache.set(path, article);
+            $(".markdown .content").html(article.html);
             loading.name = null;
+            document.title = article.title;
             scrollToHash(markdownSB);
         });
     }
@@ -99,17 +113,6 @@ const update_page = function (html_map, path) {
 };
 
 new SimpleBar($(".sidebar")[0]);
-
-$(".sidebar.slide h2").on("click", (e) => {
-    const $next = $(e.target).next();
-
-    if ($next.is("ul")) {
-        // Close other article's headings first
-        $(".sidebar ul").not($next).hide();
-        // Toggle the heading
-        $next.slideToggle("fast", "swing");
-    }
-});
 
 $(".sidebar a").on("click", function (e) {
     const path = $(this).attr("href");
@@ -127,7 +130,7 @@ $(".sidebar a").on("click", function (e) {
 
     history.pushState({}, "", path);
 
-    update_page(html_map, path);
+    update_page(cache, path);
 
     $(".sidebar").removeClass("show");
 
@@ -169,7 +172,9 @@ scrollToHash(markdownSB);
 
 window.addEventListener("popstate", () => {
     const path = window.location.pathname;
-    update_page(html_map, path);
+    update_page(cache, path);
 });
 
 $("body").addClass("noscroll");
+
+$(".highlighted")[0].scrollIntoView({block: "center"});

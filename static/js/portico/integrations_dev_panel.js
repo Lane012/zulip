@@ -1,4 +1,7 @@
-// Main JavaScript file for the Integrations development panel at
+import $ from "jquery";
+
+import * as channel from "../channel";
+// Main JavaScript file for the integrations development panel at
 // /devtools/integrations.
 
 // Data Segment: We lazy load the requested fixtures from the backend
@@ -36,7 +39,7 @@ const clear_handlers = {
 function clear_elements(elements) {
     // Supports strings (a selector to clear) or calling a function
     // (for more complex logic).
-    elements.forEach((element_name) => {
+    for (const element_name of elements) {
         const handler = clear_handlers[element_name];
         if (typeof handler === "string") {
             const element_object = $(handler)[0];
@@ -45,7 +48,7 @@ function clear_elements(elements) {
         } else {
             handler();
         }
-    });
+    }
     return;
 }
 
@@ -82,9 +85,9 @@ function get_custom_http_headers() {
         try {
             // Let JavaScript validate the JSON for us.
             custom_headers = JSON.stringify(JSON.parse(custom_headers));
-        } catch (err) {
+        } catch {
             set_results_notice("Custom HTTP headers are not in a valid JSON format.", "warning");
-            return;
+            return undefined;
         }
     }
     return custom_headers;
@@ -100,7 +103,7 @@ function set_results(response) {
     const responses = response.responses;
 
     let data = "Results:\n\n";
-    responses.forEach((response) => {
+    for (const response of responses) {
         if (response.fixture_name !== undefined) {
             data += "Fixture:            " + response.fixture_name;
             data += "\nStatus Code:    " + response.status_code;
@@ -108,7 +111,7 @@ function set_results(response) {
             data += "Status Code:    " + response.status_code;
         }
         data += "\nResponse:       " + response.message + "\n\n";
-    });
+    }
     $("#idp-results")[0].value = data;
 }
 
@@ -140,12 +143,12 @@ function load_fixture_options(integration_name) {
     const fixtures_options_dropdown = $("#fixture_name")[0];
     const fixtures_names = Object.keys(loaded_fixtures.get(integration_name)).sort();
 
-    fixtures_names.forEach((fixture_name) => {
+    for (const fixture_name of fixtures_names) {
         const new_dropdown_option = document.createElement("option");
         new_dropdown_option.value = fixture_name;
         new_dropdown_option.innerHTML = fixture_name;
         fixtures_options_dropdown.add(new_dropdown_option);
-    });
+    }
     load_fixture_body(fixtures_names[0]);
 
     return;
@@ -186,8 +189,8 @@ function handle_unsuccessful_response(response) {
     try {
         const status_code = response.statusCode().status;
         response = JSON.parse(response.responseText);
-        set_results_notice("Result: " + "(" + status_code + ") " + response.msg, "warning");
-    } catch (err) {
+        set_results_notice(`Result: (${status_code}) ${response.msg}`, "warning");
+    } catch {
         // If the response is not a JSON response, then it is probably
         // Django returning an HTML response containing a stack trace
         // with useful debugging information regarding the backend
@@ -217,8 +220,8 @@ function get_fixtures(integration_name) {
     }
 
     // We don't have the fixtures for this integration; fetch them
-    // from the backend.  Relative url pattern:
-    // /devtools/integrations/(?P<integration_name>.+)/fixtures
+    // from the backend.  Relative URL pattern:
+    // /devtools/integrations/<integration_name>/fixtures
     channel.get({
         url: "/devtools/integrations/" + integration_name + "/fixtures",
         // Since the user may add or modify fixtures as they edit.
@@ -260,7 +263,7 @@ function send_webhook_fixture_message() {
             // Let JavaScript validate the JSON for us.
             body = JSON.stringify(JSON.parse(body));
             is_json = true;
-        } catch (err) {
+        } catch {
             set_results_notice("Invalid JSON in fixture body.", "warning");
             return;
         }

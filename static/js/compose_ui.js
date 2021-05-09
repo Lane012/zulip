@@ -1,10 +1,17 @@
-const autosize = require("autosize");
+import autosize from "autosize";
+import $ from "jquery";
 
-exports.autosize_textarea = function () {
-    autosize.update($("#compose-textarea"));
-};
+import {$t} from "./i18n";
+import * as people from "./people";
+import * as user_status from "./user_status";
 
-exports.smart_insert = function (textarea, syntax) {
+export function autosize_textarea(textarea) {
+    // Since this supports both compose and file upload, one must pass
+    // in the text area to autosize.
+    autosize.update(textarea);
+}
+
+export function smart_insert(textarea, syntax) {
     function is_space(c) {
         return c === " " || c === "\t" || c === "\n";
     }
@@ -13,13 +20,15 @@ exports.smart_insert = function (textarea, syntax) {
     const before_str = textarea.val().slice(0, pos);
     const after_str = textarea.val().slice(pos);
 
-    if (pos > 0) {
+    if (
+        pos > 0 &&
         // If there isn't space either at the end of the content
         // before the insert or (unlikely) at the start of the syntax,
         // add one.
-        if (!is_space(before_str.slice(-1)) && !is_space(syntax[0])) {
-            syntax = " " + syntax;
-        }
+        !is_space(before_str.slice(-1)) &&
+        !is_space(syntax[0])
+    ) {
+        syntax = " " + syntax;
     }
 
     // If there isn't whitespace either at the end of the syntax or the
@@ -42,31 +51,21 @@ exports.smart_insert = function (textarea, syntax) {
         textarea.caret(syntax);
     }
 
-    // This should just call exports.autosize_textarea, but it's a bit
-    // annoying for the unit tests, so we don't do that.
-    autosize.update(textarea);
-};
+    autosize_textarea(textarea);
+}
 
-exports.insert_syntax_and_focus = function (syntax, textarea) {
+export function insert_syntax_and_focus(syntax, textarea = $("#compose-textarea")) {
     // Generic helper for inserting syntax into the main compose box
     // where the cursor was and focusing the area.  Mostly a thin
     // wrapper around smart_insert.
-    if (textarea === undefined) {
-        textarea = $("#compose-textarea");
-    }
-    exports.smart_insert(textarea, syntax);
-};
+    smart_insert(textarea, syntax);
+}
 
-exports.replace_syntax = function (old_syntax, new_syntax, textarea) {
+export function replace_syntax(old_syntax, new_syntax, textarea = $("#compose-textarea")) {
     // Replaces `old_syntax` with `new_syntax` text in the compose box. Due to
     // the way that JavaScript handles string replacements, if `old_syntax` is
     // a string it will only replace the first instance. If `old_syntax` is
     // a RegExp with a global flag, it will replace all instances.
-
-    if (textarea === undefined) {
-        textarea = $("#compose-textarea");
-    }
-
     textarea.val(
         textarea.val().replace(
             old_syntax,
@@ -78,9 +77,9 @@ exports.replace_syntax = function (old_syntax, new_syntax, textarea) {
                 new_syntax,
         ),
     );
-};
+}
 
-exports.compute_placeholder_text = function (opts) {
+export function compute_placeholder_text(opts) {
     // Computes clear placeholder text for the compose box, depending
     // on what heading values have already been filled out.
     //
@@ -89,16 +88,16 @@ exports.compute_placeholder_text = function (opts) {
     // placeholder field in a way that does HTML escaping.
     if (opts.message_type === "stream") {
         if (opts.topic) {
-            return i18n.t("Message #__- stream_name__ > __- topic_name__", {
-                stream_name: opts.stream,
-                topic_name: opts.topic,
-            });
+            return $t(
+                {defaultMessage: "Message #{stream_name} > {topic_name}"},
+                {stream_name: opts.stream, topic_name: opts.topic},
+            );
         } else if (opts.stream) {
-            return i18n.t("Message #__- stream_name__", {stream_name: opts.stream});
+            return $t({defaultMessage: "Message #{stream_name}"}, {stream_name: opts.stream});
         }
     }
 
-    // For Private Messages
+    // For private messages
     if (opts.private_message_recipient) {
         const recipient_list = opts.private_message_recipient.split(",");
         const recipient_names = recipient_list
@@ -113,15 +112,13 @@ exports.compute_placeholder_text = function (opts) {
             const user = people.get_by_email(recipient_list[0]);
             const status = user_status.get_status_text(user.user_id);
             if (status) {
-                return i18n.t("Message __- recipient_name__ (__- recipient_status__)", {
-                    recipient_name: recipient_names,
-                    recipient_status: status,
-                });
+                return $t(
+                    {defaultMessage: "Message {recipient_name} ({recipient_status})"},
+                    {recipient_name: recipient_names, recipient_status: status},
+                );
             }
         }
-        return i18n.t("Message __- recipient_names__", {recipient_names});
+        return $t({defaultMessage: "Message {recipient_names}"}, {recipient_names});
     }
-    return i18n.t("Compose your message here");
-};
-
-window.compose_ui = exports;
+    return $t({defaultMessage: "Compose your message here"});
+}

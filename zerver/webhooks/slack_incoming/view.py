@@ -2,11 +2,11 @@
 import re
 from typing import Any, Dict, Optional
 
-import ujson
+import orjson
 from django.http import HttpRequest, HttpResponse
-from django.utils.translation import ugettext as _
+from django.utils.translation import gettext as _
 
-from zerver.decorator import api_key_only_webhook_view
+from zerver.decorator import webhook_view
 from zerver.lib.exceptions import InvalidJSONError
 from zerver.lib.request import REQ, has_request_variables
 from zerver.lib.response import json_success
@@ -14,14 +14,14 @@ from zerver.lib.webhooks.common import check_send_webhook_message
 from zerver.models import UserProfile
 
 
-@api_key_only_webhook_view('SlackIncoming')
+@webhook_view("SlackIncoming")
 @has_request_variables
-def api_slack_incoming_webhook(request: HttpRequest, user_profile: UserProfile,
-                               user_specified_topic: Optional[str]=REQ("topic", default=None),
-                               payload: Optional[Dict[str, Any]] = REQ(
-                                   'payload',
-                                   converter=ujson.loads,
-                                   default=None)) -> HttpResponse:
+def api_slack_incoming_webhook(
+    request: HttpRequest,
+    user_profile: UserProfile,
+    user_specified_topic: Optional[str] = REQ("topic", default=None),
+    payload: Optional[Dict[str, Any]] = REQ("payload", converter=orjson.loads, default=None),
+) -> HttpResponse:
 
     # Slack accepts webhook payloads as payload="encoded json" as
     # application/x-www-form-urlencoded, as well as in the body as
@@ -30,8 +30,8 @@ def api_slack_incoming_webhook(request: HttpRequest, user_profile: UserProfile,
     # # we were given JSON.
     if payload is None:
         try:
-            payload = ujson.loads(request.body)
-        except ValueError:  # nocoverage
+            payload = orjson.loads(request.body)
+        except orjson.JSONDecodeError:  # nocoverage
             raise InvalidJSONError(_("Malformed JSON"))
 
     if user_specified_topic is None and "channel" in payload:
@@ -79,6 +79,7 @@ def add_block(block: Dict[str, Any], body: str) -> str:
 
     return body
 
+
 def add_attachment(attachment: Dict[str, Any], body: str) -> str:
     attachment_body = ""
     if "title" in attachment and "title_link" in attachment:
@@ -88,12 +89,14 @@ def add_attachment(attachment: Dict[str, Any], body: str) -> str:
 
     return body + attachment_body
 
+
 def replace_links(text: str) -> str:
     return re.sub(r"<(\w+?:\/\/.*?)\|(.*?)>", r"[\2](\1)", text)
 
+
 def replace_formatting(text: str) -> str:
     # Slack uses *text* for bold, whereas Zulip interprets that as italics
-    text = re.sub(r'([^\w])\*(?!\s+)([^\*^\n]+)(?<!\s)\*([^\w])', r"\1**\2**\3", text)
+    text = re.sub(r"([^\w])\*(?!\s+)([^\*^\n]+)(?<!\s)\*([^\w])", r"\1**\2**\3", text)
 
     # Slack uses _text_ for emphasis, whereas Zulip interprets that as nothing
     text = re.sub(r"([^\w])[_](?!\s+)([^\_\^\n]+)(?<!\s)[_]([^\w])", r"\1**\2**\3", text)

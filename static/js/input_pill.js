@@ -1,11 +1,16 @@
-const render_input_pill = require("../templates/input_pill.hbs");
+import $ from "jquery";
+
+import render_input_pill from "../templates/input_pill.hbs";
+
+import * as blueslip from "./blueslip";
+import * as ui_util from "./ui_util";
 
 // See https://zulip.readthedocs.io/en/latest/subsystems/input-pills.html
-exports.random_id = function () {
+export function random_id() {
     return Math.random().toString(16);
-};
+}
 
-exports.create = function (opts) {
+export function create(opts) {
     // a dictionary of the key codes that are associated with each key
     // to make if/else more human readable.
     const KEY = {
@@ -18,17 +23,17 @@ exports.create = function (opts) {
 
     if (!opts.container) {
         blueslip.error("Pill needs container.");
-        return;
+        return undefined;
     }
 
     if (!opts.create_item_from_text) {
         blueslip.error("Pill needs create_item_from_text");
-        return;
+        return undefined;
     }
 
     if (!opts.get_text_from_item) {
         blueslip.error("Pill needs get_text_from_item");
-        return;
+        return undefined;
     }
 
     // a stateful object of this `pill_container` instance.
@@ -47,12 +52,12 @@ exports.create = function (opts) {
     const funcs = {
         // return the value of the contenteditable input form.
         value(input_elem) {
-            return input_elem.innerText;
+            return input_elem.textContent;
         },
 
         // clear the value of the input form.
         clear(input_elem) {
-            input_elem.innerText = "";
+            input_elem.textContent = "";
         },
 
         clear_text() {
@@ -73,11 +78,7 @@ exports.create = function (opts) {
 
             if (!item || !item.display_value) {
                 store.$input.addClass("shake");
-                return;
-            }
-
-            if (typeof store.onPillCreate === "function") {
-                store.onPillCreate();
+                return undefined;
             }
 
             return item;
@@ -86,10 +87,15 @@ exports.create = function (opts) {
         // This is generally called by typeahead logic, where we have all
         // the data we need (as opposed to, say, just a user-typed email).
         appendValidatedData(item) {
-            const id = exports.random_id();
+            const id = random_id();
 
             if (!item.display_value) {
                 blueslip.error("no display_value returned");
+                return;
+            }
+
+            if (!item.type) {
+                blueslip.error("no type defined for the item");
                 return;
             }
 
@@ -112,6 +118,10 @@ exports.create = function (opts) {
                 opts.img_src = item.img_src;
             }
 
+            if (typeof store.onPillCreate === "function") {
+                store.onPillCreate();
+            }
+
             const pill_html = render_input_pill(opts);
             payload.$element = $(pill_html);
             store.$input.before(payload.$element);
@@ -121,7 +131,7 @@ exports.create = function (opts) {
         // input block.
         appendPill(value) {
             if (value.length === 0) {
-                return;
+                return true;
             }
             if (value.match(",")) {
                 funcs.insertManyPills(value);
@@ -136,6 +146,7 @@ exports.create = function (opts) {
             }
 
             this.appendValidatedData(payload);
+            return true;
         },
 
         // this searches given a particlar pill ID for it, removes the node
@@ -159,10 +170,13 @@ exports.create = function (opts) {
 
                 return pill;
             }
+
+            /* istanbul ignore next */
+            return undefined;
         },
 
         // this will remove the last pill in the container -- by default tied
-        // to the "backspace" key when the value of the input is empty.
+        // to the "Backspace" key when the value of the input is empty.
         // If quiet is a truthy value, the event handler associated with the
         // pill will not be evaluated. This is useful when using clear to reset
         // the pills.
@@ -192,15 +206,12 @@ exports.create = function (opts) {
 
             // this is an array to push all the errored values to, so it's drafts
             // of pills for the user to fix.
-            const drafts = [];
-
-            pills.forEach((pill) => {
-                // if this returns `false`, it erroed and we should push it to
-                // the draft pills.
-                if (funcs.appendPill(pill) === false) {
-                    drafts.push(pill);
-                }
-            });
+            const drafts = pills.filter(
+                (pill) =>
+                    // if this returns `false`, it erroed and we should push it to
+                    // the draft pills.
+                    funcs.appendPill(pill) === false,
+            );
 
             store.$input.text(drafts.join(", "));
             // when using the `text` insertion feature with jQuery the caret is
@@ -208,16 +219,18 @@ exports.create = function (opts) {
             // the end.
             ui_util.place_caret_at_end(store.$input[0]);
 
-            // this sends a flag that the operation wasn't completely successful,
+            // this sends a flag if the operation wasn't completely successful,
             // which in this case is defined as some of the pills not autofilling
             // correctly.
-            if (drafts.length > 0) {
-                return false;
-            }
+            return drafts.length === 0;
         },
 
         getByID(id) {
             return store.pills.find((pill) => pill.id === id);
+        },
+
+        _get_pills_for_testing() {
+            return store.pills;
         },
 
         items() {
@@ -232,7 +245,7 @@ exports.create = function (opts) {
         },
     };
 
-    (function events() {
+    {
         store.$parent.on("keydown", ".input", (e) => {
             const char = e.keyCode || e.charCode;
 
@@ -278,10 +291,8 @@ exports.create = function (opts) {
             // should switch to focus the last pill in the list.
             // the rest of the events then will be taken care of in the function
             // below that handles events on the ".pill" class.
-            if (char === KEY.LEFT_ARROW) {
-                if (window.getSelection().anchorOffset === 0) {
-                    store.$parent.find(".pill").last().trigger("focus");
-                }
+            if (char === KEY.LEFT_ARROW && window.getSelection().anchorOffset === 0) {
+                store.$parent.find(".pill").last().trigger("focus");
             }
 
             // Typing of the comma is prevented if the last field doesn't validate,
@@ -314,7 +325,7 @@ exports.create = function (opts) {
                 const id = $pill.data("id");
                 funcs.removePill(id);
                 $next.trigger("focus");
-                // the "backspace" key in FireFox will go back a page if you do
+                // the "Backspace" key in Firefox will go back a page if you do
                 // not prevent it.
                 e.preventDefault();
             }
@@ -369,7 +380,7 @@ exports.create = function (opts) {
             );
             e.preventDefault();
         });
-    })();
+    }
 
     // the external, user-accessible prototype.
     const prototype = {
@@ -394,9 +405,8 @@ exports.create = function (opts) {
         clear: funcs.removeAllPills.bind(funcs),
         clear_text: funcs.clear_text,
         is_pending: funcs.is_pending,
+        _get_pills_for_testing: funcs._get_pills_for_testing,
     };
 
     return prototype;
-};
-
-window.input_pill = exports;
+}

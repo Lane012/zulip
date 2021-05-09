@@ -1,5 +1,13 @@
-set_global("channel", {});
-zrequire("user_status");
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+
+const channel = mock_esm("../../static/js/channel");
+const user_status = zrequire("user_status");
 
 function initialize() {
     const params = {

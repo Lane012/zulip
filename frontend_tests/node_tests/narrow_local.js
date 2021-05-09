@@ -1,14 +1,16 @@
-zrequire("Filter", "js/filter");
-zrequire("FetchStatus", "js/fetch_status");
-zrequire("MessageListData", "js/message_list_data");
-zrequire("narrow_state");
-zrequire("narrow");
-zrequire("stream_data");
+"use strict";
 
-set_global("message_list", {});
-set_global("muting", {
-    is_topic_muted: () => false,
-});
+const {strict: assert} = require("assert");
+
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+
+const all_messages_data = mock_esm("../../static/js/all_messages_data");
+
+const {Filter} = zrequire("../js/filter");
+const {MessageListData} = zrequire("../js/message_list_data");
+const narrow_state = zrequire("narrow_state");
+const narrow = zrequire("narrow");
 
 function test_with(fixture) {
     const filter = new Filter(fixture.filter_terms);
@@ -25,10 +27,10 @@ function test_with(fixture) {
         }
     }
 
-    const muting_enabled = narrow_state.muting_enabled();
+    const excludes_muted_topics = narrow_state.excludes_muted_topics();
     const msg_data = new MessageListData({
         filter: narrow_state.filter(),
-        muting_enabled,
+        excludes_muted_topics,
     });
     const id_info = {
         target_id: fixture.target_id,
@@ -36,11 +38,9 @@ function test_with(fixture) {
         final_select_id: undefined,
     };
 
-    message_list.all = {
-        data: {
-            fetch_status: {
-                has_found_newest: () => fixture.has_found_newest,
-            },
+    all_messages_data.all_messages_data = {
+        fetch_status: {
+            has_found_newest: () => fixture.has_found_newest,
         },
         empty: () => fixture.empty,
         all_messages: () => {
@@ -57,7 +57,7 @@ function test_with(fixture) {
         },
     };
 
-    narrow_state.get_first_unread_info = () => fixture.unread_info;
+    narrow_state.__Rewire__("get_first_unread_info", () => fixture.unread_info);
 
     narrow.maybe_add_local_messages({
         id_info,
@@ -179,9 +179,9 @@ run_test("is private with no target", () => {
         },
         has_found_newest: true,
         all_messages: [
-            {id: 450, type: "private"},
-            {id: 500, type: "private"},
-            {id: 550, type: "private"},
+            {id: 450, type: "private", to_user_ids: "1,2"},
+            {id: 500, type: "private", to_user_ids: "1,2"},
+            {id: 550, type: "private", to_user_ids: "1,2"},
         ],
         expected_id_info: {
             target_id: undefined,
@@ -244,9 +244,9 @@ run_test("is:private with target and no unreads", () => {
         empty: false,
         all_messages: [
             {id: 350},
-            {id: 400, type: "private"},
-            {id: 450, type: "private"},
-            {id: 500, type: "private"},
+            {id: 400, type: "private", to_user_ids: "1,2"},
+            {id: 450, type: "private", to_user_ids: "1,2"},
+            {id: 500, type: "private", to_user_ids: "1,2"},
         ],
         expected_id_info: {
             target_id: 450,
@@ -392,7 +392,7 @@ run_test("stream/topic not in all_messages", () => {
     // This is a bit of a corner case, but you could have a scenario
     // where you've gone way back in a topic (perhaps something that
     // has been muted a long time) and find an unread message that isn't
-    // actually in message_list.all.
+    // actually in all_messages_data.
     const fixture = {
         filter_terms: [
             {operator: "stream", operand: "one"},

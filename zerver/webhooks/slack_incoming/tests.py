@@ -2,9 +2,9 @@ from zerver.lib.test_classes import WebhookTestCase
 
 
 class SlackIncomingHookTests(WebhookTestCase):
-    STREAM_NAME = 'slack_incoming'
+    STREAM_NAME = "slack_incoming"
     URL_TEMPLATE = "/api/v1/external/slack_incoming?&api_key={api_key}&stream={stream}"
-    FIXTURE_DIR_NAME = 'slack_incoming'
+    FIXTURE_DIR_NAME = "slack_incoming"
 
     def test_message(self) -> None:
         expected_topic = "(no topic)"
@@ -12,8 +12,8 @@ class SlackIncomingHookTests(WebhookTestCase):
 Hello, world.
 """.strip()
 
-        self.send_and_test_stream_message(
-            'text',
+        self.check_webhook(
+            "text",
             expected_topic,
             expected_message,
         )
@@ -24,8 +24,8 @@ Hello, world.
 :zap: chris has started deploying project tag v0.0.2rc10 to staging
 """.strip()
 
-        self.send_and_test_stream_message(
-            'urlencoded_text',
+        self.check_webhook(
+            "urlencoded_text",
             expected_topic,
             expected_message,
             content_type="application/x-www-form-urlencoded",
@@ -40,8 +40,8 @@ Danny Torrence left the following review for your property:
 [Haunted hotel image](https://is5-ssl.mzstatic.com/image/thumb/Purple3/v4/d3/72/5c/d3725c8f-c642-5d69-1904-aa36e4297885/source/256x256bb.jpg)
 """.strip()
 
-        self.send_and_test_stream_message(
-            'actions',
+        self.check_webhook(
+            "actions",
             expected_topic,
             expected_message,
         )
@@ -55,8 +55,8 @@ Danny Torrence left the following review for your property:
 [Haunted hotel image](https://is5-ssl.mzstatic.com/image/thumb/Purple3/v4/d3/72/5c/d3725c8f-c642-5d69-1904-aa36e4297885/source/256x256bb.jpg)
 """.strip()
 
-        self.send_and_test_stream_message(
-            'blocks',
+        self.check_webhook(
+            "blocks",
             expected_topic,
             expected_message,
         )
@@ -85,8 +85,8 @@ Danny Torrence left the following review for your property:
    • **severity:** `critical`
 """.strip()
 
-        self.send_and_test_stream_message(
-            'attachment',
+        self.check_webhook(
+            "attachment",
             expected_topic,
             expected_message,
         )

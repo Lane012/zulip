@@ -1,7 +1,15 @@
-zrequire("scroll_util");
-set_global("ui", {
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+
+mock_esm("../../static/js/ui", {
     get_scroll_element: (element) => element,
 });
+
+const scroll_util = zrequire("scroll_util");
 
 run_test("scroll_delta", () => {
     // If we are entirely on-screen, don't scroll
@@ -90,6 +98,7 @@ run_test("scroll_element_into_container", () => {
                     return top;
                 }
                 top = arg;
+                return this;
             },
         };
     })();

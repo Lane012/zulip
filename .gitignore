@@ -27,11 +27,14 @@
 package-lock.json
 
 /.vagrant
-/var
+/var/*
+!/var/puppeteer
+/var/puppeteer/*
+!/var/puppeteer/test_credentials.d.ts
 
 /.dmypy.json
 
-# Dockerfiles generated for CircleCI
+# Dockerfiles generated for continuous integration
 /tools/ci/images
 
 # Generated i18n data
@@ -81,5 +84,4 @@ core
 
 ## Miscellaneous
 # (Ideally this section is empty.)
-zthumbor/thumbor_local_settings.py
 .transifexrc

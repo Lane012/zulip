@@ -4,6 +4,54 @@ Code review is a key part of how Zulip does development!  If you've
 been contributing to Zulip's code, we'd love for you to do reviews.
 This is a guide to how.  (With some thoughts for writing code too.)
 
+## Protocol for authors
+
+When you send a PR, try to think of a good person to review it --
+outside of the handful of people who do a ton of reviews -- and
+`@`-mention them with something like "`@person`, would you review
+this?". Good choices include
+* someone based in your timezone or a nearby timezone
+* people working on similar things, or in a loosely related area
+
+Alternatively, posting a message in
+[#code-review](https://chat.zulip.org/#narrow/stream/91-code-review) on [the Zulip
+development community server](../contributing/chat-zulip-org.md), would
+help in reaching out to a wider group of reviewers. Either way, please be
+patient and mindful of the fact that it isn't possible to provide a
+quick reply always, but that the reviewer would get to it sooner or later.
+Lastly, ensuring the your PR passes CI and is organized into coherent
+commits would help save reviewers time, which could otherwise be used
+to dive right into reviewing the PR's core functionality.
+
+### Responding to a review feedback
+
+Once you've received a review and resolved any feedback, it's critical
+to update the GitHub thread to reflect that.  Best practices are to:
+
+* Make sure that CI passes and the PR is rebased onto recent master.
+* Post comments on each feedback thread explaining at least how you
+  resolved the feedback, as well as any other useful information
+  (problems encountered, reasoning for why you picked one of several
+  options, a test you added to make sure the bug won't recur, etc.).
+* Mark any resolved threads as "resolved" in the GitHub UI, if
+  appropriate.
+* Post a summary comment in the main feed for the PR, explaining that
+  this is ready for another review, and summarizing any changes from
+  the previous version, details on how you tested the changes, new
+  screenshots/etc.  More detail is better than less, as long as you
+  take the time to write clearly.
+
+If you resolve the feedback, but the PR has merge conflicts, CI
+failures, or the most recent comment is the reviewer asking you to fix
+something, it's very likely that a potential reviewer skimming your PR
+will assume it isn't ready for review and move on to other work.
+
+If you need help or think an open discussion topic requires more
+feedback or a more complex discussion, move the discussion to a topic
+in the Zulip development community server.  Be sure to provide links
+from the GitHub PR to the conversation (and vice versa) so that it's
+convenient to read both conversations together.
+
 ## Principles of code review
 
 ### Anyone can review
@@ -24,7 +72,7 @@ those are really helpful contributions.
 
 ### Please do reviews
 
-Doing code reviews is an important part of making the project go.
+Doing code reviews is an important part of making the project grow.
 It's also an important skill to develop for participating in
 open-source projects and working in the industry in general.  If
 you're contributing to Zulip and have been working in our code for a
@@ -56,29 +104,20 @@ benchmark is to try to always reply **within one workday**, at least
 with a short initial reply, if you're working regularly on Zulip.  And
 sooner is better.
 
-### Protocol for authors
-
-When you send a PR, try to think of a good person to review it --
-outside of the handful of people who do a ton of reviews -- and
-`@`-mention them with something like "`@person`, would you review
-this?". Good choices include
-* someone based in your timezone or a nearby timezone
-* people working on similar things, or in a loosely related area
-
 ## Things to look for
 
 * *The CI build.* The tests need to pass. One can investigate
   any failures and figure out what to fix by clicking on a red X next
   to the commit hash or the Detail links on a pull request. (Example:
-  in [#10618](https://github.com/zulip/zulip/pull/10618), browse to
-  bottom and click the red X next to `c6044ee` to see the build jobs
-  for that commit. You can see that there are 5 build jobs in total.
-  All the 5 jobs run in CircleCI. You can see what caused
+  in [#17584](https://github.com/zulip/zulip/pull/17584),
+  click the red X before `49b10a3` to see the build jobs
+  for that commit. You can see that there are 7 build jobs in total.
+  All the 7 jobs run in GitHub Actions. You can see what caused
   the job to fail by clicking on the failed job. This will open
   up a page in the CI that has more details on why the job failed.
-  For example [this](https://circleci.com/gh/zulip/zulip/16617)
-  is the page of the `bionic-python-3.6` job. See our docs on
-  [continuous integration](../testing/continuous-integration.md)
+  For example [this](https://github.com/zulip/zulip/runs/2092955762)
+  is the page of the `Ubuntu 18.04 Bionic (Python 3.6, backend + frontend)` job.
+  See our docs on [continuous integration](../testing/continuous-integration.md)
   to learn more.
 
 * *Technical design.* There are a lot of considerations here:
@@ -183,7 +222,7 @@ feel free to do that in a new commit, then push your branch to GitHub
 and mention the branch in a comment on the pull request. That'll save
 the maintainer time and get the PR merged quicker.
 
-## Additional Resources
+## Additional resources
 
 We also strongly recommend reviewers to go through the following resources.
 
@@ -194,7 +233,7 @@ We also strongly recommend reviewers to go through the following resources.
 * [Code Review - A consolidation of advice and stuff from the
    sinternet](https://gist.github.com/porterjamesj/002fb27dd70df003646df46f15e898de)
   article by James J. Porter
-* [Zulip Code of Conduct](../code-of-conduct.md)
+* [Zulip code of conduct](../code-of-conduct.md)
 
 [code-style]: ../contributing/code-style.md
 [commit-messages]: ../contributing/version-control.html#commit-messages

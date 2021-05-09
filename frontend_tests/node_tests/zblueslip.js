@@ -1,3 +1,10 @@
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+
 /*
 
 This test module actually tests our test code, particularly zblueslip, and

@@ -1,9 +1,18 @@
-set_global("$", global.make_zjquery());
+"use strict";
 
-set_global("channel", {});
+const {strict: assert} = require("assert");
 
-zrequire("alert_words");
-zrequire("alert_words_ui");
+const {stub_templates} = require("../zjsunit/handlebars");
+const {$t} = require("../zjsunit/i18n");
+const {mock_cjs, mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const $ = require("../zjsunit/zjquery");
+
+mock_cjs("jquery", $);
+const channel = mock_esm("../../static/js/channel");
+
+const alert_words = zrequire("alert_words");
+const alert_words_ui = zrequire("alert_words_ui");
 
 alert_words.initialize({
     alert_words: ["foo", "bar"],
@@ -19,7 +28,9 @@ run_test("render_alert_words_ui", () => {
     const alert_word_items = $.create("alert_word_items");
     word_list.set_find_results(".alert-word-item", alert_word_items);
 
-    global.stub_templates((name, args) => {
+    alert_word_items.remove = () => {};
+
+    stub_templates((name, args) => {
         assert.equal(name, "settings/alert_word_settings_item");
         return "stub-" + args.word;
     });
@@ -33,8 +44,8 @@ run_test("render_alert_words_ui", () => {
     assert(new_alert_word.is_focused());
 });
 
-run_test("add_alert_word", () => {
-    alert_words_ui.render_alert_words_ui = () => {}; // we've already tested this above
+run_test("add_alert_word", (override) => {
+    override(alert_words_ui, "render_alert_words_ui", () => {}); // we've already tested this above
 
     alert_words_ui.set_up_alert_words();
 
@@ -88,7 +99,10 @@ run_test("add_alert_word", () => {
     assert(alert_word_status.visible());
 });
 
-run_test("add_alert_word_keypress", () => {
+run_test("add_alert_word_keypress", (override) => {
+    override(alert_words_ui, "render_alert_words_ui", () => {});
+    alert_words_ui.set_up_alert_words();
+
     const create_form = $("#create_alert_word_form");
     const keypress_func = create_form.get_on_handler("keypress", "#create_alert_word_name");
 
@@ -111,16 +125,19 @@ run_test("add_alert_word_keypress", () => {
     assert(called);
 });
 
-run_test("remove_alert_word", () => {
+run_test("remove_alert_word", (override) => {
+    override(alert_words_ui, "render_alert_words_ui", () => {});
+    alert_words_ui.set_up_alert_words();
+
     const word_list = $("#alert_words_list");
     const remove_func = word_list.get_on_handler("click", ".remove-alert-word");
 
     const remove_alert_word = $(".remove-alert-word");
-    const list_item = $("li.alert-word-item");
+    const list_item = $("tr.alert-word-item");
     const val_item = $("span.value");
-    val_item.text(i18n.t("zot"));
+    val_item.text($t({defaultMessage: "zot"}));
 
-    remove_alert_word.set_parents_result("li", list_item);
+    remove_alert_word.set_parents_result("tr", list_item);
     list_item.set_find_results(".value", val_item);
 
     const event = {
@@ -155,7 +172,10 @@ run_test("remove_alert_word", () => {
     assert(alert_word_status.visible());
 });
 
-run_test("close_status_message", () => {
+run_test("close_status_message", (override) => {
+    override(alert_words_ui, "render_alert_words_ui", () => {});
+    alert_words_ui.set_up_alert_words();
+
     const alert_word_settings = $("#alert-word-settings");
     const close = alert_word_settings.get_on_handler("click", ".close-alert-word-status");
 

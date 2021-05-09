@@ -11,49 +11,52 @@ ZULIP_ADMINISTRATOR = "desdemona+admin@zulip.com"
 # means we need a duplicate definition of DEPLOY_ROOT with the one in
 # settings.py.
 DEPLOY_ROOT = os.path.realpath(os.path.dirname(os.path.dirname(__file__)))
-LOCAL_UPLOADS_DIR = os.path.join(DEPLOY_ROOT, 'var/uploads')
+LOCAL_UPLOADS_DIR = os.path.join(DEPLOY_ROOT, "var/uploads")
 
 # We assume dev droplets are the only places where
 # users use zulipdev as the user.
-IS_DEV_DROPLET = pwd.getpwuid(os.getuid()).pw_name == 'zulipdev'
+IS_DEV_DROPLET = pwd.getpwuid(os.getuid()).pw_name == "zulipdev"
 
 FORWARD_ADDRESS_CONFIG_FILE = "var/forward_address.ini"
 # Check if test_settings.py set EXTERNAL_HOST.
-external_host_env = os.getenv('EXTERNAL_HOST')
+external_host_env = os.getenv("EXTERNAL_HOST")
 if external_host_env is None:
     if IS_DEV_DROPLET:
         # For our droplets, we use the hostname (eg github_username.zulipdev.org) by default.
+        # Note that this code is duplicated in run-dev.py.
         EXTERNAL_HOST = os.uname()[1].lower() + ":9991"
     else:
         # For local development environments, we use localhost by
         # default, via the "zulipdev.com" hostname.
-        EXTERNAL_HOST = 'zulipdev.com:9991'
+        EXTERNAL_HOST = "zulipdev.com:9991"
         # Serve the main dev realm at the literal name "localhost",
         # so it works out of the box even when not on the Internet.
         REALM_HOSTS = {
-            'zulip': 'localhost:9991',
+            "zulip": "localhost:9991",
         }
 else:
     EXTERNAL_HOST = external_host_env
     REALM_HOSTS = {
-        'zulip': EXTERNAL_HOST,
+        "zulip": EXTERNAL_HOST,
     }
 
 EXTERNAL_HOST_WITHOUT_PORT = deport(EXTERNAL_HOST)
 
-ALLOWED_HOSTS = ['*']
+FAKE_EMAIL_DOMAIN = "zulipdev.com"
+
+ALLOWED_HOSTS = ["*"]
 
 # Uncomment extra backends if you want to test with them.  Note that
 # for Google and GitHub auth you'll need to do some pre-setup.
 AUTHENTICATION_BACKENDS: Tuple[str, ...] = (
-    'zproject.backends.DevAuthBackend',
-    'zproject.backends.EmailAuthBackend',
-    'zproject.backends.GitHubAuthBackend',
-    'zproject.backends.GoogleAuthBackend',
-    'zproject.backends.SAMLAuthBackend',
+    "zproject.backends.DevAuthBackend",
+    "zproject.backends.EmailAuthBackend",
+    "zproject.backends.GitHubAuthBackend",
+    "zproject.backends.GoogleAuthBackend",
+    "zproject.backends.SAMLAuthBackend",
     # 'zproject.backends.AzureADAuthBackend',
-    'zproject.backends.GitLabAuthBackend',
-    'zproject.backends.AppleAuthBackend',
+    "zproject.backends.GitLabAuthBackend",
+    "zproject.backends.AppleAuthBackend",
 )
 
 EXTERNAL_URI_SCHEME = "http://"
@@ -65,7 +68,9 @@ PHYSICAL_ADDRESS = "Zulip Headquarters, 123 Octo Stream, South Pacific Ocean"
 STAFF_SUBDOMAIN = "zulip"
 EXTRA_INSTALLED_APPS = ["zilencer", "analytics", "corporate"]
 # Disable Camo in development
-CAMO_URI = ''
+CAMO_URI = ""
+
+TORNADO_PORTS = [9993]
 
 OPEN_REALM_CREATION = True
 INVITES_MIN_USER_AGE_DAYS = 0
@@ -84,17 +89,12 @@ POST_MIGRATION_CACHE_FLUSHING = True
 PASSWORD_MIN_LENGTH = 0
 PASSWORD_MIN_GUESSES = 0
 
-# SMTP settings for forwarding emails sent in development
-# environment to an email account.
-EMAIL_HOST = ""
-EMAIL_HOST_USER = ""
-
 # Two factor authentication: Use the fake backend for development.
-TWO_FACTOR_CALL_GATEWAY = 'two_factor.gateways.fake.Fake'
-TWO_FACTOR_SMS_GATEWAY = 'two_factor.gateways.fake.Fake'
+TWO_FACTOR_CALL_GATEWAY = "two_factor.gateways.fake.Fake"
+TWO_FACTOR_SMS_GATEWAY = "two_factor.gateways.fake.Fake"
 
 # Make sendfile use django to serve files in development
-SENDFILE_BACKEND = 'django_sendfile.backends.development'
+SENDFILE_BACKEND = "django_sendfile.backends.development"
 
 # Set this True to send all hotspots in development
 ALWAYS_SEND_ALL_HOTSPOTS = False
@@ -102,7 +102,7 @@ ALWAYS_SEND_ALL_HOTSPOTS = False
 # FAKE_LDAP_MODE supports using a fake LDAP database in the
 # development environment, without needing an LDAP server!
 #
-# Three modes are allowed, and each will setup Zulip and the fake LDAP
+# Three modes are allowed, and each will set up Zulip and the fake LDAP
 # database in a way appropriate for the corresponding mode described
 # in https://zulip.readthedocs.io/en/latest/production/authentication-methods.html#ldap-including-active-directory
 #   (A) If users' email addresses are in LDAP and used as username.
@@ -121,14 +121,17 @@ if FAKE_LDAP_MODE:
     # To understand these parameters, read the docs in
     # prod_settings_template.py and on ReadTheDocs.
     LDAP_APPEND_DOMAIN = None
-    AUTH_LDAP_USER_SEARCH = LDAPSearch("ou=users,dc=zulip,dc=com",
-                                       ldap.SCOPE_ONELEVEL, "(uid=%(user)s)")
-    AUTH_LDAP_REVERSE_EMAIL_SEARCH = LDAPSearch("ou=users,dc=zulip,dc=com",
-                                                ldap.SCOPE_ONELEVEL, "(email=%(email)s)")
+    AUTH_LDAP_USER_SEARCH = LDAPSearch(
+        "ou=users,dc=zulip,dc=com", ldap.SCOPE_ONELEVEL, "(uid=%(user)s)"
+    )
+    AUTH_LDAP_REVERSE_EMAIL_SEARCH = LDAPSearch(
+        "ou=users,dc=zulip,dc=com", ldap.SCOPE_ONELEVEL, "(email=%(email)s)"
+    )
 
-    if FAKE_LDAP_MODE == 'a':
-        AUTH_LDAP_REVERSE_EMAIL_SEARCH = LDAPSearch("ou=users,dc=zulip,dc=com",
-                                                    ldap.SCOPE_ONELEVEL, "(uid=%(email)s)")
+    if FAKE_LDAP_MODE == "a":
+        AUTH_LDAP_REVERSE_EMAIL_SEARCH = LDAPSearch(
+            "ou=users,dc=zulip,dc=com", ldap.SCOPE_ONELEVEL, "(uid=%(email)s)"
+        )
         AUTH_LDAP_USERNAME_ATTR = "uid"
         AUTH_LDAP_USER_ATTR_MAP = {
             "full_name": "cn",
@@ -138,32 +141,31 @@ if FAKE_LDAP_MODE:
             # zerver/lib/dev_ldap_directory.py
             "userAccountControl": "userAccountControl",
         }
-    elif FAKE_LDAP_MODE == 'b':
-        LDAP_APPEND_DOMAIN = 'zulip.com'
+    elif FAKE_LDAP_MODE == "b":
+        LDAP_APPEND_DOMAIN = "zulip.com"
         AUTH_LDAP_USER_ATTR_MAP = {
             "full_name": "cn",
             "avatar": "jpegPhoto",
             "custom_profile_field__birthday": "birthDate",
             "custom_profile_field__phone_number": "phoneNumber",
         }
-    elif FAKE_LDAP_MODE == 'c':
+    elif FAKE_LDAP_MODE == "c":
         AUTH_LDAP_USERNAME_ATTR = "uid"
-        LDAP_EMAIL_ATTR = 'email'
+        LDAP_EMAIL_ATTR = "email"
         AUTH_LDAP_USER_ATTR_MAP = {
             "full_name": "cn",
         }
-    AUTHENTICATION_BACKENDS += ('zproject.backends.ZulipLDAPAuthBackend',)
+    AUTHENTICATION_BACKENDS += ("zproject.backends.ZulipLDAPAuthBackend",)
 
-THUMBOR_URL = 'http://127.0.0.1:9995'
 THUMBNAIL_IMAGES = True
 
-SEARCH_PILLS_ENABLED = bool(os.getenv('SEARCH_PILLS_ENABLED', False))
+SEARCH_PILLS_ENABLED = bool(os.getenv("SEARCH_PILLS_ENABLED", False))
 
 BILLING_ENABLED = True
 LANDING_PAGE_NAVBAR_MESSAGE = None
 
-# Test Custom TOS template rendering
-TERMS_OF_SERVICE = 'corporate/terms.md'
+# Test custom TOS template rendering
+TERMS_OF_SERVICE = "corporate/terms.md"
 
 # Our run-dev.py proxy uses X-Forwarded-Port to communicate to Django
 # that the request is actually on port 9991, not port 9992 (the Django

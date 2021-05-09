@@ -12,18 +12,18 @@ all related services will run.
 Contents:
 * [Requirements](#requirements)
 * [Step 0: Set up Git & GitHub](#step-0-set-up-git-github)
-* [Step 1: Install Prerequisites](#step-1-install-prerequisites)
+* [Step 1: Install prerequisites](#step-1-install-prerequisites)
 * [Step 2: Get Zulip code](#step-2-get-zulip-code)
 * [Step 3: Start the development environment](#step-3-start-the-development-environment)
 * [Step 4: Developing](#step-4-developing)
-* [Troubleshooting and Common Errors](#troubleshooting-and-common-errors)
+* [Troubleshooting and common errors](#troubleshooting-and-common-errors)
 * [Specifying an Ubuntu mirror](#specifying-an-ubuntu-mirror)
 * [Specifying a proxy](#specifying-a-proxy)
 * [Customizing CPU and RAM allocation](#customizing-cpu-and-ram-allocation)
 
 **If you encounter errors installing the Zulip development
-environment,** check [Troubleshooting and Common
-Errors](#troubleshooting-and-common-errors). If that doesn't help,
+environment,** check [troubleshooting and common
+errors](#troubleshooting-and-common-errors). If that doesn't help,
 please visit [#provision
 help](https://chat.zulip.org/#narrow/stream/21-provision-help) in the
 [Zulip development community
@@ -49,7 +49,7 @@ a proxy to access the internet.)
 - **All**: 2GB available RAM, Active broadband internet connection, [GitHub account][set-up-git].
 - **macOS**: macOS (10.11 El Capitan or newer recommended)
 - **Ubuntu LTS**: 20.04 or 18.04
-  - or **Debian**: 10 "buster"
+  - or **Debian**: 10 "buster" or 11 "bullseye"
 - **Windows**: Windows 64-bit (Win 10 recommended), hardware
   virtualization enabled (VT-x or AMD-V), administrator access.
 
@@ -63,13 +63,13 @@ docs.
 You can skip this step if you already have Git, GitHub, and SSH access
 to GitHub working on your machine.
 
-Follow our [Git Guide][set-up-git] in order to install Git, set up a
+Follow our [Git guide][set-up-git] in order to install Git, set up a
 GitHub account, create an SSH key to access code on GitHub
-efficiently, etc.  Be sure to create an ssh key and add it to your
+efficiently, etc.  Be sure to create an SSH key and add it to your
 GitHub account using
 [these instructions](https://help.github.com/en/articles/generating-an-ssh-key).
 
-### Step 1: Install Prerequisites
+### Step 1: Install prerequisites
 
 Jump to:
 
@@ -83,11 +83,12 @@ Jump to:
 1. Install [Vagrant][vagrant-dl] (latest).
 2. Install [VirtualBox][vbox-dl] (latest).
 
-(For a non-free option, but better performance, you can also use [VMWare
-Fusion][vmware-fusion-dl] with the [VMWare Fusion Vagrant
-plugin][vagrant-vmware-fusion-dl].)
+(For a non-free option, but better performance, you can also use [VMware
+Fusion][vmware-fusion-dl] with the [VMware Fusion Vagrant
+plugin][vagrant-vmware-fusion-dl] or [Parallels Desktop][parallels-desktop-dl] as
+a provider for Vagrant.)
 
-Now you are ready for [Step 2: Get Zulip Code.](#step-2-get-zulip-code).
+Now you are ready for [Step 2: Get Zulip code](#step-2-get-zulip-code).
 
 #### Ubuntu
 
@@ -142,7 +143,7 @@ sudo systemctl enable docker
 sudo systemctl start docker
 ```
 
-Now you are ready for [Step 2: Get Zulip Code.](#step-2-get-zulip-code)
+Now you are ready for [Step 2: Get Zulip code](#step-2-get-zulip-code).
 
 #### Debian
 
@@ -155,7 +156,7 @@ Debian](https://docs.docker.com/install/linux/docker-ce/debian/).
 
 ```eval_rst
 .. note::
-    We now recommend using `WSL 2 for Windows development <../development/setup-advanced.html#installing-directly-on-windows-10-experimental>`_.
+    We recommend using `WSL 2 for Windows development <../development/setup-advanced.html#installing-directly-on-windows-10-with-wsl-2>`_.
 ```
 
 1. Install [Git for Windows][git-bash], which installs *Git BASH*.
@@ -200,7 +201,7 @@ true
 ```
 
 If you see `true`, you are ready for [Step 2: Get Zulip
-Code.](#step-2-get-zulip-code)
+code](#step-2-get-zulip-code).
 
 Otherwise, if the above command prints `false` or nothing at all, then symlinks
 have not been enabled.
@@ -223,7 +224,7 @@ $ echo $CYGWIN
 winsymlinks:native
 ```
 
-Now you are ready for [Step 2: Get Zulip Code.](#step-2-get-zulip-code)
+Now you are ready for [Step 2: Get Zulip code](#step-2-get-zulip-code).
 
 (Note: The **GitHub Desktop client** for Windows has a bug where it
 will automatically set `git config core.symlink false` on a repository
@@ -232,7 +233,7 @@ development environment, because we use symbolic links.  For that
 reason, we recommend avoiding using GitHub Desktop client to clone
 projects and to instead follow these instructions exactly.)
 
-### Step 2: Get Zulip Code
+### Step 2: Get Zulip code
 
 1. In your browser, visit <https://github.com/zulip/zulip>
    and click the `fork` button. You will need to be logged in to GitHub to
@@ -251,7 +252,7 @@ git remote add -f upstream https://github.com/zulip/zulip.git
 
 This will create a 'zulip' directory and download the Zulip code into it.
 
-Don't forget to replace YOURUSERNAME with your git username. You will see
+Don't forget to replace YOURUSERNAME with your Git username. You will see
 something like:
 
 ```
@@ -268,7 +269,7 @@ Checking out files: 100% (1912/1912), done.`
 ```
 
 Now you are ready for [Step 3: Start the development
-environment.](#step-3-start-the-development-environment)
+environment](#step-3-start-the-development-environment).
 
 ### Step 3: Start the development environment
 
@@ -392,7 +393,7 @@ should see something like:
 2016-05-04 18:21:57,819 INFO     127.0.0.1       GET     200 209ms (db: 7ms/2q) /login/ (unauth@zulip via ?)
 ```
 
-Now you're ready for [Step 4: Developing.](#step-4-developing)
+Now you're ready for [Step 4: Developing](#step-4-developing).
 
 ### Step 4: Developing
 
@@ -424,10 +425,10 @@ there.
 See [Logging](../subsystems/logging.md) for further details on the run-dev.py console
 output.
 
-#### Committing and pushing changes with git
+#### Committing and pushing changes with Git
 
-When you're ready to commit or push changes via git, you will do this by
-running git commands in Terminal (macOS/Ubuntu) or Git BASH (Windows) in the
+When you're ready to commit or push changes via Git, you will do this by
+running Git commands in Terminal (macOS/Ubuntu) or Git BASH (Windows) in the
 directory where you cloned Zulip on your main machine.
 
 If you're new to working with Git/GitHub, check out our [Git & GitHub
@@ -528,17 +529,17 @@ $ vagrant ssh
 $ ./tools/run-dev.py
 ```
 
-### Next Steps
+### Next steps
 
 Next, read the following to learn more about developing for Zulip:
 
 * [Git & GitHub Guide][rtd-git-guide]
-* [Using the Development Environment][rtd-using-dev-env]
+* [Using the development environment][rtd-using-dev-env]
 * [Testing][rtd-testing] (and [Configuring CI][ci] to
 run the full test suite against any branches you push to your fork,
 which can help you optimize your development workflow).
 
-### Troubleshooting and Common Errors
+### Troubleshooting and common errors
 
 Below you'll find a list of common errors and their solutions.  Most
 issues are resolved by just provisioning again (by running
@@ -802,7 +803,7 @@ that failed.  Once you've resolved the problem, you can rerun
 `tools/provision` to proceed; the provisioning system is designed
 to recover well from failures.
 
-The zulip provisioning system is generally highly reliable; the most common
+The Zulip provisioning system is generally highly reliable; the most common
 cause of issues here is a poor network connection (or one where you need a
 proxy to access the Internet and haven't [configured the development
 environment to use it](#specifying-a-proxy).
@@ -891,14 +892,29 @@ default: OSError: [Errno 26] Text file busy: 'baremetrics'
 
 This error is caused by a
 [bug](https://www.virtualbox.org/ticket/19004) in recent versions of
-the VirtualBox Guest Additions for Linux on Windows hosts.  It has not
-been fixed upstream as of this writing, but you may be able to work
-around it by removing the plugin that upgrades Guest Additions:
+the VirtualBox Guest Additions for Linux on Windows hosts.  You can
+check the running version of VirtualBox Guest Additions with this
+command:
 
 ```
-vagrant destroy
-vagrant plugin uninstall vagrant-vbguest
-vagrant up --provider=virtualbox
+vagrant ssh -- 'modinfo -F version vboxsf'
+```
+
+The bug has not been fixed upstream as of this writing, but you may be
+able to work around it by downgrading VirtualBox Guest Additions to
+6.0.4.  To do this, create a `~/.zulip-vagrant-config` file and add
+this line:
+
+```
+VBOXADD_VERSION 6.0.4
+```
+
+Then run these commands (yes, reload is needed twice):
+
+```
+vagrant plugin install vagrant-vbguest
+vagrant reload
+vagrant reload --provision
 ```
 
 ### Specifying an Ubuntu mirror
@@ -984,7 +1000,7 @@ connect to your development server.
 ### Customizing CPU and RAM allocation
 
 When running Vagrant using a VM-based provider such as VirtualBox or
-VMWare Fusion, CPU and RAM resources must be explicitly allocated to
+VMware Fusion, CPU and RAM resources must be explicitly allocated to
 the guest system (with Docker and other container-based Vagrant
 providers, explicit allocation is unnecessary and the settings
 described here are ignored).
@@ -1026,6 +1042,7 @@ remove the `GUEST_CPUS` and `GUEST_MEMORY_MB` lines from
 [vbox-dl]: https://www.virtualbox.org/wiki/Downloads
 [vmware-fusion-dl]: https://www.vmware.com/products/fusion.html
 [vagrant-vmware-fusion-dl]: https://www.vagrantup.com/vmware/
+[parallels-desktop-dl]: https://www.parallels.com/products/desktop/
 [install-advanced]: ../development/setup-advanced.md
 [rtd-git-guide]: ../git/index.md
 [rtd-testing]: ../testing/testing.md

@@ -1,34 +1,31 @@
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {mock_cjs, mock_esm, set_global, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const $ = require("../zjsunit/zjquery");
+
+mock_cjs("jquery", $);
+
 const noop = () => {};
 
-set_global("$", global.make_zjquery());
-const input = $.create("input");
-set_global("document", {
-    createElement: () => input,
-    execCommand: noop,
+mock_esm("tippy.js", {
+    default: (selector) => {
+        $(selector)[0]._tippy = noop;
+        $(selector)[0]._tippy.setContent = noop;
+    },
 });
 
-$("body").append = noop;
-$(input).val = (arg) => {
-    assert.equal(arg, "iago@zulip.com");
-    return {
-        trigger: noop,
-    };
-};
+set_global("document", {});
 
-zrequire("common");
-
-function get_key_stub_html(key_text, expected_key, obj_name) {
-    const key_stub = $.create(obj_name);
-    key_stub.text(key_text);
-    key_stub.expected_key = function () {
-        return expected_key;
-    };
-    return key_stub;
-}
+const common = zrequire("common");
 
 run_test("basics", () => {
     common.autofocus("#home");
+    $.get_initialize_function()();
     assert($("#home").is_focused());
+    $.clear_initialize_function();
 });
 
 run_test("phrase_match", () => {
@@ -41,24 +38,59 @@ run_test("phrase_match", () => {
     assert(!common.phrase_match("tes", "hostess"));
 });
 
-run_test("copy_data_attribute_value", () => {
-    const elem = $.create(".envelope-link");
+run_test("copy_data_attribute_value", (override) => {
+    const admin_emails_val = "iago@zulip.com";
+
+    const input = $.create("input");
+
+    let removed;
+    input.remove = () => {
+        removed = true;
+    };
+
+    override(document, "createElement", () => input);
+    override(document, "execCommand", noop);
+
+    $("body").append = noop;
+    $(input).val = (arg) => {
+        assert.equal(arg, admin_emails_val);
+        return {
+            trigger: noop,
+        };
+    };
+
+    const elem = {};
+    let faded_in = false;
+    let faded_out = false;
+
     elem.data = (key) => {
-        if (key === "admin-emails") {
-            return "iago@zulip.com";
-        }
-        return "";
+        assert.equal(key, "admin-emails");
+        return admin_emails_val;
     };
     elem.fadeOut = (val) => {
         assert.equal(val, 250);
+        faded_out = true;
     };
     elem.fadeIn = (val) => {
         assert.equal(val, 1000);
+        faded_in = true;
     };
     common.copy_data_attribute_value(elem, "admin-emails");
+    assert(removed);
+    assert(faded_in);
+    assert(faded_out);
 });
 
-run_test("adjust_mac_shortcuts", () => {
+run_test("adjust_mac_shortcuts non-mac", (override) => {
+    override(common, "has_mac_keyboard", () => false);
+
+    // The adjust_mac_shortcuts has a really simple guard
+    // at the top, and we just test the early-return behavior
+    // by trying to pass it garbage.
+    common.adjust_mac_shortcuts("selector-that-does-not-exist");
+});
+
+run_test("adjust_mac_shortcuts mac", (override) => {
     const keys_to_test_mac = new Map([
         ["Backspace", "Delete"],
         ["Enter", "Return"],
@@ -73,65 +105,70 @@ run_test("adjust_mac_shortcuts", () => {
         ["Ctrl + Shift", "⌘ + Shift"],
         ["Ctrl + Backspace + End", "⌘ + Delete + Fn + →"],
     ]);
-    const keys_to_test_non_mac = new Map([
-        ["Backspace", "Backspace"],
-        ["Enter", "Enter"],
-        ["Home", "Home"],
-        ["End", "End"],
-        ["PgUp", "PgUp"],
-        ["PgDn", "PgDn"],
-        ["X + Shift", "X + Shift"],
-        ["⌘ + Return", "⌘ + Return"],
-        ["Ctrl + Shift", "Ctrl + Shift"],
-        ["Ctrl + Backspace + End", "Ctrl + Backspace + End"],
-    ]);
 
-    let key_no;
-    let keys_elem_list = [];
+    override(common, "has_mac_keyboard", () => true);
 
-    common.has_mac_keyboard = function () {
-        return false;
-    };
-    key_no = 1;
-    keys_to_test_non_mac.forEach((value, key) => {
-        keys_elem_list.push(get_key_stub_html(key, value, "hotkey_non_mac_" + key_no));
+    const test_items = [];
+    let key_no = 1;
+
+    for (const [old_key, mac_key] of keys_to_test_mac) {
+        const test_item = {};
+        const stub = $.create("hotkey_" + key_no);
+        stub.text(old_key);
+        assert.equal(stub.hasClass("mac-cmd-key"), false);
+        test_item.stub = stub;
+        test_item.mac_key = mac_key;
+        test_item.is_cmd_key = old_key.includes("Ctrl");
+        test_items.push(test_item);
         key_no += 1;
-    });
+    }
 
-    common.adjust_mac_shortcuts(".markdown_content");
-    keys_elem_list.forEach((key_elem) => {
-        assert(key_elem.text(), key_elem.expected_key());
-    });
+    const children = test_items.map((test_item) => ({to_$: () => test_item.stub}));
 
-    keys_elem_list = [];
-    key_no = 1;
-    common.has_mac_keyboard = function () {
-        return true;
+    $.create(".markdown_content", {children});
+
+    const require_cmd = true;
+    common.adjust_mac_shortcuts(".markdown_content", require_cmd);
+
+    for (const test_item of test_items) {
+        assert.equal(test_item.stub.hasClass("mac-cmd-key"), test_item.is_cmd_key);
+        assert.equal(test_item.stub.text(), test_item.mac_key);
+    }
+});
+
+run_test("show password", () => {
+    const password_selector = "#id_password ~ .password_visibility_toggle";
+
+    $(password_selector)[0] = () => {};
+
+    function set_attribute(type) {
+        $("#id_password").attr("type", type);
+    }
+
+    function check_assertion(type, present_class, absent_class) {
+        assert.equal($("#id_password").attr("type"), type);
+        assert($(password_selector).hasClass(present_class));
+        assert(!$(password_selector).hasClass(absent_class));
+    }
+
+    const ev = {
+        preventDefault: () => {},
+        stopPropagation: () => {},
     };
-    keys_to_test_mac.forEach((value, key) => {
-        keys_elem_list.push(get_key_stub_html(key, value, "hotkey_" + key_no));
-        key_no += 1;
-    });
 
-    $(".markdown_content").each = (f) => {
-        for (let key_id = 0; key_id < keys_elem_list.length; key_id += 1) {
-            f.call(keys_elem_list[key_id]);
-        }
-    };
-    common.adjust_mac_shortcuts(".markdown_content");
-    keys_elem_list.forEach((key_elem) => {
-        assert.equal(key_elem.text(), key_elem.expected_key());
-    });
+    set_attribute("password");
+    common.setup_password_visibility_toggle("#id_password", password_selector);
 
-    const markdown_hotkey_1 = get_key_stub_html(
-        "Ctrl + Backspace",
-        "⌘ + Delete",
-        "markdown_hotkey_1",
-    );
-    $(".markdown_content").each = (f) => {
-        f.call(markdown_hotkey_1);
-    };
-    common.adjust_mac_shortcuts(".markdown_content", true);
-    assert.equal(markdown_hotkey_1.text(), markdown_hotkey_1.expected_key());
-    assert.equal(markdown_hotkey_1.hasClass("mac-cmd-key"), true);
+    const handler = $(password_selector).get_on_handler("click");
+
+    handler(ev);
+    check_assertion("text", "fa-eye", "fa-eye-slash");
+
+    handler(ev);
+    check_assertion("password", "fa-eye-slash", "fa-eye");
+
+    handler(ev);
+
+    common.reset_password_toggle_icons("#id_password", password_selector);
+    check_assertion("password", "fa-eye-slash", "fa-eye");
 });

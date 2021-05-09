@@ -41,11 +41,14 @@ below, and add more to your repertoire as needed.
 
 * **Toggle keyboard shortcuts view**: `?`
 
+* **Go to default view**: Press `Esc` or `Ctrl + [` until you are in
+  the [default view](/help/change-default-view).
+
 ## Navigation
 
 * **Search messages**: `/` or `Ctrl+k`
 
-* **Search streams**: `q`
+* **Filter streams**: `q`
 
 * **Search people**: `w`
 
@@ -76,7 +79,7 @@ below, and add more to your repertoire as needed.
 
 * **Cycle between stream narrows**: `A` (previous) and `D` (next)
 
-* **Narrow to all messages**: `Esc` or `Ctrl` + `[` — Shows all unmuted messages.
+* **Narrow to all messages**: `a` — Shows all unmuted messages.
 
 * **Narrow to current compose box recipient**: `Ctrl` + `.`
 
@@ -137,12 +140,13 @@ title="thumbs up"/>**: `+`
   (including All messages), and don't contribute to unread counts. Read more about
   [muting topics](/help/mute-a-topic).
 
-## Recent Topics
+## Recent topics
 
-* **View Recent Topics**: `t`
-* **Hide Recent Topics**: `Esc`
+* **View recent topics**: `t`
+* **Search recent topics**: `t`
+* **Escape from recent topics search**: `Esc` or arrow keys
+* **Navigate recent topics**: Use arrow keys or vim keys (`j`, `k`, `l`, `h`).
 
-Keyboard navigation (e.g. arrow keys) works as expected.
 Use `Enter` to engage with elements.
 
 ## Drafts

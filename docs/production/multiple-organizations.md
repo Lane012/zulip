@@ -9,7 +9,7 @@ The vast majority of Zulip servers host just a single organization (or
 documents what's involved in hosting multiple Zulip organizations on a
 single server.
 
-Throughout this article, we'll assume you're working on a zulip server
+Throughout this article, we'll assume you're working on a Zulip server
 with hostname `zulip.example.com`.  You may also find the more
 [technically focused article on realms](../subsystems/realms.md) to be useful
 reading.
@@ -33,7 +33,7 @@ things:
   file.  That setting is the default in 1.7 and later.
 * Make sure you have SSL certificates for all of the subdomains you're
   going to use.  If you're using
-  [our LetsEncrypt instructions](ssl-certificates.md), it's easy to
+  [our Let's Encrypt instructions](ssl-certificates.md), it's easy to
   just specify multiple subdomains in your certificate request.
 * If necessary, modify your `nginx` configuration to use your new
   certificates.
@@ -50,7 +50,7 @@ For servers hosting a large number of organizations, like
 = True` in `/etc/zulip/settings.py` so that the homepage for the
 server is a copy of the Zulip homepage.
 
-### SSL Certificates
+### SSL certificates
 
 You'll need to install an SSL certificate valid for all the
 (sub)domains you're using your Zulip server with.  You can get an SSL
@@ -125,7 +125,7 @@ like "Notification Bot", "Welcome Bot", etc. exist.  In the future,
 we're considering moving these bots to exist in every realm, so that
 we wouldn't need the system realm anymore.
 
-### Migrating / Troubleshooting
+### Migrating / troubleshooting
 
 If you're migrating from a configuration using the root domain to one
 with realms hosted on subdomains, be sure to clear cookies in any

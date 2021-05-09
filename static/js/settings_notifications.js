@@ -1,43 +1,17 @@
-const render_stream_specific_notification_row = require("../templates/settings/stream_specific_notification_row.hbs");
+import $ from "jquery";
 
-const settings_config = require("./settings_config");
+import render_stream_specific_notification_row from "../templates/settings/stream_specific_notification_row.hbs";
 
-exports.get_notifications_table_row_data = function (notify_settings) {
-    return settings_config.general_notifications_table_labels.realm.map((column, index) => {
-        const setting_name = notify_settings[index];
-        if (setting_name === undefined) {
-            return {
-                setting_name: "",
-                is_disabled: true,
-                is_checked: false,
-            };
-        }
-        const checkbox = {
-            setting_name,
-            is_disabled: false,
-        };
-        if (column === "mobile") {
-            checkbox.is_disabled = !page_params.realm_push_notifications_enabled;
-        }
-        checkbox.is_checked = page_params[setting_name];
-        return checkbox;
-    });
-};
-
-exports.desktop_icon_count_display_values = {
-    messages: {
-        code: 1,
-        description: i18n.t("All unreads"),
-    },
-    notifiable: {
-        code: 2,
-        description: i18n.t("Private messages and mentions"),
-    },
-    none: {
-        code: 3,
-        description: i18n.t("None"),
-    },
-};
+import * as channel from "./channel";
+import {$t} from "./i18n";
+import * as notifications from "./notifications";
+import {page_params} from "./page_params";
+import * as settings_config from "./settings_config";
+import * as settings_org from "./settings_org";
+import * as settings_ui from "./settings_ui";
+import * as stream_edit from "./stream_edit";
+import * as stream_settings_data from "./stream_settings_data";
+import * as unread_ui from "./unread_ui";
 
 function rerender_ui() {
     const unmatched_streams_table = $("#stream-specific-notify-table");
@@ -46,7 +20,7 @@ function rerender_ui() {
         return;
     }
 
-    const unmatched_streams = stream_data.get_unmatched_streams_for_notification_settings();
+    const unmatched_streams = stream_settings_data.get_unmatched_streams_for_notification_settings();
 
     unmatched_streams_table.find(".stream-row").remove();
 
@@ -68,9 +42,9 @@ function rerender_ui() {
     }
 }
 
-function change_notification_setting(setting, setting_data, status_element) {
+function change_notification_setting(setting, value, status_element) {
     const data = {};
-    data[setting] = JSON.stringify(setting_data);
+    data[setting] = value;
     settings_ui.do_settings_change(
         channel.patch,
         "/json/settings/notifications",
@@ -81,19 +55,26 @@ function change_notification_setting(setting, setting_data, status_element) {
 
 function update_desktop_icon_count_display() {
     $("#desktop_icon_count_display").val(page_params.desktop_icon_count_display);
-    const count = unread.get_notifiable_count();
-    notifications.update_title_count(count);
+    unread_ui.update_unread_counts();
 }
 
-exports.set_enable_digest_emails_visibility = function () {
+export function set_enable_digest_emails_visibility() {
     if (page_params.realm_digest_emails_enabled) {
         $("#enable_digest_emails_label").parent().show();
     } else {
         $("#enable_digest_emails_label").parent().hide();
     }
-};
+}
 
-exports.set_up = function () {
+export function set_enable_marketing_emails_visibility() {
+    if (page_params.enable_marketing_emails_enabled) {
+        $("#enable_marketing_emails_label").parent().show();
+    } else {
+        $("#enable_marketing_emails_label").parent().hide();
+    }
+}
+
+export function set_up() {
     $("#notification-settings").on("change", "input, select", function (e) {
         e.preventDefault();
         e.stopPropagation();
@@ -114,12 +95,14 @@ exports.set_up = function () {
 
     $("#send_test_notification").on("click", () => {
         notifications.send_test_notification(
-            i18n.t("This is what a Zulip notification looks like."),
+            $t({defaultMessage: "This is what a Zulip notification looks like."}),
         );
     });
 
     $("#play_notification_sound").on("click", () => {
-        $("#notifications-area").find("audio")[0].play();
+        if (page_params.notification_sound !== "none") {
+            $("#notification-sound-audio")[0].play();
+        }
     });
 
     const notification_sound_dropdown = $("#notification_sound");
@@ -137,11 +120,12 @@ exports.set_up = function () {
             notification_sound_dropdown.parent().addClass("control-label-disabled");
         }
     });
-    exports.set_enable_digest_emails_visibility();
+    set_enable_digest_emails_visibility();
+    set_enable_marketing_emails_visibility();
     rerender_ui();
-};
+}
 
-exports.update_page = function () {
+export function update_page() {
     for (const setting of settings_config.all_notification_settings) {
         if (
             setting === "enable_offline_push_notifications" &&
@@ -155,9 +139,7 @@ exports.update_page = function () {
             continue;
         }
 
-        $("#" + setting).prop("checked", page_params[setting]);
+        $(`#${CSS.escape(setting)}`).prop("checked", page_params[setting]);
     }
     rerender_ui();
-};
-
-window.settings_notifications = exports;
+}

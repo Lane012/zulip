@@ -1,6 +1,13 @@
-const {JSDOM} = require("jsdom");
+"use strict";
 
-set_global("$", global.make_zjquery());
+const {strict: assert} = require("assert");
+
+const {JSDOM} = require("jsdom");
+const _ = require("lodash");
+
+const {set_global, with_field, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+
 set_global("DOMParser", new JSDOM().window.DOMParser);
 set_global("document", {});
 const util = zrequire("util");
@@ -103,22 +110,32 @@ run_test("robust_uri_decode", () => {
     assert.equal(util.robust_uri_decode("xxx%3Ayyy"), "xxx:yyy");
     assert.equal(util.robust_uri_decode("xxx%3"), "xxx");
 
-    set_global("decodeURIComponent", () => {
-        throw "foo";
-    });
-    try {
-        util.robust_uri_decode("%E0%A4%A");
-    } catch (e) {
-        assert.equal(e, "foo");
-    }
+    let error_message;
+    with_field(
+        global,
+        "decodeURIComponent",
+        () => {
+            throw new Error("foo");
+        },
+        () => {
+            try {
+                util.robust_uri_decode("%E0%A4%A");
+            } catch (error) {
+                error_message = error.message;
+            }
+        },
+    );
+
+    assert.equal(error_message, "foo");
 });
 
 run_test("dumb_strcmp", () => {
-    Intl.Collator = undefined;
-    const strcmp = util.make_strcmp();
-    assert.equal(strcmp("a", "b"), -1);
-    assert.equal(strcmp("c", "c"), 0);
-    assert.equal(strcmp("z", "y"), 1);
+    with_field(Intl, "Collator", undefined, () => {
+        const strcmp = util.make_strcmp();
+        assert.equal(strcmp("a", "b"), -1);
+        assert.equal(strcmp("c", "c"), 0);
+        assert.equal(strcmp("z", "y"), 1);
+    });
 });
 
 run_test("get_edit_event_orig_topic", () => {
@@ -130,10 +147,10 @@ run_test("get_edit_event_prev_topic", () => {
 });
 
 run_test("is_mobile", () => {
-    global.window.navigator = {userAgent: "Android"};
+    window.navigator = {userAgent: "Android"};
     assert(util.is_mobile());
 
-    global.window.navigator = {userAgent: "Not mobile"};
+    window.navigator = {userAgent: "Not mobile"};
     assert(!util.is_mobile());
 });
 

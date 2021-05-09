@@ -1,50 +1,101 @@
-const confirmDatePlugin = require("flatpickr/dist/plugins/confirmDate/confirmDate.js");
+import ClipboardJS from "clipboard";
+import {add, formatISO, parseISO, set} from "date-fns";
+import ConfirmDatePlugin from "flatpickr/dist/plugins/confirmDate/confirmDate";
+import $ from "jquery";
 
-const render_actions_popover_content = require("../templates/actions_popover_content.hbs");
-const render_mobile_message_buttons_popover = require("../templates/mobile_message_buttons_popover.hbs");
-const render_mobile_message_buttons_popover_content = require("../templates/mobile_message_buttons_popover_content.hbs");
-const render_no_arrow_popover = require("../templates/no_arrow_popover.hbs");
-const render_remind_me_popover_content = require("../templates/remind_me_popover_content.hbs");
-const render_user_group_info_popover = require("../templates/user_group_info_popover.hbs");
-const render_user_group_info_popover_content = require("../templates/user_group_info_popover_content.hbs");
-const render_user_info_popover_content = require("../templates/user_info_popover_content.hbs");
-const render_user_info_popover_title = require("../templates/user_info_popover_title.hbs");
-const render_user_profile_modal = require("../templates/user_profile_modal.hbs");
+import render_actions_popover_content from "../templates/actions_popover_content.hbs";
+import render_mobile_message_buttons_popover from "../templates/mobile_message_buttons_popover.hbs";
+import render_mobile_message_buttons_popover_content from "../templates/mobile_message_buttons_popover_content.hbs";
+import render_no_arrow_popover from "../templates/no_arrow_popover.hbs";
+import render_playground_links_popover_content from "../templates/playground_links_popover_content.hbs";
+import render_remind_me_popover_content from "../templates/remind_me_popover_content.hbs";
+import render_user_group_info_popover from "../templates/user_group_info_popover.hbs";
+import render_user_group_info_popover_content from "../templates/user_group_info_popover_content.hbs";
+import render_user_info_popover_content from "../templates/user_info_popover_content.hbs";
+import render_user_info_popover_title from "../templates/user_info_popover_title.hbs";
+import render_user_profile_modal from "../templates/user_profile_modal.hbs";
 
-const settings_data = require("./settings_data");
-const util = require("./util");
+import * as blueslip from "./blueslip";
+import * as buddy_data from "./buddy_data";
+import * as compose_actions from "./compose_actions";
+import * as compose_state from "./compose_state";
+import * as compose_ui from "./compose_ui";
+import * as condense from "./condense";
+import * as emoji_picker from "./emoji_picker";
+import * as feature_flags from "./feature_flags";
+import * as giphy from "./giphy";
+import * as hash_util from "./hash_util";
+import {$t} from "./i18n";
+import * as message_edit from "./message_edit";
+import * as message_edit_history from "./message_edit_history";
+import * as message_lists from "./message_lists";
+import * as message_viewport from "./message_viewport";
+import * as muting from "./muting";
+import * as muting_ui from "./muting_ui";
+import * as narrow from "./narrow";
+import * as narrow_state from "./narrow_state";
+import * as overlays from "./overlays";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as realm_playground from "./realm_playground";
+import * as reminder from "./reminder";
+import * as resize from "./resize";
+import * as rows from "./rows";
+import * as settings_account from "./settings_account";
+import * as settings_data from "./settings_data";
+import * as settings_profile_fields from "./settings_profile_fields";
+import * as stream_popover from "./stream_popover";
+import * as user_groups from "./user_groups";
+import * as user_status from "./user_status";
+import * as user_status_ui from "./user_status_ui";
+import * as util from "./util";
 
 let current_actions_popover_elem;
 let current_flatpickr_instance;
 let current_message_info_popover_elem;
 let current_mobile_message_buttons_popover_elem;
+let current_user_info_popover_elem;
+let current_playground_links_popover_elem;
 let userlist_placement = "right";
 
 let list_of_popovers = [];
 
+export function clear_for_testing() {
+    current_actions_popover_elem = undefined;
+    current_flatpickr_instance = undefined;
+    current_message_info_popover_elem = undefined;
+    current_mobile_message_buttons_popover_elem = undefined;
+    current_user_info_popover_elem = undefined;
+    current_playground_links_popover_elem = undefined;
+    list_of_popovers.length = 0;
+    userlist_placement = "right";
+}
+
+export function clipboard_enable(arg) {
+    // arg is a selector or element
+    // We extract this function for testing purpose.
+    return new ClipboardJS(arg);
+}
+
 function elem_to_user_id(elem) {
-    return parseInt(elem.attr("data-user-id"), 10);
+    return Number.parseInt(elem.attr("data-user-id"), 10);
 }
 
 // this utilizes the proxy pattern to intercept all calls to $.fn.popover
 // and push the $.fn.data($o, "popover") results to an array.
 // this is needed so that when we try to unload popovers, we can kill all dead
 // ones that no longer have valid parents in the DOM.
-(function (popover) {
-    $.fn.popover = function (...args) {
-        // apply the jQuery object as `this`, and popover function arguments.
-        popover.apply(this, args);
+const old_popover = $.fn.popover;
+$.fn.popover = Object.assign(function (...args) {
+    // apply the jQuery object as `this`, and popover function arguments.
+    old_popover.apply(this, args);
 
-        // if there is a valid "popover" key in the jQuery data object then
-        // push it to the array.
-        if (this.data("popover")) {
-            list_of_popovers.push(this.data("popover"));
-        }
-    };
-
-    // add back all shallow properties of $.fn.popover to the new proxied version.
-    Object.assign($.fn.popover, popover);
-})($.fn.popover);
+    // if there is a valid "popover" key in the jQuery data object then
+    // push it to the array.
+    if (this.data("popover")) {
+        list_of_popovers.push(this.data("popover"));
+    }
+}, old_popover);
 
 function copy_email_handler(e) {
     const email_el = $(e.trigger.parentElement);
@@ -55,7 +106,7 @@ function copy_email_handler(e) {
     const email_textnode = email_el[0].childNodes[2];
 
     email_el.addClass("email_copied");
-    email_textnode.nodeValue = i18n.t("Email copied");
+    email_textnode.nodeValue = $t({defaultMessage: "Email copied"});
 
     setTimeout(() => {
         email_el.removeClass("email_copied");
@@ -83,7 +134,7 @@ function init_email_clipboard() {
             */
             if (copy_email_icon[0]) {
                 copy_email_icon.removeClass("hide_copy_icon");
-                const copy_email_clipboard = new ClipboardJS(copy_email_icon[0]);
+                const copy_email_clipboard = clipboard_enable(copy_email_icon[0]);
                 copy_email_clipboard.on("success", copy_email_handler);
             }
         }
@@ -111,6 +162,8 @@ function calculate_info_popover_placement(size, elt) {
             return "top";
         }
     }
+
+    return undefined;
 }
 
 function get_custom_profile_field_data(user, field, field_types, dateFormat) {
@@ -132,14 +185,14 @@ function get_custom_profile_field_data(user, field, field_types, dateFormat) {
 
     switch (field_type) {
         case field_types.DATE.id:
-            profile_field.value = moment(field_value.value).format(dateFormat);
+            profile_field.value = dateFormat.format(parseISO(field_value.value));
             break;
         case field_types.USER.id:
             profile_field.id = field.id;
             profile_field.is_user_field = true;
             profile_field.value = field_value.value;
             break;
-        case field_types.CHOICE.id: {
+        case field_types.SELECT.id: {
             const field_choice_dict = JSON.parse(field.field_data);
             profile_field.value = field_choice_dict[field_value.value].text;
             break;
@@ -164,6 +217,7 @@ function render_user_info_popover(
     user,
     popover_element,
     is_sender_popover,
+    has_message_context,
     private_msg_class,
     template_class,
     popover_placement,
@@ -181,9 +235,16 @@ function render_user_info_popover(
         }
     }
 
+    const is_dev = page_params.development_environment;
+    const muting_allowed = is_dev && !is_me && !user.is_bot;
+    const is_muted = muting.is_user_muted(user.user_id);
+
     const args = {
         can_revoke_away,
         can_set_away,
+        can_mute: muting_allowed && !is_muted,
+        can_unmute: muting_allowed && is_muted,
+        has_message_context,
         is_active: people.is_active_user_for_popover(user.user_id),
         is_bot: user.is_bot,
         is_me,
@@ -201,6 +262,7 @@ function render_user_info_popover(
         user_time: people.get_user_time(user.user_id),
         user_type: people.get_user_type(user.user_id),
         status_text: user_status.get_status_text(user.user_id),
+        user_mention_syntax: people.get_mention_syntax(user.full_name, user.user_id),
     };
 
     if (user.is_bot) {
@@ -228,7 +290,7 @@ function render_user_info_popover(
         }),
         html: true,
         trigger: "manual",
-        top_offset: 100,
+        top_offset: $("#userlist-title").offset().top + 15,
         fix_positions: true,
     });
     popover_element.popover("show");
@@ -238,20 +300,20 @@ function render_user_info_popover(
 }
 
 // exporting for testability
-exports._test_calculate_info_popover_placement = calculate_info_popover_placement;
+export const _test_calculate_info_popover_placement = calculate_info_popover_placement;
 
 // element is the target element to pop off of
 // user is the user whose profile to show
 // message is the message containing it, which should be selected
-function show_user_info_popover(element, user, message) {
+function show_user_info_popover_for_message(element, user, message) {
     const last_popover_elem = current_message_info_popover_elem;
-    exports.hide_all();
+    hide_all();
     if (last_popover_elem !== undefined && last_popover_elem.get()[0] === element) {
         // We want it to be the case that a user can dismiss a popover
         // by clicking on the same element that caused the popover.
         return;
     }
-    current_msg_list.select_id(message.id);
+    message_lists.current.select_id(message.id);
     const elt = $(element);
     if (elt.data("popover") === undefined) {
         if (user === undefined) {
@@ -266,6 +328,7 @@ function show_user_info_popover(element, user, message) {
             user,
             elt,
             is_sender_popover,
+            true,
             "respond_personal_button",
             "message-info-popover",
             "right",
@@ -277,7 +340,7 @@ function show_user_info_popover(element, user, message) {
 
 function show_mobile_message_buttons_popover(element) {
     const last_popover_elem = current_mobile_message_buttons_popover_elem;
-    exports.hide_all();
+    hide_all();
     if (last_popover_elem !== undefined && last_popover_elem.get()[0] === element) {
         // We want it to be the case that a user can dismiss a popover
         // by clicking on the same element that caused the popover.
@@ -299,21 +362,21 @@ function show_mobile_message_buttons_popover(element) {
     current_mobile_message_buttons_popover_elem = $element;
 }
 
-exports.hide_mobile_message_buttons_popover = function () {
+export function hide_mobile_message_buttons_popover() {
     if (current_mobile_message_buttons_popover_elem) {
         current_mobile_message_buttons_popover_elem.popover("destroy");
         current_mobile_message_buttons_popover_elem = undefined;
     }
-};
+}
 
-exports.hide_user_profile = function () {
+export function hide_user_profile() {
     $("#user-profile-modal").modal("hide");
-};
+}
 
-exports.show_user_profile = function (user) {
-    exports.hide_all();
+export function show_user_profile(user) {
+    hide_all();
 
-    const dateFormat = moment.localeData().longDateFormat("LL");
+    const dateFormat = new Intl.DateTimeFormat("default", {dateStyle: "long"});
     const field_types = page_params.custom_profile_field_types;
     const profile_data = page_params.custom_profile_fields
         .map((f) => get_custom_profile_field_data(user, f, field_types, dateFormat))
@@ -325,7 +388,7 @@ exports.show_user_profile = function (user) {
         profile_data,
         user_avatar: "avatar/" + user.email + "/medium",
         is_me: people.is_current_user(user.email),
-        date_joined: moment(user.date_joined).format(dateFormat),
+        date_joined: dateFormat.format(parseISO(user.date_joined)),
         last_seen: buddy_data.user_last_seen_time_status(user.user_id),
         show_email: settings_data.show_email(),
         user_time: people.get_user_time(user.user_id),
@@ -342,34 +405,67 @@ exports.show_user_profile = function (user) {
         false,
         false,
     );
-};
+}
 
-function get_user_info_popover_items() {
+export function show_user_info_popover(element, user) {
+    const last_popover_elem = current_user_info_popover_elem;
+    hide_all();
+    if (last_popover_elem !== undefined && last_popover_elem.get()[0] === element) {
+        return;
+    }
+    const elt = $(element);
+    render_user_info_popover(
+        user,
+        elt,
+        false,
+        false,
+        "compose_private_message",
+        "user-info-popover",
+        "right",
+    );
+    current_user_info_popover_elem = elt;
+}
+
+function get_user_info_popover_for_message_items() {
     if (!current_message_info_popover_elem) {
         blueslip.error("Trying to get menu items when action popover is closed.");
-        return;
+        return undefined;
     }
 
     const popover_data = current_message_info_popover_elem.data("popover");
     if (!popover_data) {
         blueslip.error("Cannot find popover data for actions menu.");
-        return;
+        return undefined;
     }
 
     return $("li:not(.divider):visible a", popover_data.$tip);
+}
+
+function get_user_info_popover_items() {
+    const popover_elt = $("div.user-info-popover");
+    if (!current_user_info_popover_elem || !popover_elt.length) {
+        blueslip.error("Trying to get menu items when action popover is closed.");
+        return undefined;
+    }
+
+    if (popover_elt.length >= 2) {
+        blueslip.error("More than one user info popovers cannot be opened at same time.");
+        return undefined;
+    }
+
+    return $("li:not(.divider):visible a", popover_elt);
 }
 
 function fetch_group_members(member_ids) {
     return member_ids
         .map((m) => people.get_by_user_id(m))
         .filter((m) => m !== undefined)
-        .map((p) =>
-            Object.assign({}, p, {
-                user_circle_class: buddy_data.get_user_circle_class(p.user_id),
-                is_active: people.is_active_user_for_popover(p.user_id),
-                user_last_seen_time_status: buddy_data.user_last_seen_time_status(p.user_id),
-            }),
-        );
+        .map((p) => ({
+            ...p,
+            user_circle_class: buddy_data.get_user_circle_class(p.user_id),
+            is_active: people.is_active_user_for_popover(p.user_id),
+            user_last_seen_time_status: buddy_data.user_last_seen_time_status(p.user_id),
+        }));
 }
 
 function sort_group_members(members) {
@@ -377,8 +473,9 @@ function sort_group_members(members) {
 }
 
 // exporting these functions for testing purposes
-exports._test_fetch_group_members = fetch_group_members;
-exports._test_sort_group_members = sort_group_members;
+export const _test_fetch_group_members = fetch_group_members;
+
+export const _test_sort_group_members = sort_group_members;
 
 // element is the target element to pop off of
 // user is the user whose profile to show
@@ -388,13 +485,13 @@ function show_user_group_info_popover(element, group, message) {
     // hardcoded pixel height of the popover
     // note that the actual size varies (in group size), but this is about as big as it gets
     const popover_size = 390;
-    exports.hide_all();
+    hide_all();
     if (last_popover_elem !== undefined && last_popover_elem.get()[0] === element) {
         // We want it to be the case that a user can dismiss a popover
         // by clicking on the same element that caused the popover.
         return;
     }
-    current_msg_list.select_id(message.id);
+    message_lists.current.select_id(message.id);
     const elt = $(element);
     if (elt.data("popover") === undefined) {
         const args = {
@@ -414,9 +511,9 @@ function show_user_group_info_popover(element, group, message) {
     }
 }
 
-exports.toggle_actions_popover = function (element, id) {
+export function toggle_actions_popover(element, id) {
     const last_popover_elem = current_actions_popover_elem;
-    exports.hide_all();
+    hide_all();
     if (last_popover_elem !== undefined && last_popover_elem.get()[0] === element) {
         // We want it to be the case that a user can dismiss a popover
         // by clicking on the same element that caused the popover.
@@ -424,22 +521,22 @@ exports.toggle_actions_popover = function (element, id) {
     }
 
     $(element).closest(".message_row").toggleClass("has_popover has_actions_popover");
-    current_msg_list.select_id(id);
+    message_lists.current.select_id(id);
     const elt = $(element);
     if (elt.data("popover") === undefined) {
-        const message = current_msg_list.get(id);
+        const message = message_lists.current.get(id);
         const editability = message_edit.get_editability(message);
         let use_edit_icon;
         let editability_menu_item;
         if (editability === message_edit.editability_types.FULL) {
             use_edit_icon = true;
-            editability_menu_item = i18n.t("Edit");
+            editability_menu_item = $t({defaultMessage: "Edit"});
         } else if (editability === message_edit.editability_types.TOPIC_ONLY) {
             use_edit_icon = false;
-            editability_menu_item = i18n.t("View source / Edit topic");
+            editability_menu_item = $t({defaultMessage: "View source / Edit topic"});
         } else {
             use_edit_icon = false;
-            editability_menu_item = i18n.t("View source");
+            editability_menu_item = $t({defaultMessage: "View source"});
         }
         const topic = message.topic;
         const can_mute_topic =
@@ -470,10 +567,7 @@ exports.toggle_actions_popover = function (element, id) {
             editability === message_edit.editability_types.TOPIC_ONLY;
         const should_display_quote_and_reply = message.content !== "<p>(deleted)</p>";
 
-        const conversation_time_uri = hash_util
-            .by_conversation_and_time_uri(message)
-            .replace(/\(/g, "%28")
-            .replace(/\)/g, "%29");
+        const conversation_time_uri = hash_util.by_conversation_and_time_uri(message);
 
         const should_display_delete_option = message_edit.get_deletability(message);
         const args = {
@@ -509,15 +603,15 @@ exports.toggle_actions_popover = function (element, id) {
         elt.popover("show");
         current_actions_popover_elem = elt;
     }
-};
+}
 
-exports.render_actions_remind_popover = function (element, id) {
-    exports.hide_all();
+export function render_actions_remind_popover(element, id) {
+    hide_all();
     $(element).closest(".message_row").toggleClass("has_popover has_actions_popover");
-    current_msg_list.select_id(id);
+    message_lists.current.select_id(id);
     const elt = $(element);
     if (elt.data("popover") === undefined) {
-        const message = current_msg_list.get(id);
+        const message = message_lists.current.get(id);
         const args = {
             message,
         };
@@ -532,34 +626,34 @@ exports.render_actions_remind_popover = function (element, id) {
         });
         elt.popover("show");
         current_flatpickr_instance = $(
-            '.remind.custom[data-message-id="' + message.id + '"]',
+            `.remind.custom[data-message-id="${CSS.escape(message.id)}"]`,
         ).flatpickr({
             enableTime: true,
             clickOpens: false,
-            defaultDate: moment().format(),
+            defaultDate: "today",
             minDate: "today",
-            plugins: [new confirmDatePlugin({})], // eslint-disable-line new-cap, no-undef
+            plugins: [new ConfirmDatePlugin({})],
         });
         current_actions_popover_elem = elt;
     }
-};
+}
 
 function get_action_menu_menu_items() {
     if (!current_actions_popover_elem) {
         blueslip.error("Trying to get menu items when action popover is closed.");
-        return;
+        return undefined;
     }
 
     const popover_data = current_actions_popover_elem.data("popover");
     if (!popover_data) {
         blueslip.error("Cannot find popover data for actions menu.");
-        return;
+        return undefined;
     }
 
     return $("li:not(.divider):visible a", popover_data.$tip);
 }
 
-function focus_first_popover_item(items) {
+export function focus_first_popover_item(items) {
     if (!items) {
         return;
     }
@@ -567,7 +661,7 @@ function focus_first_popover_item(items) {
     items.eq(0).expectOne().trigger("focus");
 }
 
-function popover_items_handle_keyboard(key, items) {
+export function popover_items_handle_keyboard(key, items) {
     if (!items) {
         return;
     }
@@ -575,7 +669,8 @@ function popover_items_handle_keyboard(key, items) {
     let index = items.index(items.filter(":focus"));
 
     if (key === "enter" && index >= 0 && index < items.length) {
-        return items[index].trigger("click");
+        items[index].click();
+        return;
     }
     if (index === -1) {
         index = 0;
@@ -594,7 +689,7 @@ function focus_first_action_popover_item() {
     focus_first_popover_item(items);
 }
 
-exports.open_message_menu = function (message) {
+export function open_message_menu(message) {
     if (message.locally_echoed) {
         // Don't open the popup for locally echoed messages for now.
         // It creates bugs with things like keyboard handlers when
@@ -603,24 +698,24 @@ exports.open_message_menu = function (message) {
     }
 
     const message_id = message.id;
-    exports.toggle_actions_popover($(".selected_message .actions_hover")[0], message_id);
+    toggle_actions_popover($(".selected_message .actions_hover")[0], message_id);
     if (current_actions_popover_elem) {
         focus_first_action_popover_item();
     }
     return true;
-};
+}
 
-exports.actions_menu_handle_keyboard = function (key) {
+export function actions_menu_handle_keyboard(key) {
     const items = get_action_menu_menu_items();
     popover_items_handle_keyboard(key, items);
-};
+}
 
-exports.actions_popped = function () {
+export function actions_popped() {
     return current_actions_popover_elem !== undefined;
-};
+}
 
-exports.hide_actions_popover = function () {
-    if (exports.actions_popped()) {
+export function hide_actions_popover() {
+    if (actions_popped()) {
         $(".has_popover").removeClass("has_popover has_actions_popover");
         current_actions_popover_elem.popover("destroy");
         current_actions_popover_elem = undefined;
@@ -629,45 +724,56 @@ exports.hide_actions_popover = function () {
         current_flatpickr_instance.destroy();
         current_flatpickr_instance = undefined;
     }
-};
+}
 
-exports.message_info_popped = function () {
+export function message_info_popped() {
     return current_message_info_popover_elem !== undefined;
-};
+}
 
-exports.hide_message_info_popover = function () {
-    if (exports.message_info_popped()) {
+export function hide_message_info_popover() {
+    if (message_info_popped()) {
         current_message_info_popover_elem.popover("destroy");
         current_message_info_popover_elem = undefined;
     }
-};
+}
 
-exports.hide_userlist_sidebar = function () {
+export function user_info_popped() {
+    return current_user_info_popover_elem !== undefined;
+}
+
+export function hide_user_info_popover() {
+    if (user_info_popped()) {
+        current_user_info_popover_elem.popover("destroy");
+        current_user_info_popover_elem = undefined;
+    }
+}
+
+export function hide_userlist_sidebar() {
     $(".app-main .column-right").removeClass("expanded");
-};
+}
 
-exports.hide_pm_list_sidebar = function () {
+export function hide_pm_list_sidebar() {
     $(".app-main .column-left").removeClass("expanded");
-};
+}
 
-exports.show_userlist_sidebar = function () {
+export function show_userlist_sidebar() {
     $(".app-main .column-right").addClass("expanded");
     resize.resize_page_components();
-};
+}
 
-exports.show_pm_list_sidebar = function () {
+export function show_pm_list_sidebar() {
     $(".app-main .column-left").addClass("expanded");
     resize.resize_page_components();
-};
+}
 
 let current_user_sidebar_user_id;
 let current_user_sidebar_popover;
 
-function user_sidebar_popped() {
+export function user_sidebar_popped() {
     return current_user_sidebar_popover !== undefined;
 }
 
-exports.hide_user_sidebar_popover = function () {
+export function hide_user_sidebar_popover() {
     if (user_sidebar_popped()) {
         // this hide_* method looks different from all the others since
         // the presence list may be redrawn. Due to funkiness with jquery's .data()
@@ -679,31 +785,50 @@ exports.hide_user_sidebar_popover = function () {
         current_user_sidebar_user_id = undefined;
         current_user_sidebar_popover = undefined;
     }
-};
+}
 
 function focus_user_info_popover_item() {
     // For now I recommend only calling this when the user opens the menu with a hotkey.
     // Our popup menus act kind of funny when you mix keyboard and mouse.
-    const items = get_user_info_popover_items();
+    const items = get_user_info_popover_for_message_items();
     focus_first_popover_item(items);
 }
 
-exports.user_info_popover_handle_keyboard = function (key) {
+function get_user_sidebar_popover_items() {
+    if (!current_user_sidebar_popover) {
+        blueslip.error("Trying to get menu items when user sidebar popover is closed.");
+        return undefined;
+    }
+
+    return $("li:not(.divider):visible > a", current_user_sidebar_popover.$tip);
+}
+
+export function user_sidebar_popover_handle_keyboard(key) {
+    const items = get_user_sidebar_popover_items();
+    popover_items_handle_keyboard(key, items);
+}
+
+export function user_info_popover_for_message_handle_keyboard(key) {
+    const items = get_user_info_popover_for_message_items();
+    popover_items_handle_keyboard(key, items);
+}
+
+export function user_info_popover_handle_keyboard(key) {
     const items = get_user_info_popover_items();
     popover_items_handle_keyboard(key, items);
-};
+}
 
-exports.show_sender_info = function () {
+export function show_sender_info() {
     const $message = $(".selected_message");
     const $sender = $message.find(".sender_info_hover");
 
-    const message = current_msg_list.get(rows.id($message));
+    const message = message_lists.current.get(rows.id($message));
     const user = people.get_by_user_id(message.sender_id);
-    show_user_info_popover($sender[0], user, message);
+    show_user_info_popover_for_message($sender[0], user, message);
     if (current_message_info_popover_elem) {
         focus_user_info_popover_item();
     }
-};
+}
 
 // On mobile web, opening the keyboard can trigger a resize event
 // (which in turn can trigger a scroll event).  This will have the
@@ -712,15 +837,50 @@ exports.show_sender_info = function () {
 // variable.
 let suppress_scroll_hide = false;
 
-exports.set_suppress_scroll_hide = function () {
+export function set_suppress_scroll_hide() {
     suppress_scroll_hide = true;
-};
+}
 
-exports.register_click_handlers = function () {
+// Playground_info contains all the data we need to generate a popover of
+// playground links for each code block. The element is the target element
+// to pop off of.
+export function toggle_playground_link_popover(element, playground_info) {
+    const last_popover_elem = current_playground_links_popover_elem;
+    hide_all();
+    if (last_popover_elem !== undefined && last_popover_elem.get()[0] === element) {
+        // We want it to be the case that a user can dismiss a popover
+        // by clicking on the same element that caused the popover.
+        return;
+    }
+    const elt = $(element);
+    if (elt.data("popover") === undefined) {
+        const ypos = elt.offset().top;
+        elt.popover({
+            // It's unlikely we'll have more than 3-4 playground links
+            // for one language, so it should be OK to hardcode 120 here.
+            placement: message_viewport.height() - ypos < 120 ? "top" : "bottom",
+            title: "",
+            content: render_playground_links_popover_content({playground_info}),
+            html: true,
+            trigger: "manual",
+        });
+        elt.popover("show");
+        current_playground_links_popover_elem = elt;
+    }
+}
+
+export function hide_playground_links_popover() {
+    if (current_playground_links_popover_elem !== undefined) {
+        current_playground_links_popover_elem.popover("destroy");
+        current_playground_links_popover_elem = undefined;
+    }
+}
+
+export function register_click_handlers() {
     $("#main_div").on("click", ".actions_hover", function (e) {
         const row = $(this).closest(".message_row");
         e.stopPropagation();
-        exports.toggle_actions_popover(this, rows.id(row));
+        toggle_actions_popover(this, rows.id(row));
     });
 
     $("#main_div").on(
@@ -729,16 +889,15 @@ exports.register_click_handlers = function () {
         function (e) {
             const row = $(this).closest(".message_row");
             e.stopPropagation();
-            const message = current_msg_list.get(rows.id(row));
+            const message = message_lists.current.get(rows.id(row));
             const user = people.get_by_user_id(message.sender_id);
-
-            show_user_info_popover(this, user, message);
+            show_user_info_popover_for_message(this, user, message);
         },
     );
 
     $("#main_div").on("click", ".user-mention", function (e) {
         const id_string = $(this).attr("data-user-id");
-        // We fallback to email to handle legacy markdown that was rendered
+        // We fallback to email to handle legacy Markdown that was rendered
         // before we cut over to using data-user-id
         const email = $(this).attr("data-user-email");
         if (id_string === "*" || email === "*") {
@@ -746,22 +905,22 @@ exports.register_click_handlers = function () {
         }
         const row = $(this).closest(".message_row");
         e.stopPropagation();
-        const message = current_msg_list.get(rows.id(row));
+        const message = message_lists.current.get(rows.id(row));
         let user;
         if (id_string) {
-            const user_id = parseInt(id_string, 10);
+            const user_id = Number.parseInt(id_string, 10);
             user = people.get_by_user_id(user_id);
         } else {
             user = people.get_by_email(email);
         }
-        show_user_info_popover(this, user, message);
+        show_user_info_popover_for_message(this, user, message);
     });
 
     $("#main_div").on("click", ".user-group-mention", function (e) {
-        const user_group_id = parseInt($(this).attr("data-user-group-id"), 10);
+        const user_group_id = Number.parseInt($(this).attr("data-user-group-id"), 10);
         const row = $(this).closest(".message_row");
         e.stopPropagation();
-        const message = current_msg_list.get(rows.id(row));
+        const message = message_lists.current.get(rows.id(row));
         const group = user_groups.get_user_group_from_id(user_group_id, true);
         if (group === undefined) {
             // This user group has likely been deleted.
@@ -771,10 +930,41 @@ exports.register_click_handlers = function () {
         }
     });
 
+    $("#main_div, #compose .preview_content").on("click", ".code_external_link", function (e) {
+        const view_in_playground_button = $(this);
+        const codehilite_div = $(this).closest(".codehilite");
+        e.stopPropagation();
+        const playground_info = realm_playground.get_playground_info_for_languages(
+            codehilite_div.data("code-language"),
+        );
+        // We do the code extraction here and set the target href combining the url_prefix
+        // and the extracted code. Depending on whether the language has multiple playground
+        // links configured, a popover is show.
+        const extracted_code = codehilite_div.find("code").text();
+        if (playground_info.length === 1) {
+            const url_prefix = playground_info[0].url_prefix;
+            view_in_playground_button.attr("href", url_prefix + encodeURIComponent(extracted_code));
+        } else {
+            for (const $playground of playground_info) {
+                $playground.playground_url =
+                    $playground.url_prefix + encodeURIComponent(extracted_code);
+            }
+            toggle_playground_link_popover(this, playground_info);
+        }
+    });
+
+    $("body").on("click", ".popover_playground_link", (e) => {
+        hide_playground_links_popover();
+        e.stopPropagation();
+    });
+
     $("body").on("click", ".info_popover_actions .narrow_to_private_messages", (e) => {
         const user_id = elem_to_user_id($(e.target).parents("ul"));
         const email = people.get_by_user_id(user_id).email;
-        exports.hide_message_info_popover();
+        hide_all();
+        if (overlays.settings_open()) {
+            overlays.close_overlay("settings");
+        }
         narrow.by("pm-with", email, {trigger: "user sidebar popover"});
         e.stopPropagation();
         e.preventDefault();
@@ -783,7 +973,10 @@ exports.register_click_handlers = function () {
     $("body").on("click", ".info_popover_actions .narrow_to_messages_sent", (e) => {
         const user_id = elem_to_user_id($(e.target).parents("ul"));
         const email = people.get_by_user_id(user_id).email;
-        exports.hide_message_info_popover();
+        hide_all();
+        if (overlays.settings_open()) {
+            overlays.close_overlay("settings");
+        }
         narrow.by("sender", email, {trigger: "user sidebar popover"});
         e.stopPropagation();
         e.preventDefault();
@@ -797,8 +990,8 @@ exports.register_click_handlers = function () {
         const name = people.get_by_user_id(user_id).full_name;
         const mention = people.get_mention_syntax(name, user_id);
         compose_ui.insert_syntax_and_focus(mention);
-        exports.hide_user_sidebar_popover();
-        exports.hide_userlist_sidebar();
+        hide_user_sidebar_popover();
+        hide_userlist_sidebar();
         e.stopPropagation();
         e.preventDefault();
     });
@@ -811,15 +1004,15 @@ exports.register_click_handlers = function () {
         const name = people.get_by_user_id(user_id).full_name;
         const mention = people.get_mention_syntax(name, user_id);
         compose_ui.insert_syntax_and_focus(mention);
-        exports.hide_message_info_popover();
+        hide_message_info_popover();
         e.stopPropagation();
         e.preventDefault();
     });
 
-    $("body").on("click", ".info_popover_actions .view_user_profile", (e) => {
+    $("body").on("click", ".info_popover_actions .view_full_user_profile", (e) => {
         const user_id = elem_to_user_id($(e.target).parents("ul"));
         const user = people.get_by_user_id(user_id);
-        exports.show_user_profile(user);
+        show_user_profile(user);
         e.stopPropagation();
         e.preventDefault();
     });
@@ -836,14 +1029,16 @@ exports.register_click_handlers = function () {
         });
     });
 
-    $("body").on("click", ".bot-owner-name", (e) => {
-        const user_id = parseInt($(e.target).attr("data-bot-owner-id"), 10);
+    $("body").on("click", ".view_user_profile", (e) => {
+        const user_id = Number.parseInt($(e.target).attr("data-user-id"), 10);
         const user = people.get_by_user_id(user_id);
-        exports.show_user_profile(user);
+        show_user_info_popover(e.target, user);
+        e.stopPropagation();
+        e.preventDefault();
     });
 
     $("body").on("click", "#user-profile-modal #name #edit-button", () => {
-        exports.hide_user_profile();
+        hide_user_profile();
     });
 
     $("body").on("click", ".compose_mobile_button", function (e) {
@@ -853,24 +1048,42 @@ exports.register_click_handlers = function () {
     });
 
     $("body").on("click", ".set_away_status", (e) => {
-        exports.hide_all();
+        hide_all();
         user_status.server_set_away();
         e.stopPropagation();
         e.preventDefault();
     });
 
     $("body").on("click", ".revoke_away_status", (e) => {
-        exports.hide_all();
+        hide_all();
         user_status.server_revoke_away();
         e.stopPropagation();
         e.preventDefault();
     });
 
     $("body").on("click", ".update_status_text", (e) => {
-        exports.hide_all();
+        hide_all();
 
         user_status_ui.open_overlay();
 
+        e.stopPropagation();
+        e.preventDefault();
+    });
+
+    $("body").on("click", ".info_popover_actions .sidebar-popover-mute-user", (e) => {
+        const user_id = elem_to_user_id($(e.target).parents("ul"));
+        hide_message_info_popover();
+        hide_user_sidebar_popover();
+        e.stopPropagation();
+        e.preventDefault();
+        muting_ui.confirm_mute_user(user_id);
+    });
+
+    $("body").on("click", ".info_popover_actions .sidebar-popover-unmute-user", (e) => {
+        const user_id = elem_to_user_id($(e.target).parents("ul"));
+        hide_message_info_popover();
+        hide_user_sidebar_popover();
+        muting_ui.unmute_user(user_id);
         e.stopPropagation();
         e.preventDefault();
     });
@@ -886,13 +1099,13 @@ exports.register_click_handlers = function () {
         if (current_user_sidebar_user_id === user_id) {
             // If the popover is already shown, clicking again should toggle it.
             // We don't want to hide the sidebars on smaller browser windows.
-            exports.hide_all_except_sidebars();
+            hide_all_except_sidebars();
             return;
         }
-        exports.hide_all();
+        hide_all();
 
         if (userlist_placement === "right") {
-            exports.show_userlist_sidebar();
+            show_userlist_sidebar();
         } else {
             // Maintain the same behavior when displaying with the streamlist.
             stream_popover.show_streamlist_sidebar();
@@ -904,6 +1117,7 @@ exports.register_click_handlers = function () {
         render_user_info_popover(
             user,
             target,
+            false,
             false,
             "compose_private_message",
             "user_popover",
@@ -931,14 +1145,14 @@ exports.register_click_handlers = function () {
         // compose_actions.respond_to_message doesn't take a message
         // argument).
         compose_actions.quote_and_reply({trigger: "popover respond"});
-        exports.hide_actions_popover();
+        hide_actions_popover();
         e.stopPropagation();
         e.preventDefault();
     });
 
     $("body").on("click", ".reminder_button", (e) => {
         const message_id = $(e.currentTarget).data("message-id");
-        exports.render_actions_remind_popover($(".selected_message .actions_hover")[0], message_id);
+        render_actions_remind_popover($(".selected_message .actions_hover")[0], message_id);
         e.stopPropagation();
         e.preventDefault();
     });
@@ -952,33 +1166,37 @@ exports.register_click_handlers = function () {
     function reminder_click_handler(datestr, e) {
         const message_id = $(".remind.custom").data("message-id");
         reminder.do_set_reminder_for_message(message_id, datestr);
-        exports.hide_all();
+        hide_all();
         e.stopPropagation();
         e.preventDefault();
     }
 
     $("body").on("click", ".remind.in_20m", (e) => {
-        const datestr = moment().add(20, "m").format();
+        const datestr = formatISO(add(new Date(), {minutes: 20}));
         reminder_click_handler(datestr, e);
     });
 
     $("body").on("click", ".remind.in_1h", (e) => {
-        const datestr = moment().add(1, "h").format();
+        const datestr = formatISO(add(new Date(), {hours: 1}));
         reminder_click_handler(datestr, e);
     });
 
     $("body").on("click", ".remind.in_3h", (e) => {
-        const datestr = moment().add(3, "h").format();
+        const datestr = formatISO(add(new Date(), {hours: 3}));
         reminder_click_handler(datestr, e);
     });
 
     $("body").on("click", ".remind.tomo", (e) => {
-        const datestr = moment().add(1, "d").hour(9).minute(0).seconds(0).format();
+        const datestr = formatISO(
+            set(add(new Date(), {days: 1}), {hours: 9, minutes: 0, seconds: 0}),
+        );
         reminder_click_handler(datestr, e);
     });
 
     $("body").on("click", ".remind.nxtw", (e) => {
-        const datestr = moment().add(1, "w").day("monday").hour(9).minute(0).seconds(0).format();
+        const datestr = formatISO(
+            set(add(new Date(), {weeks: 1}), {hours: 9, minutes: 0, seconds: 0}),
+        );
         reminder_click_handler(datestr, e);
     });
 
@@ -999,16 +1217,19 @@ exports.register_click_handlers = function () {
             trigger: "popover send private",
             private_message_recipient: email,
         });
-        exports.hide_all();
+        hide_all();
+        if (overlays.settings_open()) {
+            overlays.close_overlay("settings");
+        }
         e.stopPropagation();
         e.preventDefault();
     });
     $("body").on("click", ".popover_toggle_collapse", (e) => {
         const message_id = $(e.currentTarget).data("message-id");
-        const row = current_msg_list.get_row(message_id);
-        const message = current_msg_list.get(rows.id(row));
+        const row = message_lists.current.get_row(message_id);
+        const message = message_lists.current.get(rows.id(row));
 
-        exports.hide_actions_popover();
+        hide_actions_popover();
 
         if (row) {
             if (message.collapsed) {
@@ -1023,19 +1244,19 @@ exports.register_click_handlers = function () {
     });
     $("body").on("click", ".popover_edit_message", (e) => {
         const message_id = $(e.currentTarget).data("message-id");
-        const row = current_msg_list.get_row(message_id);
-        exports.hide_actions_popover();
+        const row = message_lists.current.get_row(message_id);
+        hide_actions_popover();
         message_edit.start(row);
         e.stopPropagation();
         e.preventDefault();
     });
     $("body").on("click", ".view_edit_history", (e) => {
         const message_id = $(e.currentTarget).data("message-id");
-        const row = current_msg_list.get_row(message_id);
-        const message = current_msg_list.get(rows.id(row));
+        const row = message_lists.current.get_row(message_id);
+        const message = message_lists.current.get(rows.id(row));
         const message_history_cancel_btn = $("#message-history-cancel");
 
-        exports.hide_actions_popover();
+        hide_actions_popover();
         message_edit_history.show_history(message);
         message_history_cancel_btn.trigger("focus");
         e.stopPropagation();
@@ -1043,41 +1264,41 @@ exports.register_click_handlers = function () {
     });
 
     $("body").on("click", ".popover_mute_topic", (e) => {
-        const stream_id = parseInt($(e.currentTarget).attr("data-msg-stream-id"), 10);
+        const stream_id = Number.parseInt($(e.currentTarget).attr("data-msg-stream-id"), 10);
         const topic = $(e.currentTarget).attr("data-msg-topic");
 
-        exports.hide_actions_popover();
-        muting_ui.mute(stream_id, topic);
+        hide_actions_popover();
+        muting_ui.mute_topic(stream_id, topic);
         e.stopPropagation();
         e.preventDefault();
     });
 
     $("body").on("click", ".popover_unmute_topic", (e) => {
-        const stream_id = parseInt($(e.currentTarget).attr("data-msg-stream-id"), 10);
+        const stream_id = Number.parseInt($(e.currentTarget).attr("data-msg-stream-id"), 10);
         const topic = $(e.currentTarget).attr("data-msg-topic");
 
-        exports.hide_actions_popover();
-        muting_ui.unmute(stream_id, topic);
+        hide_actions_popover();
+        muting_ui.unmute_topic(stream_id, topic);
         e.stopPropagation();
         e.preventDefault();
     });
 
     $("body").on("click", ".delete_message", (e) => {
         const message_id = $(e.currentTarget).data("message-id");
-        exports.hide_actions_popover();
+        hide_actions_popover();
         message_edit.delete_message(message_id);
         e.stopPropagation();
         e.preventDefault();
     });
 
-    new ClipboardJS(".copy_link");
+    clipboard_enable(".copy_link");
 
     $("body").on("click", ".copy_link", function (e) {
-        exports.hide_actions_popover();
+        hide_actions_popover();
         const message_id = $(this).attr("data-message-id");
-        const row = $("[zid='" + message_id + "']");
+        const row = $(`[zid='${CSS.escape(message_id)}']`);
         row.find(".alert-msg")
-            .text(i18n.t("Copied!"))
+            .text($t({defaultMessage: "Copied!"}))
             .css("display", "block")
             .delay(1000)
             .fadeOut(300);
@@ -1092,7 +1313,15 @@ exports.register_click_handlers = function () {
         e.preventDefault();
     });
 
-    (function () {
+    clipboard_enable(".copy_mention_syntax");
+
+    $("body").on("click", ".copy_mention_syntax", (e) => {
+        hide_all();
+        e.stopPropagation();
+        e.preventDefault();
+    });
+
+    {
         let last_scroll = 0;
 
         $(".app").on("scroll", () => {
@@ -1101,78 +1330,77 @@ exports.register_click_handlers = function () {
                 return;
             }
 
-            const date = new Date().getTime();
+            const date = Date.now();
 
             // only run `popovers.hide_all()` if the last scroll was more
             // than 250ms ago.
             if (date - last_scroll > 250) {
-                exports.hide_all();
+                hide_all();
             }
 
             // update the scroll time on every event to make sure it doesn't
             // retrigger `hide_all` while still scrolling.
             last_scroll = date;
         });
-    })();
-};
+    }
+}
 
-exports.any_active = function () {
+export function any_active() {
     // True if any popover (that this module manages) is currently shown.
     // Expanded sidebars on mobile view count as popovers as well.
     return (
-        exports.actions_popped() ||
+        actions_popped() ||
         user_sidebar_popped() ||
         stream_popover.stream_popped() ||
         stream_popover.topic_popped() ||
-        exports.message_info_popped() ||
+        message_info_popped() ||
+        user_info_popped() ||
         emoji_picker.reactions_popped() ||
         $("[class^='column-'].expanded").length
     );
-};
+}
 
 // This function will hide all true popovers (the streamlist and
 // userlist sidebars use the popover infrastructure, but doesn't work
 // like a popover structurally).
-exports.hide_all_except_sidebars = function () {
+export function hide_all_except_sidebars() {
     $(".has_popover").removeClass("has_popover has_actions_popover has_emoji_popover");
-    exports.hide_actions_popover();
-    exports.hide_message_info_popover();
+    hide_actions_popover();
+    hide_message_info_popover();
     emoji_picker.hide_emoji_popover();
+    giphy.hide_giphy_popover();
     stream_popover.hide_stream_popover();
     stream_popover.hide_topic_popover();
     stream_popover.hide_all_messages_popover();
     stream_popover.hide_starred_messages_popover();
-    exports.hide_user_sidebar_popover();
-    exports.hide_mobile_message_buttons_popover();
-    exports.hide_user_profile();
+    hide_user_sidebar_popover();
+    hide_mobile_message_buttons_popover();
+    hide_user_profile();
+    hide_user_info_popover();
+    hide_playground_links_popover();
 
     // look through all the popovers that have been added and removed.
-    list_of_popovers.forEach(($o) => {
+    for (const $o of list_of_popovers) {
         if (!document.body.contains($o.$element[0]) && $o.$tip) {
             $o.$tip.remove();
         }
-    });
+    }
     list_of_popovers = [];
-};
+}
 
 // This function will hide all the popovers, including the mobile web
 // or narrow window sidebars.
-exports.hide_all = function () {
-    exports.hide_userlist_sidebar();
+export function hide_all() {
+    hide_userlist_sidebar();
     stream_popover.hide_streamlist_sidebar();
-    exports.hide_all_except_sidebars();
-};
+    hide_all_except_sidebars();
+}
 
-exports.set_userlist_placement = function (placement) {
+export function set_userlist_placement(placement) {
     userlist_placement = placement || "right";
-};
+}
 
-exports.compute_placement = function (
-    elt,
-    popover_height,
-    popover_width,
-    prefer_vertical_positioning,
-) {
+export function compute_placement(elt, popover_height, popover_width, prefer_vertical_positioning) {
     const client_rect = elt.get(0).getBoundingClientRect();
     const distance_from_top = client_rect.top;
     const distance_from_bottom = message_viewport.height() - client_rect.bottom;
@@ -1212,6 +1440,4 @@ exports.compute_placement = function (
     }
 
     return placement;
-};
-
-window.popovers = exports;
+}

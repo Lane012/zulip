@@ -1,4 +1,11 @@
-const FoldDict = zrequire("fold_dict").FoldDict;
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+
+const {FoldDict} = zrequire("fold_dict");
 
 run_test("basic", () => {
     const d = new FoldDict();
@@ -85,10 +92,11 @@ run_test("clear", () => {
 });
 
 run_test("undefined_keys", () => {
-    blueslip.expect("error", "Tried to call a FoldDict method with an undefined key.", 2);
-
     const d = new FoldDict();
 
-    assert.equal(d.has(undefined), false);
-    assert.strictEqual(d.get(undefined), undefined);
+    assert.throws(
+        () => d.has(undefined),
+        TypeError,
+        "Tried to call a FoldDict method with an undefined key.",
+    );
 });

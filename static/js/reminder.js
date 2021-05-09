@@ -1,6 +1,18 @@
-const util = require("./util");
+import $ from "jquery";
+import _ from "lodash";
 
-const deferred_message_types = {
+import * as channel from "./channel";
+import * as compose from "./compose";
+import * as hash_util from "./hash_util";
+import {$t, $t_html} from "./i18n";
+import * as message_lists from "./message_lists";
+import * as notifications from "./notifications";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as transmit from "./transmit";
+import * as util from "./util";
+
+export const deferred_message_types = {
     scheduled: {
         delivery_type: "send_later",
         test: /^\/schedule/,
@@ -13,13 +25,11 @@ const deferred_message_types = {
     },
 };
 
-exports.deferred_message_types = deferred_message_types;
-
-exports.is_deferred_delivery = function (message_content) {
+export function is_deferred_delivery(message_content) {
     const reminders_test = deferred_message_types.reminders.test;
     const scheduled_test = deferred_message_types.scheduled.test;
     return reminders_test.test(message_content) || scheduled_test.test(message_content);
-};
+}
 
 function patch_request_for_scheduling(request, message_content, deliver_at, delivery_type) {
     if (request.type === "private") {
@@ -32,22 +42,18 @@ function patch_request_for_scheduling(request, message_content, deliver_at, deli
     new_request.content = message_content;
     new_request.deliver_at = deliver_at;
     new_request.delivery_type = delivery_type;
-    new_request.tz_guess = moment.tz.guess();
+    new_request.tz_guess = new Intl.DateTimeFormat().resolvedOptions().timeZone;
     return new_request;
 }
 
-exports.schedule_message = function (request) {
-    if (request === undefined) {
-        request = compose.create_message_object();
-    }
-
+export function schedule_message(request = compose.create_message_object()) {
     const raw_message = request.content.split("\n");
     const command_line = raw_message[0];
     const message = raw_message.slice(1).join("\n");
 
-    const deferred_message_type = deferred_message_types.filter(
+    const deferred_message_type = deferred_message_types.find(
         (props) => command_line.match(props.test) !== null,
-    )[0];
+    );
     const command = command_line.match(deferred_message_type.test)[0];
 
     const deliver_at = command_line.slice(command.length + 1);
@@ -60,15 +66,22 @@ exports.schedule_message = function (request) {
         $("#compose-textarea").prop("disabled", false);
         if (command_line.slice(command.length, command.length + 1) !== " ") {
             compose.compose_error(
-                i18n.t(
-                    "Invalid slash command. Check if you are missing a space after the command.",
-                ),
+                $t_html({
+                    defaultMessage:
+                        "Invalid slash command. Check if you are missing a space after the command.",
+                }),
                 $("#compose-textarea"),
             );
         } else if (deliver_at.trim() === "") {
-            compose.compose_error(i18n.t("Please specify a date or time"), $("#compose-textarea"));
+            compose.compose_error(
+                $t_html({defaultMessage: "Please specify a date or time"}),
+                $("#compose-textarea"),
+            );
         } else {
-            compose.compose_error(i18n.t("Your reminder note is empty!"), $("#compose-textarea"));
+            compose.compose_error(
+                $t_html({defaultMessage: "Your reminder note is empty!"}),
+                $("#compose-textarea"),
+            );
         }
         return;
     }
@@ -91,20 +104,20 @@ exports.schedule_message = function (request) {
     };
     const error = function (response) {
         $("#compose-textarea").prop("disabled", false);
-        compose.compose_error(response, $("#compose-textarea"));
+        compose.compose_error(_.escape(response), $("#compose-textarea"));
     };
     /* We are adding a disable on compose under this block because we
     want slash commands to be blocking in nature. */
     $("#compose-textarea").prop("disabled", true);
 
     transmit.send_message(request, success, error);
-};
+}
 
-exports.do_set_reminder_for_message = function (message_id, timestamp) {
-    const row = $("[zid='" + message_id + "']");
+export function do_set_reminder_for_message(message_id, timestamp) {
+    const row = $(`[zid='${CSS.escape(message_id)}']`);
     function error() {
         row.find(".alert-msg")
-            .text(i18n.t("Reminder not set!"))
+            .text($t({defaultMessage: "Reminder not set!"}))
             .css("display", "block")
             .css("color", "#b94a48")
             .delay(1000)
@@ -113,17 +126,17 @@ exports.do_set_reminder_for_message = function (message_id, timestamp) {
             });
     }
 
-    const message = current_msg_list.get(message_id);
+    const message = message_lists.current.get(message_id);
 
     if (!message.raw_content) {
-        const msg_list = current_msg_list;
+        const msg_list = message_lists.current;
         channel.get({
             url: "/json/messages/" + message.id,
             idempotent: true,
             success(data) {
-                if (current_msg_list === msg_list) {
+                if (message_lists.current === msg_list) {
                     message.raw_content = data.raw_content;
-                    exports.do_set_reminder_for_message(message_id, timestamp);
+                    do_set_reminder_for_message(message_id, timestamp);
                 }
             },
             error,
@@ -150,7 +163,7 @@ exports.do_set_reminder_for_message = function (message_id, timestamp) {
 
     function success() {
         row.find(".alert-msg")
-            .text(i18n.t("Reminder set!"))
+            .text($t({defaultMessage: "Reminder set!"}))
             .css("display", "block")
             .delay(1000)
             .fadeOut(300);
@@ -163,6 +176,4 @@ exports.do_set_reminder_for_message = function (message_id, timestamp) {
         deferred_message_types.reminders.delivery_type,
     );
     transmit.send_message(reminder_message, success, error);
-};
-
-window.reminder = exports;
+}

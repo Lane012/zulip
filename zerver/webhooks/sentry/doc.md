@@ -8,6 +8,9 @@ us](/help/contact-support) if a platform you care about is missing.
 
 2. {!create-bot-construct-url-indented.md!}
 
+    The default topic, if not set in the URL, will be the title of the
+    issue or event.
+
 3. Go to your organization's **settings** in Sentry. Then go to
 **Developer Settings** and click on the button to create a
 **New Internal Integration**. There, set the **Webhook URL** to
@@ -17,6 +20,12 @@ you like. If you want notifications for issues and not just events,
 you can scroll down to **Webhooks** on the same page and check the
 box that says **issues**. Make sure that you set up the permissions
 so that the integration will visible to the right people.
+
+    **NOTE:** Zulip also supports configuring this as a webhook in Sentry
+&mdash; which, while easier to configure (Navigate to **Settings > Integrations
+> WebHooks**) may not include the full breadth of event types. For instance,
+some events, like issue assignments or issues being resolved, will not trigger
+notifications with this configuration.
 
 4. Once you've saved the internal integration, go to you're project's
 settings (**settings** > **Projects** > Select the project). Once

@@ -2,21 +2,16 @@
 
 VAGRANTFILE_API_VERSION = "2"
 
-def command?(name)
-  `which #{name} > /dev/null 2>&1`
-  $?.success?
-end
-
-if Vagrant::VERSION == "1.8.7" then
-    path = `which curl`
-    if path.include?('/opt/vagrant/embedded/bin/curl') then
-        puts "In Vagrant 1.8.7, curl is broken. Please use Vagrant 2.0.2 "\
-             "or run 'sudo rm -f /opt/vagrant/embedded/bin/curl' to fix the "\
-             "issue before provisioning. See "\
-             "https://github.com/mitchellh/vagrant/issues/7997 "\
-             "for reference."
-        exit
-    end
+if Vagrant::VERSION == "1.8.7"
+  path = `command -v curl`
+  if path.include?("/opt/vagrant/embedded/bin/curl")
+    puts "In Vagrant 1.8.7, curl is broken. Please use Vagrant 2.0.2 " \
+         "or run 'sudo rm -f /opt/vagrant/embedded/bin/curl' to fix the " \
+         "issue before provisioning. See " \
+         "https://github.com/mitchellh/vagrant/issues/7997 " \
+         "for reference."
+    exit
+  end
 end
 
 # Workaround: Vagrant removed the atlas.hashicorp.com to
@@ -26,7 +21,7 @@ end
 # updating of boxes (since the old URL doesn't work).  See
 # https://github.com/hashicorp/vagrant/issues/9442
 if Vagrant::DEFAULT_SERVER_URL == "atlas.hashicorp.com"
-  Vagrant::DEFAULT_SERVER_URL.replace('https://vagrantcloud.com')
+  Vagrant::DEFAULT_SERVER_URL.replace("https://vagrantcloud.com")
 end
 
 # Monkey patch https://github.com/hashicorp/vagrant/pull/10879 so we
@@ -36,7 +31,7 @@ begin
 rescue LoadError
 else
   VagrantPlugins::DockerProvider::Provider.class_eval do
-    method(:usable?).owner == singleton_class or def self.usable?(raise_error=false)
+    method(:usable?).owner == singleton_class or def self.usable?(raise_error = false)
       VagrantPlugins::DockerProvider::Driver.new.execute("docker", "version")
       true
     rescue Vagrant::Errors::CommandUnavailable, VagrantPlugins::DockerProvider::Errors::ExecuteError
@@ -58,17 +53,18 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   vm_memory = "2048"
 
   ubuntu_mirror = ""
+  vboxadd_version = nil
 
   config.vm.synced_folder ".", "/vagrant", disabled: true
   config.vm.synced_folder ".", "/srv/zulip"
 
-  vagrant_config_file = ENV['HOME'] + "/.zulip-vagrant-config"
+  vagrant_config_file = ENV["HOME"] + "/.zulip-vagrant-config"
   if File.file?(vagrant_config_file)
     IO.foreach(vagrant_config_file) do |line|
       line.chomp!
       key, value = line.split(nil, 2)
       case key
-      when /^([#;]|$)/; # ignore comments
+      when /^([#;]|$)/ # ignore comments
       when "HTTP_PROXY"; http_proxy = value
       when "HTTPS_PROXY"; https_proxy = value
       when "NO_PROXY"; no_proxy = value
@@ -77,6 +73,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       when "GUEST_CPUS"; vm_num_cpus = value
       when "GUEST_MEMORY_MB"; vm_memory = value
       when "UBUNTU_MIRROR"; ubuntu_mirror = value
+      when "VBOXADD_VERSION"; vboxadd_version = value
       end
     end
   end
@@ -94,9 +91,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   elsif !http_proxy.nil? or !https_proxy.nil?
     # This prints twice due to https://github.com/hashicorp/vagrant/issues/7504
     # We haven't figured out a workaround.
-    puts 'You have specified value for proxy in ~/.zulip-vagrant-config file but did not ' \
-         'install the vagrant-proxyconf plugin. To install it, run `vagrant plugin install ' \
-         'vagrant-proxyconf` in a terminal.  This error will appear twice.'
+    puts "You have specified value for proxy in ~/.zulip-vagrant-config file but did not " \
+         "install the vagrant-proxyconf plugin. To install it, run `vagrant plugin install " \
+         "vagrant-proxyconf` in a terminal.  This error will appear twice."
     exit
   end
 
@@ -118,9 +115,33 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     # It's possible we can get away with just 1.5GB; more testing needed
     vb.memory = vm_memory
     vb.cpus = vm_num_cpus
+
+    if !vboxadd_version.nil?
+      override.vbguest.installer = Class.new(VagrantVbguest::Installers::Ubuntu) do
+        define_method(:host_version) do |reload = false|
+          VagrantVbguest::Version(vboxadd_version)
+        end
+      end
+      override.vbguest.allow_downgrade = true
+      override.vbguest.iso_path = "https://download.virtualbox.org/virtualbox/#{vboxadd_version}/VBoxGuestAdditions_#{vboxadd_version}.iso"
+    end
   end
 
-$provision_script = <<SCRIPT
+  config.vm.provider "hyperv" do |h, override|
+    override.vm.box = "bento/ubuntu-18.04"
+    h.memory = vm_memory
+    h.maxmemory = vm_memory
+    h.cpus = vm_num_cpus
+  end
+
+  config.vm.provider "parallels" do |prl, override|
+    override.vm.box = "bento/ubuntu-18.04"
+    override.vm.box_version = "202005.21.0"
+    prl.memory = vm_memory
+    prl.cpus = vm_num_cpus
+  end
+
+  $provision_script = <<SCRIPT
 set -x
 set -e
 set -o pipefail
@@ -139,15 +160,9 @@ sudo dpkg --purge landscape-client landscape-common ubuntu-release-upgrader-core
 sudo dpkg-divert --add --rename /etc/default/motd-news
 sudo sh -c 'echo ENABLED=0 > /etc/default/motd-news'
 
-# If the host is running SELinux remount the /sys/fs/selinux directory as read only,
-# needed for apt-get to work.
-if [ -d "/sys/fs/selinux" ]; then
-    sudo mount -o remount,ro /sys/fs/selinux
-fi
-
 # Set default locale, this prevents errors if the user has another locale set.
-if ! grep -q 'LC_ALL=en_US.UTF-8' /etc/default/locale; then
-    echo "LC_ALL=en_US.UTF-8" | sudo tee -a /etc/default/locale
+if ! grep -q 'LC_ALL=C.UTF-8' /etc/default/locale; then
+    echo "LC_ALL=C.UTF-8" | sudo tee -a /etc/default/locale
 fi
 
 # Set an environment variable, so that we won't print the virtualenv

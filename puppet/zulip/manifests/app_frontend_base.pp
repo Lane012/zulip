@@ -1,7 +1,6 @@
 # Minimal configuration to run a Zulip application server.
 # Default nginx configuration is included in extension app_frontend.pp.
 class zulip::app_frontend_base {
-  include zulip::common
   include zulip::nginx
   include zulip::sasl_modules
   include zulip::supervisor
@@ -9,10 +8,10 @@ class zulip::app_frontend_base {
 
   if $::osfamily == 'debian' {
     # Upgrade and other tooling wants to be able to get a database
-    # shell.  This is not necessary on CentOS because the postgresql
+    # shell.  This is not necessary on CentOS because the PostgreSQL
     # package already includes the client.  This may get us a more
     # recent client than the database server is configured to be,
-    # ($zulip::base::postgres_version), but they're compatible.
+    # ($zulip::postgresql_common::version), but they're compatible.
     zulip::safepackage { 'postgresql-client': ensure => 'installed' }
   }
   # For Slack import
@@ -51,17 +50,14 @@ class zulip::app_frontend_base {
       content => template('zulip/accept-loadbalancer.conf.template.erb'),
       notify  => Service['nginx'],
     }
-  }
-
-  # The number of Tornado processes to run on the server; this
-  # defaults to 1, since Tornado sharding is currently only at the
-  # Realm level.
-  $tornado_processes = Integer(zulipconf('application_server', 'tornado_processes', 1))
-  if $tornado_processes > 1 {
-    $tornado_ports = range(9800, 9800 + $tornado_processes - 1)
-    $tornado_multiprocess = true
-  } else {
-    $tornado_multiprocess = false
+    file { '/etc/nginx/zulip-include/app.d/keepalive-loadbalancer.conf':
+      require => File['/etc/nginx/zulip-include/app.d'],
+      owner   => 'root',
+      group   => 'root',
+      mode    => '0644',
+      source  => 'puppet:///modules/zulip/nginx/zulip-include-app.d/keepalive-loadbalancer.conf',
+      notify  => Service['nginx'],
+    }
   }
 
   file { '/etc/nginx/zulip-include/upstreams':
@@ -69,23 +65,47 @@ class zulip::app_frontend_base {
     owner   => 'root',
     group   => 'root',
     mode    => '0644',
-    content => template('zulip/nginx/upstreams.conf.template.erb'),
+    source  => 'puppet:///modules/zulip/nginx/zulip-include-frontend/upstreams',
     notify  => Service['nginx'],
   }
 
   # This determines whether we run queue processors multithreaded or
   # multiprocess.  Multiprocess scales much better, but requires more
   # RAM; we just auto-detect based on available system RAM.
-  $queues_multiprocess = $zulip::base::total_memory_mb > 3500
-  $queues = $zulip::base::normal_queues
+  $queues_multiprocess_default = $zulip::common::total_memory_mb > 3500
+  $queues_multiprocess = Boolean(zulipconf('application_server', 'queue_workers_multiprocess', $queues_multiprocess_default))
+  $queues = [
+    'deferred_work',
+    'digest_emails',
+    'email_mirror',
+    'embed_links',
+    'embedded_bots',
+    'error_reports',
+    'invites',
+    'email_senders',
+    'missedmessage_emails',
+    'missedmessage_mobile_notifications',
+    'outgoing_webhooks',
+    'user_activity',
+    'user_activity_interval',
+    'user_presence',
+  ]
   if $queues_multiprocess {
     $uwsgi_default_processes = 6
   } else {
     $uwsgi_default_processes = 4
   }
+  $tornado_ports = $zulip::tornado_sharding::tornado_ports
+  $proxy_host = zulipconf('http_proxy', 'host', '')
+  $proxy_port = zulipconf('http_proxy', 'port', '')
+  if $proxy_host != '' and $proxy_port != '' {
+    $proxy = "http://${proxy_host}:${proxy_port}"
+  } else {
+    $proxy = ''
+  }
   file { "${zulip::common::supervisor_conf_dir}/zulip.conf":
     ensure  => file,
-    require => Package[supervisor],
+    require => [Package[supervisor], Exec['stage_updated_sharding']],
     owner   => 'root',
     group   => 'root',
     mode    => '0644',
@@ -96,6 +116,7 @@ class zulip::app_frontend_base {
   $uwsgi_listen_backlog_limit = zulipconf('application_server', 'uwsgi_listen_backlog_limit', 128)
   $uwsgi_buffer_size = zulipconf('application_server', 'uwsgi_buffer_size', 8192)
   $uwsgi_processes = zulipconf('application_server', 'uwsgi_processes', $uwsgi_default_processes)
+  $somaxconn = 2 * Integer($uwsgi_listen_backlog_limit)
   file { '/etc/zulip/uwsgi.ini':
     ensure  => file,
     require => Package[supervisor],
@@ -104,6 +125,21 @@ class zulip::app_frontend_base {
     mode    => '0644',
     content => template('zulip/uwsgi.ini.template.erb'),
     notify  => Service[$zulip::common::supervisor_service],
+  }
+  file { '/etc/sysctl.d/40-uwsgi.conf':
+    ensure  => file,
+    owner   => 'root',
+    group   => 'root',
+    mode    => '0644',
+    content => template('zulip/sysctl.d/40-uwsgi.conf.erb'),
+  }
+  exec { 'sysctl_p_uwsgi':
+    command     => '/sbin/sysctl -p /etc/sysctl.d/40-uwsgi.conf',
+    subscribe   => File['/etc/sysctl.d/40-uwsgi.conf'],
+    refreshonly => true,
+    # We have to protect against running in Docker and other
+    # containerization which prevents adjusting these.
+    onlyif      => 'touch /proc/sys/net/core/somaxconn',
   }
 
   file { '/home/zulip/tornado':
@@ -139,9 +175,21 @@ class zulip::app_frontend_base {
     group  => 'zulip',
     mode   => '0755',
   }
-  file { '/etc/cron.d/email-mirror':
-    ensure => absent,
+
+  file { '/var/log/zulip/queue_error':
+    ensure => 'directory',
+    owner  => 'zulip',
+    group  => 'zulip',
+    mode   => '0640',
   }
+
+  file { '/var/log/zulip/queue_stats':
+    ensure => 'directory',
+    owner  => 'zulip',
+    group  => 'zulip',
+    mode   => '0640',
+  }
+
   file { "${zulip::common::nagios_plugins_dir}/zulip_app_frontend":
     require => Package[$zulip::common::nagios_plugins],
     recurse => true,
@@ -150,16 +198,5 @@ class zulip::app_frontend_base {
     group   => 'root',
     mode    => '0755',
     source  => 'puppet:///modules/zulip/nagios_plugins/zulip_app_frontend',
-  }
-
-  if $::osfamily == 'debian' {
-    # The pylibmc wheel looks for SASL plugins in the wrong place.
-    file { '/usr/lib64':
-      ensure => directory,
-    }
-    file { '/usr/lib64/sasl2':
-      ensure => link,
-      target => "/usr/lib/${::rubyplatform}/sasl2",
-    }
   }
 }

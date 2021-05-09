@@ -1,18 +1,18 @@
-zrequire("people");
-zrequire("presence");
+"use strict";
 
-const return_false = function () {
-    return false;
-};
+const {strict: assert} = require("assert");
 
-set_global("server_events", {});
-set_global("reload_state", {
-    is_in_progress: return_false,
+const {mock_esm, with_field, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+
+const reload_state = mock_esm("../../static/js/reload_state", {
+    is_in_progress: () => false,
 });
-function XDate(ms) {
-    return {seconds: ms};
-}
-set_global("XDate", XDate);
+
+const people = zrequire("people");
+const watchdog = zrequire("watchdog");
+const presence = zrequire("presence");
 
 const OFFLINE_THRESHOLD_SECS = 140;
 
@@ -75,11 +75,18 @@ people.add_active_user(john);
 people.add_active_user(jane);
 people.initialize_current_user(me.user_id);
 
-run_test("my user", () => {
+function test(label, f) {
+    run_test(label, (override) => {
+        presence.clear_internal_data();
+        f(override);
+    });
+}
+
+test("my user", () => {
     assert.equal(presence.get_status(me.user_id), "active");
 });
 
-run_test("unknown user", () => {
+test("unknown user", (override) => {
     const unknown_user_id = 999;
     const now = 888888;
     const presences = {};
@@ -91,16 +98,20 @@ run_test("unknown user", () => {
     // If the server is suspected to be offline or reloading,
     // then we suppress errors.  The use case here is that we
     // haven't gotten info for a brand new user yet.
-    server_events.suspect_offline = true;
-    presence.set_info(presences, now);
-    server_events.suspect_offline = false;
+    with_field(
+        watchdog,
+        "suspects_user_is_offline",
+        () => true,
+        () => {
+            presence.set_info(presences, now);
+        },
+    );
 
-    reload_state.is_in_progress = () => true;
+    override(reload_state, "is_in_progress", () => true);
     presence.set_info(presences, now);
-    reload_state.is_in_progress = () => false;
 });
 
-run_test("status_from_raw", () => {
+test("status_from_raw", () => {
     const status_from_raw = presence.status_from_raw;
 
     const now = 5000;
@@ -137,7 +148,7 @@ run_test("status_from_raw", () => {
     });
 });
 
-run_test("set_presence_info", () => {
+test("set_presence_info", () => {
     const presences = {};
     const now = 5000;
     const recent = now + 1 - OFFLINE_THRESHOLD_SECS;
@@ -178,7 +189,7 @@ run_test("set_presence_info", () => {
         last_active: recent,
     });
     assert.equal(presence.get_status(alice.user_id), "active");
-    assert.deepEqual(presence.last_active_date(alice.user_id), {seconds: recent * 1000});
+    assert.deepEqual(presence.last_active_date(alice.user_id), new Date(recent * 1000));
 
     assert.deepEqual(presence.presence_info.get(fred.user_id), {status: "idle", last_active: now});
     assert.equal(presence.get_status(fred.user_id), "idle");
@@ -212,7 +223,7 @@ run_test("set_presence_info", () => {
     assert.equal(presence.get_status(jane.user_id), "idle");
 });
 
-run_test("falsy values", () => {
+test("falsy values", () => {
     /*
         When a user does not have a relevant active timestamp,
         the server just leaves off the `active_timestamp` field
@@ -254,7 +265,7 @@ run_test("falsy values", () => {
     }
 });
 
-run_test("big realms", () => {
+test("big realms", () => {
     const presences = {};
     const now = 5000;
 
@@ -266,16 +277,14 @@ run_test("big realms", () => {
     // which case we will not provide default values for
     // users that aren't in our presences payload.
     const get_active_human_count = people.get_active_human_count;
-    people.get_active_human_count = function () {
-        return 1000;
-    };
+    people.get_active_human_count = () => 1000;
     presence.set_info(presences, now);
     assert(presence.presence_info.has(sally.user_id));
     assert(!presence.presence_info.has(zoe.user_id));
     people.get_active_human_count = get_active_human_count;
 });
 
-run_test("last_active_date", () => {
+test("last_active_date", () => {
     const unknown_id = 42;
     presence.presence_info.clear();
     presence.presence_info.set(alice.user_id, {last_active: 500});
@@ -283,10 +292,10 @@ run_test("last_active_date", () => {
 
     assert.equal(presence.last_active_date(unknown_id), undefined);
     assert.equal(presence.last_active_date(fred.user_id), undefined);
-    assert.deepEqual(presence.last_active_date(alice.user_id), {seconds: 500000});
+    assert.deepEqual(presence.last_active_date(alice.user_id), new Date(500 * 1000));
 });
 
-run_test("update_info_from_event", () => {
+test("update_info_from_event", () => {
     let info;
 
     info = {

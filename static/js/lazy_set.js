@@ -1,3 +1,5 @@
+import * as blueslip from "./blueslip";
+
 export class LazySet {
     /*
         This class is optimized for a very
@@ -74,7 +76,7 @@ export class LazySet {
     _clean(v) {
         if (typeof v !== "number") {
             blueslip.error("not a number");
-            return parseInt(v, 10);
+            return Number.parseInt(v, 10);
         }
         return v;
     }

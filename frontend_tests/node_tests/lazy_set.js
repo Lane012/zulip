@@ -1,4 +1,12 @@
-const LazySet = zrequire("lazy_set").LazySet;
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+
+const {LazySet} = zrequire("lazy_set");
 
 /*
     We mostly test LazySet indirectly.  This code
@@ -9,9 +17,10 @@ const LazySet = zrequire("lazy_set").LazySet;
 run_test("map", () => {
     const ls = new LazySet([1, 2]);
 
-    const triple = (n) => n * 3;
-
-    assert.deepEqual(ls.map(triple), [3, 6]);
+    assert.deepEqual(
+        ls.map((n) => n * 3),
+        [3, 6],
+    );
 });
 
 run_test("conversions", () => {

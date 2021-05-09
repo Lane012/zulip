@@ -9,10 +9,10 @@
             <div class="errorbox config-error">
                 <div class="errorcontent">
                     <h1 class="lead">Configuration error</h1>
-                    <br>
+                    <br />
                     {% if error_name == "ldap_error_realm_is_none" %}
                         {% trans %}
-                        You are trying to login using LDAP without creating an
+                        You are trying to log in using LDAP without creating an
                         organization first. Please use EmailAuthBackend to create
                         your organization and then try again.
                         {% endtrans %}
@@ -97,6 +97,7 @@
                     {% endif %}
                     <p>After making your changes, remember to restart
                     the Zulip server.</p>
+                    <p><a href=""> Refresh</a> to try again or <a href="/login/">click here</a> to go back to the login page.</p>
                 </div>
 
             </div>

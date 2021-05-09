@@ -1,21 +1,29 @@
-const render_message_edit_history = require("../templates/message_edit_history.hbs");
+import {format, isSameDay} from "date-fns";
+import $ from "jquery";
 
-exports.fetch_and_render_message_history = function (message) {
+import render_message_edit_history from "../templates/message_edit_history.hbs";
+
+import * as channel from "./channel";
+import {$t_html} from "./i18n";
+import * as people from "./people";
+import * as timerender from "./timerender";
+import * as ui_report from "./ui_report";
+
+export function fetch_and_render_message_history(message) {
     channel.get({
         url: "/json/messages/" + message.id + "/history",
         data: {message_id: JSON.stringify(message.id)},
         success(data) {
             const content_edit_history = [];
-            let prev_datestamp = null;
+            let prev_time = null;
 
             for (const [index, msg] of data.message_history.entries()) {
                 // Format times and dates nicely for display
-                const time = new XDate(msg.timestamp * 1000);
-                const datestamp = time.toDateString();
+                const time = new Date(msg.timestamp * 1000);
                 const item = {
                     timestamp: timerender.stringify_time(time),
-                    display_date: time.toString("MMMM d, yyyy"),
-                    show_date_row: datestamp !== prev_datestamp,
+                    display_date: format(time, "MMMM d, yyyy"),
+                    show_date_row: prev_time === null || !isSameDay(time, prev_time),
                 };
 
                 if (msg.user_id) {
@@ -45,7 +53,7 @@ exports.fetch_and_render_message_history = function (message) {
 
                 content_edit_history.push(item);
 
-                prev_datestamp = datestamp;
+                prev_time = time;
             }
             $("#message-history").attr("data-message-id", message.id);
             $("#message-history").html(
@@ -56,18 +64,16 @@ exports.fetch_and_render_message_history = function (message) {
         },
         error(xhr) {
             ui_report.error(
-                i18n.t("Error fetching message edit history"),
+                $t_html({defaultMessage: "Error fetching message edit history"}),
                 xhr,
                 $("#message-history-error"),
             );
         },
     });
-};
+}
 
-exports.show_history = function (message) {
+export function show_history(message) {
     $("#message-history").html("");
     $("#message-edit-history").modal("show");
-    exports.fetch_and_render_message_history(message);
-};
-
-window.message_edit_history = exports;
+    fetch_and_render_message_history(message);
+}

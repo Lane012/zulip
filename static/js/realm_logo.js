@@ -1,6 +1,11 @@
-const settings_config = require("./settings_config");
+import $ from "jquery";
 
-exports.build_realm_logo_widget = function (upload_function, is_night) {
+import * as channel from "./channel";
+import {page_params} from "./page_params";
+import * as settings_config from "./settings_config";
+import * as upload_widget from "./upload_widget";
+
+export function build_realm_logo_widget(upload_function, is_night) {
     let logo_section_id = "#realm-day-logo-upload-widget";
     let logo_source = page_params.realm_logo_source;
 
@@ -19,7 +24,7 @@ exports.build_realm_logo_widget = function (upload_function, is_night) {
     };
 
     if (!page_params.is_admin) {
-        return;
+        return undefined;
     }
 
     if (logo_source === "D") {
@@ -45,7 +50,7 @@ exports.build_realm_logo_widget = function (upload_function, is_night) {
         upload_function,
         page_params.max_logo_file_size,
     );
-};
+}
 
 function change_logo_delete_button(logo_source, logo_delete_button, file_input) {
     if (logo_source === "U") {
@@ -58,7 +63,7 @@ function change_logo_delete_button(logo_source, logo_delete_button, file_input) 
     }
 }
 
-exports.rerender = function () {
+export function rerender() {
     const file_input = $("#realm-day-logo-upload-widget .image_file_input");
     const night_file_input = $("#realm-night-logo-upload-widget .realm-logo-file-input");
     $("#realm-day-logo-upload-widget .image-block").attr("src", page_params.realm_logo_url);
@@ -100,6 +105,4 @@ exports.rerender = function () {
         $("#realm-night-logo-upload-widget .image-delete-button"),
         night_file_input,
     );
-};
-
-window.realm_logo = exports;
+}

@@ -3,8 +3,8 @@ FROM ubuntu:18.04
 ARG UBUNTU_MIRROR
 
 # Basic packages and dependencies of docker-systemctl-replacement
-RUN echo locales locales/default_environment_locale select en_US.UTF-8 | debconf-set-selections \
-    && echo locales locales/locales_to_be_generated select "en_US.UTF-8 UTF-8" | debconf-set-selections \
+RUN echo locales locales/default_environment_locale select C.UTF-8 | debconf-set-selections \
+    && echo locales locales/locales_to_be_generated select "C.UTF-8 UTF-8" | debconf-set-selections \
     && { [ ! "$UBUNTU_MIRROR" ] || sed -i "s|http://\(\w*\.\)*archive\.ubuntu\.com/ubuntu/\? |$UBUNTU_MIRROR |" /etc/apt/sources.list; } \
     # This restores man pages and other documentation that have been
     # stripped from the default Ubuntu cloud image and installs
@@ -28,7 +28,7 @@ ARG VAGRANT_UID
 
 RUN \
     # We use https://github.com/gdraheim/docker-systemctl-replacement
-    # to make services we install like postgres, redis, etc. normally
+    # to make services we install like PostgreSQL, Redis, etc. normally
     # managed by systemd start within Docker, which breaks normal
     # operation of systemd.
     dpkg-divert --add --rename /bin/systemctl \

@@ -1,4 +1,11 @@
-zrequire("schema");
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+
+const schema = zrequire("schema");
 
 run_test("basics", () => {
     assert.equal(schema.check_string("x", "fred"), undefined);

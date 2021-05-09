@@ -44,8 +44,12 @@ The Vagrant setup process runs this for you.
 
 `lint` runs many lint checks in parallel, including
 
--   JavaScript ([ESLint](https://eslint.org/))
--   Python ([Pyflakes](https://pypi.python.org/pypi/pyflakes))
+-   JavaScript ([ESLint](https://eslint.org/),
+    [Prettier](https://prettier.io/))
+-   Python ([mypy](http://mypy-lang.org/),
+    [Pyflakes](https://pypi.python.org/pypi/pyflakes),
+    [Black](https://github.com/psf/black),
+    [isort](https://pycqa.github.io/isort/))
 -   templates
 -   Puppet configuration
 -   custom checks (e.g. trailing whitespace and spaces-not-tabs)
@@ -198,8 +202,7 @@ number without any explicit conversion.
 ### JavaScript `const` and `let`
 
 Always declare JavaScript variables using `const` or `let` rather than
-`var`, except in the Casper tests (since Casper does not support
-`const` and `let`).
+`var`.
 
 ### JavaScript and TypeScript `for (i in myArray)`
 
@@ -218,8 +221,8 @@ messages).
 ### Paths to state or log files
 
 When writing out state or log files, always pass an absolute path
-through `zulip_path` (found in `zproject/settings.py`), which will do
-the right thing in both development and production.
+through `zulip_path` (found in `zproject/computed_settings.py`), which
+will do the right thing in both development and production.
 
 ## JS array/object manipulation
 
@@ -289,6 +292,12 @@ call a helper function instead.
 
 ### HTML / CSS
 
+Our CSS is formatted with [Prettier](https://prettier.io/).  You can
+ask Prettier to reformat all code via our [linter
+tool](../testing/linters.md) with `tools/lint --only=prettier --fix`.
+You can also [integrate it with your
+editor](https://prettier.io/docs/en/editors.html).
+
 Avoid using the `style=` attribute unless the styling is actually
 dynamic. Instead, define logical classes and put your styles in
 external CSS files such as `zulip.css`.
@@ -299,6 +308,16 @@ type changes in the future.
 
 ### Python
 
+-   Our Python code is formatted with
+    [Black](https://github.com/psf/black) and
+    [isort](https://pycqa.github.io/isort/).  The [linter
+    tool](../testing/linters.md) enforces this by running Black and
+    isort in check mode, or in write mode with `tools/lint
+    --only=black,isort --fix`.  You may find it helpful to [integrate
+    Black](https://black.readthedocs.io/en/stable/editor_integration.html)
+    and
+    [isort](https://pycqa.github.io/isort/#installing-isorts-for-your-preferred-text-editor)
+    with your editor.
 -   Don't put a shebang line on a Python file unless it's meaningful to
     run it as a script. (Some libraries can also be run as scripts, e.g.
     to run a test suite.)

@@ -1,4 +1,4 @@
-# Requirements and Scalability
+# Requirements and scalability
 
 To run a Zulip server, you will need:
 * A dedicated machine or VM
@@ -18,15 +18,15 @@ For details on each of these requirements, see below.
 #### General
 
 The installer expects Zulip to be the **only thing** running on the
-system; it will install system packages with `apt` (like nginx,
-postgresql, and redis) and configure them for its own use.  We
+system; it will install system packages with `apt` (like Nginx,
+PostgreSQL, and Redis) and configure them for its own use.  We
 strongly recommend using either a fresh machine instance in a cloud
 provider, a fresh VM, or a dedicated machine.  If you decide to
 disregard our advice and use a server that hosts other services, we
 can't support you, but
 [we do have some notes on issues you'll encounter](install-existing-server.md).
 
-#### Operating System
+#### Operating system
 
 Ubuntu 20.04 Focal, 18.04 Bionic, and Debian 10 Buster are supported
 for running Zulip in production.  64-bit is recommended.  We recommend
@@ -48,9 +48,9 @@ sudo apt update
 https://help.ubuntu.com/community/Repositories/Ubuntu
 [enable-universe]: https://help.ubuntu.com/community/Repositories/CommandLine#Adding_the_Universe_and_Multiverse_Repositories
 
-#### Hardware Specifications
+#### Hardware specifications
 
-* CPU and Memory: For installations with 100+ users you'll need a
+* CPU and memory: For installations with 100+ users you'll need a
   minimum of **2 CPUs** and **4GB RAM**. For installations with fewer
   users, 1 CPU and 2GB RAM is sufficient. We strongly recommend against
   installing with less than 2GB of RAM, as you will likely experience
@@ -66,7 +66,7 @@ https://help.ubuntu.com/community/Repositories/Ubuntu
 See our [documentation on scalability](#scalability) below for advice
 on hardware requirements for larger organizations.
 
-#### Network and Security Specifications
+#### Network and security specifications
 
 * Incoming HTTPS access (usually port 443, though this is
   [configurable](../production/deployment.html#using-an-alternate-port))
@@ -77,8 +77,9 @@ on hardware requirements for larger organizations.
 * Incoming port 25 if you plan to enable Zulip's [incoming email
   integration](../production/email-gateway.md).
 * Outgoing HTTP(S) access (ports 80 and 443) to the public Internet so
-  that Zulip can properly manage image previews and embeds.  Outgoing
-  Internet access is not required if you [disable those
+  that Zulip can properly manage image and website previews and mobile
+  push notifications.  Outgoing Internet access is not required if you
+  [disable those
   features](https://zulip.com/help/allow-image-link-previews).
 * Outgoing SMTP access (usually port 587) to your [SMTP
   server](../production/email.md) so that Zulip can send emails.
@@ -90,13 +91,19 @@ on hardware requirements for larger organizations.
   address as its external hostname (though we don't recommend that
   configuration).
 * Zulip supports [running behind a reverse proxy][reverse-proxy].
+* Zulip servers running inside a private network should configure the
+  [`smokescreen` integration][smokescreen-proxy] to protect against
+  [SSRF attacks][SSRF], where users could make the Zulip server make
+  requests to private resources.
 
+[SSRF]: https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+[smokescreen-proxy]: ../production/deployment.html#using-an-outgoing-http-proxy
 [reverse-proxy]: ../production/deployment.html#putting-the-zulip-application-behind-a-reverse-proxy
 [email-mirror-code]: https://github.com/zulip/zulip/blob/master/zerver/management/commands/email_mirror.py
 
 ## Credentials needed
 
-#### SSL Certificate
+#### SSL certificate
 
 Your Zulip server will need an SSL certificate for the domain name it
 uses.  For most Zulip servers, the recommended (and simplest) way to
@@ -118,7 +125,7 @@ certificate documentation](ssl-certificates.md).
 
 * Outgoing email (SMTP) credentials that Zulip can use to send
   outgoing emails to users (e.g. email address confirmation emails
-  during the signup process, missed message notifications, password
+  during the signup process, message notification emails, password
   reset, etc.).  If you don't have an existing outgoing SMTP solution,
   read about
   [free outgoing SMTP options and options for prototyping](email.html#free-outgoing-email-services).
@@ -149,8 +156,8 @@ most use cases, there's little scalability benefit to doing so.  See
 installing Zulip with a dedicated database server.
 
 * **Dedicated database**.  For installations with hundreds of daily
-  active users, we recommend using a [remote postgres
-  database](postgres.md), but it's not required.
+  active users, we recommend using a [remote PostgreSQL
+  database](postgresql.md), but it's not required.
 
 * **RAM:**  We recommended more RAM for larger installations:
     * With 25+ daily active users, 4GB of RAM.
@@ -191,7 +198,7 @@ installing Zulip with a dedicated database server.
   always idle), and its database was using about 100GB of disk.
 
 * **Disaster recovery:** One can easily run a hot spare application
-  server and a hot spare database (using [Postgres streaming
+  server and a hot spare database (using [PostgreSQL streaming
   replication][streaming-replication]).  Make sure the hot spare
   application server has copies of `/etc/zulip` and you're either
   syncing `LOCAL_UPLOADS_DIR` or using the [S3 file uploads
@@ -213,6 +220,10 @@ Scalability is an area of active development, so if you're unsure
 whether Zulip is a fit for your organization or need further advice
 [contact Zulip support][contact-support].
 
+For readers interested in technical details around what features
+impact Zulip's scalability, this [performance and scalability design
+document](../subsystems/performance.md) may also be of interest.
+
 [s3-uploads]: ../production/upload-backends.html#s3-backend-configuration
-[streaming-replication]: ../production/export-and-import.html#postgres-streaming-replication
+[streaming-replication]: ../production/export-and-import.html#postgresql-streaming-replication
 [contact-support]: https://zulip.com/help/contact-support

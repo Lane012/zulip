@@ -83,9 +83,9 @@ priority.
   can also deactivate any [user](/help/deactivate-or-reactivate-a-user),
   [bot, or integration](/help/deactivate-or-reactivate-a-bot) except owners.
 - With Zulip on-premise,
-  [session length](https://github.com/zulip/zulip/blob/master/zproject/prod_settings_template.py#L206)
-  and idle timeouts can be configured to match your organization’s security
-  policies.
+  [session length](https://github.com/zulip/zulip/search?q=SESSION_COOKIE_AGE&type=code) and
+  [idle timeouts](https://github.com/zulip/zulip/search?q=SESSION_EXPIRE_AT_BROWSER_CLOSE&type=code)
+  can be configured to match your organization’s security policies.
 
 [apache-sso]: https://zulip.readthedocs.io/en/latest/production/authentication-methods.html#apache-based-sso-with-remote-user
 
@@ -130,7 +130,7 @@ the industry:
   including 100% of Zulip’s API layer (responsible for parsing user input).
   It is difficult to find any full-stack web application with as complete a
   set of automated tests as Zulip.
-- Zulip’s python codebase is written entirely in
+- Zulip’s Python codebase is written entirely in
   [statically typed Python 3](https://blog.zulip.org/2016/10/13/static-types-in-python-oh-mypy/),
   which automatically prevents a wide range of possible bugs.
 - All access to user data (messages, streams, uploaded files, etc.) in the

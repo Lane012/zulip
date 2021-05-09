@@ -1,27 +1,34 @@
-const noop = function () {};
+"use strict";
 
-set_global("$", global.make_zjquery());
-set_global("page_params", {});
-set_global("channel", {});
-set_global("reload", {});
-set_global("reload_state", {});
-set_global("sent_messages", {
+const {strict: assert} = require("assert");
+
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+const {page_params} = require("../zjsunit/zpage_params");
+
+const noop = () => {};
+
+const channel = mock_esm("../../static/js/channel");
+const reload = mock_esm("../../static/js/reload");
+const reload_state = mock_esm("../../static/js/reload_state");
+const sent_messages = mock_esm("../../static/js/sent_messages", {
     start_tracking_message: noop,
     report_server_ack: noop,
 });
 
-zrequire("people");
-zrequire("transmit");
+const people = zrequire("people");
+const transmit = zrequire("transmit");
 
 run_test("transmit_message_ajax", () => {
     let success_func_called;
-    const success = function () {
+    const success = () => {
         success_func_called = true;
     };
 
     const request = {foo: "bar"};
 
-    channel.post = function (opts) {
+    channel.post = (opts) => {
         assert.equal(opts.url, "/json/messages");
         assert.equal(opts.data.foo, "bar");
         opts.success();
@@ -31,12 +38,12 @@ run_test("transmit_message_ajax", () => {
 
     assert(success_func_called);
 
-    channel.xhr_error_message = function (msg) {
+    channel.xhr_error_message = (msg) => {
         assert.equal(msg, "Error sending message");
         return msg;
     };
 
-    channel.post = function (opts) {
+    channel.post = (opts) => {
         assert.equal(opts.url, "/json/messages");
         assert.equal(opts.data.foo, "bar");
         const xhr = "whatever";
@@ -44,7 +51,7 @@ run_test("transmit_message_ajax", () => {
     };
 
     let error_func_called;
-    const error = function (response) {
+    const error = (response) => {
         assert.equal(response, "Error sending message");
         error_func_called = true;
     };
@@ -53,16 +60,14 @@ run_test("transmit_message_ajax", () => {
 });
 
 run_test("transmit_message_ajax_reload_pending", () => {
-    const success = function () {
-        throw "unexpected success";
+    const success = () => {
+        throw new Error("unexpected success");
     };
 
-    reload_state.is_pending = function () {
-        return true;
-    };
+    reload_state.is_pending = () => true;
 
     let reload_initiated;
-    reload.initiate = function (opts) {
+    reload.initiate = (opts) => {
         reload_initiated = true;
         assert.deepEqual(opts, {
             immediate: true,
@@ -76,13 +81,13 @@ run_test("transmit_message_ajax_reload_pending", () => {
     const request = {foo: "bar"};
 
     let error_func_called;
-    const error = function (response) {
+    const error = (response) => {
         assert.equal(response, "Error sending message");
         error_func_called = true;
     };
 
     error_func_called = false;
-    channel.post = function (opts) {
+    channel.post = (opts) => {
         assert.equal(opts.url, "/json/messages");
         assert.equal(opts.data.foo, "bar");
         const xhr = "whatever";
@@ -93,7 +98,7 @@ run_test("transmit_message_ajax_reload_pending", () => {
     assert(reload_initiated);
 });
 
-run_test("reply_message_stream", () => {
+run_test("reply_message_stream", (override) => {
     const stream_message = {
         type: "stream",
         stream: "social",
@@ -106,9 +111,9 @@ run_test("reply_message_stream", () => {
 
     let send_message_args;
 
-    transmit.send_message = (args) => {
+    override(transmit, "send_message", (args) => {
         send_message_args = args;
-    };
+    });
 
     page_params.user_id = 44;
     page_params.queue_id = 66;
@@ -130,7 +135,7 @@ run_test("reply_message_stream", () => {
     });
 });
 
-run_test("reply_message_private", () => {
+run_test("reply_message_private", (override) => {
     const fred = {
         user_id: 3,
         email: "fred@example.com",
@@ -149,9 +154,9 @@ run_test("reply_message_private", () => {
 
     let send_message_args;
 
-    transmit.send_message = (args) => {
+    override(transmit, "send_message", (args) => {
         send_message_args = args;
-    };
+    });
 
     page_params.user_id = 155;
     page_params.queue_id = 177;

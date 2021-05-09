@@ -1,20 +1,47 @@
-zrequire("poll_widget");
+"use strict";
 
-set_global("$", global.make_zjquery());
+const {strict: assert} = require("assert");
 
-set_global("people", {});
+const {stub_templates} = require("../zjsunit/handlebars");
+const {mock_cjs, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+const $ = require("../zjsunit/zjquery");
 
-const return_false = () => false;
-const return_true = () => true;
+const {PollData} = zrequire("../../static/shared/js/poll_data");
 
-run_test("poll_data_holder my question", () => {
+mock_cjs("jquery", $);
+
+const poll_widget = zrequire("poll_widget");
+
+const people = zrequire("people");
+
+const me = {
+    email: "me@zulip.com",
+    full_name: "Me Myself",
+    user_id: 99,
+};
+const alice = {
+    email: "alice@zulip.com",
+    full_name: "Alice Lee",
+    user_id: 100,
+};
+people.add_active_user(me);
+people.add_active_user(alice);
+people.initialize_current_user(me.user_id);
+
+run_test("PollData my question", () => {
     const is_my_poll = true;
     const question = "Favorite color?";
 
-    const sender_id = 99;
-    people.my_current_user_id = () => sender_id;
-
-    const data_holder = poll_widget.poll_data_holder(is_my_poll, question, []);
+    const data_holder = new PollData({
+        current_user_id: me.user_id,
+        is_my_poll,
+        question,
+        options: [],
+        comma_separated_names: people.safe_full_names,
+        report_error_function: blueslip.warn,
+    });
 
     let data = data_holder.get_widget_data();
 
@@ -28,7 +55,7 @@ run_test("poll_data_holder my question", () => {
         question: "best plan?",
     };
 
-    data_holder.handle_event(sender_id, question_event);
+    data_holder.handle_event(me.user_id, question_event);
     data = data_holder.get_widget_data();
 
     assert.deepEqual(data, {
@@ -42,9 +69,7 @@ run_test("poll_data_holder my question", () => {
         option: "release now",
     };
 
-    people.safe_full_names = () => "";
-
-    data_holder.handle_event(sender_id, option_event);
+    data_holder.handle_event(me.user_id, option_event);
     data = data_holder.get_widget_data();
 
     assert.deepEqual(data, {
@@ -66,15 +91,37 @@ run_test("poll_data_holder my question", () => {
         vote: 1,
     };
 
-    data_holder.handle_event(sender_id, vote_event);
+    data_holder.handle_event(me.user_id, vote_event);
     data = data_holder.get_widget_data();
 
     assert.deepEqual(data, {
         options: [
             {
                 option: "release now",
-                names: "",
+                names: "Me Myself",
                 count: 1,
+                key: "99,1",
+                current_user_vote: true,
+            },
+        ],
+        question: "best plan?",
+    });
+
+    vote_event = {
+        type: "vote",
+        key: "99,1",
+        vote: 1,
+    };
+
+    data_holder.handle_event(alice.user_id, vote_event);
+    data = data_holder.get_widget_data();
+
+    assert.deepEqual(data, {
+        options: [
+            {
+                option: "release now",
+                names: "Me Myself, Alice Lee",
+                count: 2,
                 key: "99,1",
                 current_user_vote: true,
             },
@@ -89,7 +136,7 @@ run_test("poll_data_holder my question", () => {
     };
 
     blueslip.expect("warn", `unknown key for poll: ${invalid_vote_event.key}`);
-    data_holder.handle_event(sender_id, invalid_vote_event);
+    data_holder.handle_event(me.user_id, invalid_vote_event);
     data = data_holder.get_widget_data();
 
     const option_outbound_event = data_holder.handle.new_option.outbound("new option");
@@ -115,15 +162,15 @@ run_test("poll_data_holder my question", () => {
         vote: -1,
     };
 
-    data_holder.handle_event(sender_id, vote_event);
+    data_holder.handle_event(me.user_id, vote_event);
     data = data_holder.get_widget_data();
 
     assert.deepEqual(data, {
         options: [
             {
                 option: "release now",
-                names: "",
-                count: 0,
+                names: "Alice Lee",
+                count: 1,
                 key: "99,1",
                 current_user_vote: false,
             },
@@ -133,14 +180,14 @@ run_test("poll_data_holder my question", () => {
 });
 
 run_test("activate another person poll", () => {
-    people.is_my_user_id = return_false;
-    global.stub_templates((template_name) => {
+    stub_templates((template_name) => {
         if (template_name === "widgets/poll_widget") {
             return "widgets/poll_widget";
         }
         if (template_name === "widgets/poll_widget_results") {
             return "widgets/poll_widget_results";
         }
+        throw new Error(`Unknown template ${template_name}`);
     });
 
     const widget_elem = $("<div>").addClass("widget-content");
@@ -154,7 +201,7 @@ run_test("activate another person poll", () => {
         elem: widget_elem,
         callback,
         message: {
-            sender_id: 100,
+            sender_id: alice.user_id,
         },
         extra_data: {
             question: "What do you want?",
@@ -184,36 +231,16 @@ run_test("activate another person poll", () => {
     set_widget_find_result("button.poll-question-remove");
     set_widget_find_result("input.poll-question");
 
-    poll_question_header.toggle = (show) => {
-        assert(show);
-    };
-
-    poll_edit_question.toggle = (show) => {
-        assert(!show);
-    };
-
-    const show_submit = false;
-    poll_question_submit.toggle = (show) => {
-        assert.equal(show, show_submit);
-    };
-
-    poll_question_container.toggle = (show) => {
-        assert(!show);
-    };
-
-    poll_option_container.toggle = (show) => {
-        assert.equal(show, true);
-    };
-
-    poll_please_wait.toggle = (show) => {
-        assert.equal(show, false);
-    };
-
-    poll_author_help.toggle = (show) => {
-        assert(!show);
-    };
-
     poll_widget.activate(opts);
+
+    assert(poll_option_container.visible());
+    assert(poll_question_header.visible());
+
+    assert(!poll_question_container.visible());
+    assert(!poll_question_submit.visible());
+    assert(!poll_edit_question.visible());
+    assert(!poll_please_wait.visible());
+    assert(!poll_author_help.visible());
 
     assert.equal(widget_elem.html(), "widgets/poll_widget");
     assert.equal(widget_option_container.html(), "widgets/poll_widget_results");
@@ -234,7 +261,7 @@ run_test("activate another person poll", () => {
 
     const vote_events = [
         {
-            sender_id: 100,
+            sender_id: alice.user_id,
             data: {
                 type: "new_option",
                 idx: 1,
@@ -242,7 +269,7 @@ run_test("activate another person poll", () => {
             },
         },
         {
-            sender_id: 100,
+            sender_id: alice.user_id,
             data: {
                 type: "vote",
                 key: "100,1",
@@ -257,11 +284,7 @@ run_test("activate another person poll", () => {
         /* Testing data sent to server on voting */
         poll_vote_button.attr("data-key", "100,1");
         out_data = undefined;
-        poll_vote_button.trigger(
-            $.Event("click", {
-                target: poll_vote_button,
-            }),
-        );
+        poll_vote_button.trigger("click");
         assert.deepEqual(out_data, {type: "vote", key: "100,1", vote: 1});
     }
 
@@ -279,16 +302,14 @@ run_test("activate another person poll", () => {
 });
 
 run_test("activate own poll", () => {
-    $.clear_all_elements();
-
-    people.is_my_user_id = return_true;
-    global.stub_templates((template_name) => {
+    stub_templates((template_name) => {
         if (template_name === "widgets/poll_widget") {
             return "widgets/poll_widget";
         }
         if (template_name === "widgets/poll_widget_results") {
             return "widgets/poll_widget_results";
         }
+        throw new Error(`Unknown template ${template_name}`);
     });
 
     const widget_elem = $("<div>").addClass("widget-content");
@@ -300,7 +321,7 @@ run_test("activate own poll", () => {
         elem: widget_elem,
         callback,
         message: {
-            sender_id: 100,
+            sender_id: me.user_id,
         },
         extra_data: {
             question: "Where to go?",
@@ -330,36 +351,19 @@ run_test("activate own poll", () => {
 
     set_widget_find_result("button.poll-question-remove");
 
-    poll_question_header.toggle = (show) => {
-        assert(show);
-    };
-
-    poll_edit_question.toggle = (show) => {
-        assert(show);
-    };
-
-    let show_submit = false;
-    poll_question_submit.toggle = (show) => {
-        assert.equal(show, show_submit);
-    };
-
-    poll_question_container.toggle = (show) => {
-        assert(!show);
-    };
-
-    poll_option_container.toggle = (show) => {
-        assert(show);
-    };
-
-    poll_please_wait.toggle = (show) => {
-        assert(!show);
-    };
-
-    poll_author_help.toggle = (show) => {
-        assert(!show);
-    };
+    function assert_visibility() {
+        assert(poll_option_container.visible());
+        assert(poll_question_header.visible());
+        assert(!poll_question_container.visible());
+        assert(poll_edit_question.visible());
+        assert(!poll_please_wait.visible());
+        assert(!poll_author_help.visible());
+    }
 
     poll_widget.activate(opts);
+
+    assert_visibility();
+    assert(!poll_question_submit.visible());
 
     assert.equal(widget_elem.html(), "widgets/poll_widget");
     assert.equal(widget_option_container.html(), "widgets/poll_widget_results");
@@ -369,9 +373,11 @@ run_test("activate own poll", () => {
         /* Testing data sent to server on editing question */
         poll_question_input.val("Is it new?");
         out_data = undefined;
-        show_submit = true;
         poll_question_submit.trigger("click");
         assert.deepEqual(out_data, {type: "question", question: "Is it new?"});
+
+        assert_visibility();
+        assert(poll_question_submit.visible());
 
         poll_option_input.val("");
         out_data = undefined;

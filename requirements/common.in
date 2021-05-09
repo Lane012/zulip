@@ -3,7 +3,7 @@
 # and requirements/prod.txt.
 # See requirements/README.md for more detail.
 # Django itself
-Django==2.2.*
+Django[argon2]==3.2.*
 
 # needed for Literal, TypedDict
 typing-extensions
@@ -14,24 +14,25 @@ dataclasses;python_version<"3.7"
 # Needed for rendering backend templates
 Jinja2
 
-# Needed for markdown processing
+# Needed for Markdown processing
 Markdown
 importlib-metadata;python_version<"3.8"  # for Markdown
 Pygments
-hyperlink
 jsx-lexer
 
 # Needed for manage.py
 ipython
 
-# Needed for Image Processing
+# Needed for compatibility with ipython < 7.20, which we cannot
+# install on Python <3.7; see
+# https://github.com/ipython/ipython/issues/12740
+jedi<0.18.0
+
+# Needed for image processing
 Pillow
 
 # Needed for building complex DB queries
-SQLAlchemy
-
-# Needed for password hashing
-argon2-cffi
+SQLAlchemy==1.3.*  # 1.4 has badly busted type annotations
 
 # Needed for S3 file uploads
 boto3
@@ -56,12 +57,8 @@ python-gcm
 
 # Needed for the email mirror
 html2text
-httplib2
-# Forked to avoid pulling in scipy: https://github.com/mailgun/talon/issues/130
-https://github.com/zulip/talon/archive/7d8bdc4dbcfcc5a73298747293b99fe53da55315.zip#egg=talon==1.2.10.zulip1
-
-# Needed for hipchat import
-hypchat
+# Forked to avoid pulling in scipy: https://github.com/mailgun/talon/pull/200
+https://github.com/zulip/talon/archive/1711705c952806d4a704c7dbf58f21db8e11756a.zip#egg=talon-core==1.4.8.zulip1&subdirectory=talon-core
 
 # Needed for inlining the CSS in emails
 premailer
@@ -69,20 +66,20 @@ premailer
 # Needed for JWT-based auth
 PyJWT
 
-# Needed for including other markdown files for user docs
+# Needed for including other Markdown files for user docs
 markdown-include
 
-# Needed to access rabbitmq
+# Needed to access RabbitMQ
 pika
 
 # Needed to access our database
-psycopg2 --no-binary psycopg2
+psycopg2
 
 # Needed for memcached usage
-pylibmc
+python-binary-memcached
 
-# Needed for compression support in memcached via pylibmc
-django-pylibmc
+# Needed for compression support in memcached via python-binary-memcached
+django-bmemcached
 
 # Needed for zerver/tests/test_timestamp.py
 python-dateutil
@@ -90,7 +87,7 @@ python-dateutil
 # Needed for timezone work
 pytz
 
-# Needed for redis
+# Needed for Redis
 redis
 
 # Needed to parse source maps for error reporting
@@ -100,12 +97,7 @@ sourcemap
 tornado==4.*  # https://github.com/zulip/zulip/issues/8913
 
 # Fast JSON parser
-# Forked for an issue related to unpaired Unicode surrogates:
-# https://github.com/zulip/zulip/issues/6332, https://github.com/esnme/ultrajson/pull/284
-https://github.com/zulip/ultrajson/archive/70ac02becc3e11174cd5072650f885b30daab8a8.zip#egg=ujson==1.35+git
-
-# Django extension for serving webpack modules
-django-webpack4-loader
+orjson
 
 # Needed for iOS push notifications
 apns2
@@ -133,15 +125,15 @@ python-magic
 # the version from Git rather than a PyPI release. Keeping everything in
 # one repository simplifies the process of implementing and documenting
 # new bots for new contributors.
-https://github.com/zulip/python-zulip-api/archive/0.7.0.zip/#egg=zulip==0.7.0_git&subdirectory=zulip
-https://github.com/zulip/python-zulip-api/archive/0.7.0.zip/#egg=zulip_bots==0.7.0+git&subdirectory=zulip_bots
+https://github.com/zulip/python-zulip-api/archive/4d482e0ef30297f716885fd8246f4638a856ba3b.zip#egg=zulip==0.7.1+git&subdirectory=zulip
+https://github.com/zulip/python-zulip-api/archive/4d482e0ef30297f716885fd8246f4638a856ba3b.zip#egg=zulip_bots==0.7.1+git&subdirectory=zulip_bots
 
 # Used for Hesiod lookups, etc.
 py3dns
 
 # Install Python Social Auth
 social-auth-app-django
-social-auth-core[azuread,saml]
+social-auth-core[azuread,saml]<4.0.3  # 4.0.3 needs PyJWT 2: https://github.com/Pr0Ger/PyAPNs2/pull/122, https://github.com/twilio/twilio-python/issues/556
 
 # For encrypting a login token to the desktop app
 cryptography
@@ -150,9 +142,7 @@ cryptography
 lxml
 
 # Needed for 2-factor authentication
-django-two-factor-auth[phonenumberslite]
-
-twilio
+django-two-factor-auth[call,phonenumberslite,sms]
 
 # Needed for processing payments (in corporate)
 stripe
@@ -164,11 +154,7 @@ django-sendfile2
 disposable-email-domains
 
 # Needed for parsing YAML with JSON references from the REST API spec files
-yamole
-
-# Needed for signing thumbnail requests so that they can be authenticated on the
-# other end.
-libthumbor
+jsonref
 
 # Needed for string matching in AlertWordProcessor
 pyahocorasick
@@ -176,9 +162,6 @@ pyahocorasick
 # Needed for function decorators that don't break introspection.
 # Used for rate limiting authentication.
 decorator
-
-# Use SameSite cookies in legacy Django (remove with Django 2.1)
-django-cookies-samesite
 
 # For server-side enforcement of password strength
 zxcvbn
@@ -188,7 +171,16 @@ requests[security]
 requests-oauthlib
 
 # For OpenAPI schema validation.
-openapi-core
+openapi-core<0.14.0  # https://github.com/p1c2u/openapi-core/issues/322
 
 # For reporting errors to sentry.io
 sentry-sdk
+
+# For detecting URLs to link
+tlds
+
+# Unicode Collation Algorithm for sorting multilingual strings
+pyuca
+
+# Handle connection retries with exponential backoff
+backoff

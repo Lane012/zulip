@@ -17,7 +17,7 @@ var block = {
   hr: /^( *[-*_]){3,} *(?:\n+|$)/,
   heading: /^ {0,3}(#{1,6}) +([^\n]*?)(?: +#+)? *(?:\n+|$)/,
   nptable: noop,
-  blockquote: /^(?!( *>\s*($|\n))*($|\n))( *>[^\n]*(\n(?!def)[^\n]+)*\n*)+/,
+  blockquote: /^(?!( *>\s*($|\n))*($|\n))( *>[^\n]*(\n(?!def)[^\n]+)*)+/,
   list: /^( *)(bull) [\s\S]+?(?:hr|def|\n{2,}(?! )(?!\1bull )\n*|\s*$)/,
   html: /^ *(?:comment *(?:\n|\s*$)|closed *(?:\n{2,}|\s*$)|closing *(?:\n{2,}|\s*$))/,
   def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)/,
@@ -484,7 +484,7 @@ var inline = {
   stream: noop,
   tex: noop,
   timestamp: noop,
-  realm_filters: [],
+  linkifiers: [],
   text: /^[\s\S]+?(?=[\\<!\[_*`$]| {2,}\n|$)/
 };
 
@@ -550,7 +550,7 @@ inline.zulip = merge({}, inline.breaks, {
   stream: /^#\*\*([^\*]+)\*\*/,
   tex: /^(\$\$([^\n_$](\\\$|[^\n$])*)\$\$(?!\$))\B/,
   timestamp: /^<time:([^>]+)>/,
-  realm_filters: [],
+  linkifiers: [],
   text: replace(inline.breaks.text)
     ('|', '|(\ud83c[\udd00-\udfff]|\ud83d[\udc00-\ude4f]|' +
           '\ud83d[\ude80-\udeff]|\ud83e[\udd00-\uddff]|' +
@@ -645,12 +645,12 @@ InlineLexer.prototype.output = function(src) {
       continue;
     }
 
-    // realm_filters (zulip)
+    // linkifier (Zulip)
     var self = this;
-    this.rules.realm_filters.forEach(function (realm_filter) {
-      var ret = self.inlineReplacement(realm_filter, src, function(regex, groups, match) {
+    this.rules.linkifiers.forEach(function (linkifier) {
+      var ret = self.inlineReplacement(linkifier, src, function(regex, groups, match) {
         // Insert the created URL
-        href = self.realm_filter(regex, groups, match);
+        href = self.linkifier(regex, groups, match);
         if (href !== undefined) {
           href = escape(href);
           return self.renderer.link(href, href, match);
@@ -740,28 +740,28 @@ InlineLexer.prototype.output = function(src) {
       continue;
     }
 
-    // usermention (zulip)
+    // usermention (Zulip)
     if (cap = this.rules.usermention.exec(src)) {
       src = src.substring(cap[0].length);
       out += this.usermention(unescape(cap[3] || cap[4]), cap[1], cap[2]);
       continue;
     }
 
-    // groupmention (zulip)
+    // groupmention (Zulip)
     if (cap = this.rules.groupmention.exec(src)) {
       src = src.substring(cap[0].length);
       out += this.groupmention(unescape(cap[1]), cap[0]);
       continue;
     }
 
-    // stream_topic (zulip)
+    // stream_topic (Zulip)
     if (cap = this.rules.stream_topic.exec(src)) {
       src = src.substring(cap[0].length);
       out += this.stream_topic(unescape(cap[1]), unescape(cap[2]), cap[0]);
       continue;
     }
 
-    // stream (zulip)
+    // stream (Zulip)
     if (cap = this.rules.stream.exec(src)) {
       src = src.substring(cap[0].length);
       out += this.stream(unescape(cap[1]), cap[0]);
@@ -810,7 +810,7 @@ InlineLexer.prototype.output = function(src) {
       continue;
     }
 
-    // unicode emoji
+    // Unicode emoji
     if (cap = this.rules.unicodeemoji.exec(src)) {
       src = src.substring(cap[0].length);
       out += this.unicodeEmoji(cap[1]);
@@ -890,11 +890,11 @@ InlineLexer.prototype.timestamp = function (time) {
   return this.options.timestampHandler(time);
 };
 
-InlineLexer.prototype.realm_filter = function (filter, matches, orig) {
-  if (typeof this.options.realmFilterHandler !== 'function')
+InlineLexer.prototype.linkifier = function (linkifier, matches, orig) {
+  if (typeof this.options.linkifierHandler !== 'function')
     return;
 
-  return this.options.realmFilterHandler(filter, matches);
+  return this.options.linkifierHandler(linkifier, matches);
 };
 
 InlineLexer.prototype.usermention = function (username, orig, silent) {
@@ -1087,7 +1087,6 @@ Renderer.prototype.strong = function(text) {
 };
 
 Renderer.prototype.em = function(text) {
-  text = escape(text);
   return '<em>' + text + '</em>';
 };
 
@@ -1188,8 +1187,6 @@ Parser.prototype.parse = function(src) {
         safe = stash[2];
     if (!safe) {
       html = escape(html);
-    } else {
-      html += '\n';
     }
     output = output.replace('<p>' + key + '</p>', html)
   }

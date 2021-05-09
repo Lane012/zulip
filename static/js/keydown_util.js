@@ -10,7 +10,7 @@ const keys = {
     40: "down_arrow",
 };
 
-exports.handle = function (opts) {
+export function handle(opts) {
     opts.elem.on("keydown", (e) => {
         const key = e.which || e.keyCode;
 
@@ -35,6 +35,4 @@ exports.handle = function (opts) {
             e.stopPropagation();
         }
     });
-};
-
-window.keydown_util = exports;
+}

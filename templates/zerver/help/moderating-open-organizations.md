@@ -24,6 +24,8 @@ Zulip has many features designed to simplify moderation:
   new users can take disruptive actions.
 * [Restrict email visibility](/help/restrict-visibility-of-email-addresses)
   to reduce the likelihood of off-platform spam.
+* [Restrict wildcard mentions](/help/restrict-wildcard-mentions)
+  so only [moderators](/help/roles-and-permissions) can mention everyone in your organization.
 
 ## Response
 
@@ -31,7 +33,7 @@ Zulip has many features designed to simplify moderation:
   bad faith. You can reactivate them later if they repent.
 * Use the `streams:public sender:user@example.com`
   [search operators](/help/search-for-messages) to find all messages sent by a user.
-* Delete messages, [delete streams](/help/delete-a-stream), and
+* Delete messages, [archive streams](/help/archive-a-stream), and
   [unsubscribe users from streams](/help/add-or-remove-users-from-a-stream).
 * [Rename topics](/help/rename-a-topic).
 * [Change users' names](/help/change-a-users-name) (e.g. to "Spammer")

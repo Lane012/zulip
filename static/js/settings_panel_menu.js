@@ -1,103 +1,128 @@
-exports.mobile_deactivate_section = function () {
+import $ from "jquery";
+
+import * as browser_history from "./browser_history";
+import * as keydown_util from "./keydown_util";
+import * as popovers from "./popovers";
+import * as settings from "./settings";
+import * as settings_sections from "./settings_sections";
+import * as ui from "./ui";
+
+export let normal_settings;
+export let org_settings;
+
+export function mobile_deactivate_section() {
     const $settings_overlay_container = $("#settings_overlay_container");
     $settings_overlay_container.find(".right").removeClass("show");
     $settings_overlay_container.find(".settings-header.mobile").removeClass("slide-left");
-};
+}
 
-exports.make_menu = function (opts) {
-    const main_elem = opts.main_elem;
-    const hash_prefix = opts.hash_prefix;
-    let curr_li = main_elem.children("li").eq(0);
+function two_column_mode() {
+    return $("#settings_overlay_container").css("--single-column") === undefined;
+}
 
-    const self = {};
+export class SettingsPanelMenu {
+    constructor(opts) {
+        this.main_elem = opts.main_elem;
+        this.hash_prefix = opts.hash_prefix;
+        this.curr_li = this.main_elem.children("li").eq(0);
 
-    function two_column_mode() {
-        return $("#settings_overlay_container").css("--single-column") === undefined;
+        this.main_elem.on("click", "li[data-section]", (e) => {
+            const section = $(e.currentTarget).attr("data-section");
+
+            this.activate_section_or_default(section);
+
+            // You generally want to add logic to activate_section,
+            // not to this click handler.
+
+            e.stopPropagation();
+        });
     }
 
-    self.show = function () {
-        main_elem.show();
-        const section = self.current_tab();
+    show() {
+        this.main_elem.show();
+        const section = this.current_tab();
         if (two_column_mode()) {
-            // In one colum mode want to show the settings list, not the first settings section.
-            self.activate_section_or_default(section);
+            // In one column mode want to show the settings list, not the first settings section.
+            this.activate_section_or_default(section);
         }
-        curr_li.trigger("focus");
-    };
+        this.curr_li.trigger("focus");
+    }
 
-    self.hide = function () {
-        main_elem.hide();
-    };
+    hide() {
+        this.main_elem.hide();
+    }
 
-    self.current_tab = function () {
-        return curr_li.data("section");
-    };
+    current_tab() {
+        return this.curr_li.data("section");
+    }
 
-    self.li_for_section = function (section) {
-        const li = $("#settings_overlay_container li[data-section='" + section + "']");
+    li_for_section(section) {
+        const li = $(`#settings_overlay_container li[data-section='${CSS.escape(section)}']`);
         return li;
-    };
+    }
 
-    self.set_key_handlers = function (toggler) {
+    set_key_handlers(toggler) {
         keydown_util.handle({
-            elem: main_elem,
+            elem: this.main_elem,
             handlers: {
                 left_arrow: toggler.maybe_go_left,
                 right_arrow: toggler.maybe_go_right,
-                enter_key: self.enter_panel,
-                up_arrow: self.prev,
-                down_arrow: self.next,
+                enter_key: () => this.enter_panel(),
+                up_arrow: () => this.prev(),
+                down_arrow: () => this.next(),
             },
         });
-    };
+    }
 
-    self.prev = function () {
-        curr_li.prevAll(":visible:first").trigger("focus").trigger("click");
+    prev() {
+        this.curr_li.prevAll(":visible:first").trigger("focus").trigger("click");
         return true;
-    };
+    }
 
-    self.next = function () {
-        curr_li.nextAll(":visible:first").trigger("focus").trigger("click");
+    next() {
+        this.curr_li.nextAll(":visible:first").trigger("focus").trigger("click");
         return true;
-    };
+    }
 
-    self.enter_panel = function () {
-        const panel = self.get_panel();
-        const sel = "input:visible,button:visible,select:visible";
-        const panel_elem = panel.find(sel).first();
+    enter_panel() {
+        const panel = this.get_panel();
+        const panel_elem = panel.find("input:visible,button:visible,select:visible").first();
 
         panel_elem.trigger("focus");
         return true;
-    };
+    }
 
-    self.activate_section_or_default = function (section) {
+    activate_section_or_default(section) {
+        popovers.hide_all();
         if (!section) {
             // No section is given so we display the default.
 
             if (two_column_mode()) {
                 // In two column mode we resume to the last active section.
-                section = self.current_tab();
+                section = this.current_tab();
             } else {
                 // In single column mode we close the active section
                 // so that you always start at the settings list.
-                exports.mobile_deactivate_section();
+                mobile_deactivate_section();
                 return;
             }
         }
 
-        curr_li = self.li_for_section(section);
+        this.curr_li = this.li_for_section(section);
 
-        main_elem.children("li").removeClass("active");
-        curr_li.addClass("active");
+        this.main_elem.children("li").removeClass("active");
+        this.curr_li.addClass("active");
 
-        const settings_section_hash = "#" + hash_prefix + section;
-        hashchange.update_browser_history(settings_section_hash);
+        const settings_section_hash = "#" + this.hash_prefix + section;
+
+        // It could be that the hash has already been set.
+        browser_history.update_hash_internally_if_required(settings_section_hash);
 
         $(".settings-section").removeClass("show");
 
         settings_sections.load_settings_section(section);
 
-        self.get_panel().addClass("show");
+        this.get_panel().addClass("show");
 
         ui.reset_scrollbar($("#settings_content"));
 
@@ -106,53 +131,38 @@ exports.make_menu = function (opts) {
         $settings_overlay_container.find(".settings-header.mobile").addClass("slide-left");
 
         settings.set_settings_header(section);
-    };
+    }
 
-    self.get_panel = function () {
-        const section = curr_li.data("section");
-        const sel = "[data-name='" + section + "']";
+    get_panel() {
+        const section = this.curr_li.data("section");
+        const sel = `[data-name='${CSS.escape(section)}']`;
         const panel = $(".settings-section" + sel);
         return panel;
-    };
+    }
+}
 
-    main_elem.on("click", "li[data-section]", function (e) {
-        const section = $(this).attr("data-section");
-
-        self.activate_section_or_default(section);
-
-        // You generally want to add logic to activate_section,
-        // not to this click handler.
-
-        e.stopPropagation();
-    });
-
-    return self;
-};
-
-exports.initialize = function () {
-    exports.normal_settings = exports.make_menu({
+export function initialize() {
+    normal_settings = new SettingsPanelMenu({
         main_elem: $(".normal-settings-list"),
         hash_prefix: "settings/",
     });
-    exports.org_settings = exports.make_menu({
+    org_settings = new SettingsPanelMenu({
         main_elem: $(".org-settings-list"),
         hash_prefix: "organization/",
     });
-};
+}
 
-exports.show_normal_settings = function () {
-    exports.org_settings.hide();
-    exports.normal_settings.show();
-};
+export function show_normal_settings() {
+    org_settings.hide();
+    normal_settings.show();
+}
 
-exports.show_org_settings = function () {
-    exports.normal_settings.hide();
-    exports.org_settings.show();
-};
+export function show_org_settings() {
+    normal_settings.hide();
+    org_settings.show();
+}
 
-exports.set_key_handlers = function (toggler) {
-    exports.normal_settings.set_key_handlers(toggler);
-    exports.org_settings.set_key_handlers(toggler);
-};
-
-window.settings_panel_menu = exports;
+export function set_key_handlers(toggler) {
+    normal_settings.set_key_handlers(toggler);
+    org_settings.set_key_handlers(toggler);
+}

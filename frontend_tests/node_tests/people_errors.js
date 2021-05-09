@@ -1,32 +1,34 @@
-zrequire("people");
+"use strict";
 
-const return_false = function () {
-    return false;
-};
-const return_true = function () {
-    return true;
-};
-set_global("reload_state", {
-    is_in_progress: return_false,
+const {strict: assert} = require("assert");
+
+const {mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+
+const reload_state = mock_esm("../../static/js/reload_state", {
+    is_in_progress: () => false,
 });
+
+const people = zrequire("people");
 
 const me = {
     email: "me@example.com",
     user_id: 30,
     full_name: "Me Myself",
-    timezone: "US/Pacific",
+    timezone: "America/Los_Angeles",
 };
 
 people.init();
 people.add_active_user(me);
 people.initialize_current_user(me.user_id);
 
-run_test("report_late_add", () => {
+run_test("report_late_add", (override) => {
     blueslip.expect("error", "Added user late: user_id=55 email=foo@example.com");
     people.report_late_add(55, "foo@example.com");
 
     blueslip.expect("log", "Added user late: user_id=55 email=foo@example.com");
-    reload_state.is_in_progress = return_true;
+    override(reload_state, "is_in_progress", () => true);
     people.report_late_add(55, "foo@example.com");
 });
 
@@ -38,7 +40,7 @@ run_test("is_my_user_id", () => {
     assert.equal(people.is_my_user_id(me.user_id.toString()), true);
 });
 
-run_test("blueslip", () => {
+run_test("blueslip", (override) => {
     const unknown_email = "alicebobfred@example.com";
 
     blueslip.expect("debug", "User email operand unknown: " + unknown_email);
@@ -102,12 +104,8 @@ run_test("blueslip", () => {
     const reply_to = people.pm_reply_to(message);
     assert(reply_to.includes("?"));
 
-    people.pm_with_user_ids = function () {
-        return [42];
-    };
-    people.get_by_user_id = function () {
-        return;
-    };
+    override(people, "pm_with_user_ids", () => [42]);
+    override(people, "get_by_user_id", () => {});
     blueslip.expect("error", "Unknown people in message");
     const uri = people.pm_with_url({});
     assert.equal(uri.indexOf("unk"), uri.length - 3);

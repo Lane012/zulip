@@ -1,6 +1,12 @@
-const render_alert_word_settings_item = require("../templates/settings/alert_word_settings_item.hbs");
+import $ from "jquery";
 
-exports.render_alert_words_ui = function () {
+import render_alert_word_settings_item from "../templates/settings/alert_word_settings_item.hbs";
+
+import * as alert_words from "./alert_words";
+import * as channel from "./channel";
+import {$t} from "./i18n";
+
+export function render_alert_words_ui() {
     const words = alert_words.get_word_list();
     words.sort();
     const word_list = $("#alert_words_list");
@@ -16,7 +22,7 @@ exports.render_alert_words_ui = function () {
 
     // Focus new alert word name text box.
     $("#create_alert_word_name").trigger("focus");
-};
+}
 
 function update_alert_word_status(status_text, is_error) {
     const alert_word_status = $("#alert_word_status");
@@ -32,10 +38,10 @@ function update_alert_word_status(status_text, is_error) {
 function add_alert_word(alert_word) {
     alert_word = alert_word.trim();
     if (alert_word === "") {
-        update_alert_word_status(i18n.t("Alert word can't be empty!"), true);
+        update_alert_word_status($t({defaultMessage: "Alert word can't be empty!"}), true);
         return;
     } else if (alert_words.has_alert_word(alert_word)) {
-        update_alert_word_status(i18n.t("Alert word already exists!"), true);
+        update_alert_word_status($t({defaultMessage: "Alert word already exists!"}), true);
         return;
     }
 
@@ -45,37 +51,40 @@ function add_alert_word(alert_word) {
         url: "/json/users/me/alert_words",
         data: {alert_words: JSON.stringify(words_to_be_added)},
         success() {
-            const message = i18n.t('Alert word "__word__" added successfully!', {
-                word: words_to_be_added[0],
-            });
+            const message = $t(
+                {defaultMessage: 'Alert word "{word}" added successfully!'},
+                {word: words_to_be_added[0]},
+            );
             update_alert_word_status(message, false);
             $("#create_alert_word_name").val("");
         },
         error() {
-            update_alert_word_status(i18n.t("Error adding alert word!"), true);
+            update_alert_word_status($t({defaultMessage: "Error adding alert word!"}), true);
         },
     });
 }
 
 function remove_alert_word(alert_word) {
     const words_to_be_removed = [alert_word];
-
     channel.del({
         url: "/json/users/me/alert_words",
         data: {alert_words: JSON.stringify(words_to_be_removed)},
         success() {
-            update_alert_word_status(i18n.t("Alert word removed successfully!"), false);
+            update_alert_word_status(
+                $t({defaultMessage: "Alert word removed successfully!"}),
+                false,
+            );
         },
         error() {
-            update_alert_word_status(i18n.t("Error removing alert word!"), true);
+            update_alert_word_status($t({defaultMessage: "Error removing alert word!"}), true);
         },
     });
 }
 
-exports.set_up_alert_words = function () {
+export function set_up_alert_words() {
     // The settings page must be rendered before this function gets called.
 
-    exports.render_alert_words_ui();
+    render_alert_words_ui();
 
     $("#create_alert_word_form").on("click", "#create_alert_word_button", () => {
         const word = $("#create_alert_word_name").val();
@@ -83,16 +92,15 @@ exports.set_up_alert_words = function () {
     });
 
     $("#alert_words_list").on("click", ".remove-alert-word", (event) => {
-        const word = $(event.currentTarget).parents("li").find(".value").text();
+        const word = $(event.currentTarget).parents("tr").find(".value").text().trim();
         remove_alert_word(word);
     });
 
     $("#create_alert_word_form").on("keypress", "#create_alert_word_name", (event) => {
         const key = event.which;
-        // Handle enter (13) as "add".
+        // Handle Enter (13) as "add".
         if (key === 13) {
             event.preventDefault();
-
             const word = $(event.target).val();
             add_alert_word(word);
         }
@@ -103,6 +111,4 @@ exports.set_up_alert_words = function () {
         const alert = $(event.currentTarget).parents(".alert");
         alert.hide();
     });
-};
-
-window.alert_words_ui = exports;
+}

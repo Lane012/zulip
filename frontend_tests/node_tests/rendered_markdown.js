@@ -1,14 +1,23 @@
-const rm = zrequire("rendered_markdown");
-set_global("moment", zrequire("moment", "moment-timezone"));
-zrequire("people");
-zrequire("user_groups");
-zrequire("stream_data");
-zrequire("timerender");
-set_global("$", global.make_zjquery());
+"use strict";
 
-set_global("rtl", {
+const {strict: assert} = require("assert");
+
+const {mock_cjs, mock_esm, with_field, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+const $ = require("../zjsunit/zjquery");
+const {page_params} = require("../zjsunit/zpage_params");
+
+mock_cjs("jquery", $);
+mock_esm("../../static/js/rtl", {
     get_direction: () => "ltr",
 });
+page_params.emojiset = "apple";
+
+const rm = zrequire("rendered_markdown");
+const people = zrequire("people");
+const user_groups = zrequire("user_groups");
+const stream_data = zrequire("stream_data");
 
 const iago = {
     email: "iago@zulip.com",
@@ -52,17 +61,14 @@ stream_data.add_sub(stream);
 
 const $array = (array) => {
     const each = (func) => {
-        array.forEach((e) => {
+        for (const e of array) {
             func.call(e);
-        });
+        }
     };
     return {each};
 };
 
-set_global("page_params", {emojiset: "apple"});
-
 const get_content_element = () => {
-    $.clear_all_elements();
     const $content = $.create(".rendered_markdown");
     $content.set_find_results(".user-mention", $array([]));
     $content.set_find_results(".user-group-mention", $array([]));
@@ -72,6 +78,7 @@ const get_content_element = () => {
     $content.set_find_results("span.timestamp-error", $array([]));
     $content.set_find_results(".emoji", $array([]));
     $content.set_find_results("div.spoiler-header", $array([]));
+    $content.set_find_results("div.codehilite", $array([]));
     return $content;
 };
 
@@ -141,19 +148,19 @@ run_test("stream-links", () => {
     const $stream_topic = $.create("a.stream-topic");
     $stream_topic.set_find_results(".highlight", false);
     $stream_topic.attr("data-stream-id", stream.stream_id);
-    $stream_topic.text("#random>topic name");
+    $stream_topic.text("#random > topic name > still the topic name");
     $content.set_find_results("a.stream", $array([$stream]));
     $content.set_find_results("a.stream-topic", $array([$stream_topic]));
 
     // Initial asserts
     assert.equal($stream.text(), "never-been-set");
-    assert.equal($stream_topic.text(), "#random>topic name");
+    assert.equal($stream_topic.text(), "#random > topic name > still the topic name");
 
     rm.update_elements($content);
 
     // Final asserts
     assert.equal($stream.text(), `#${stream.name}`);
-    assert.equal($stream_topic.text(), `#${stream.name} > topic name`);
+    assert.equal($stream_topic.text(), `#${stream.name} > topic name > still the topic name`);
 });
 
 run_test("timestamp", () => {
@@ -164,7 +171,7 @@ run_test("timestamp", () => {
     const $timestamp_invalid = $.create("timestamp(invalid)");
     $timestamp_invalid.attr("datetime", "invalid");
     $content.set_find_results("time", $array([$timestamp, $timestamp_invalid]));
-    blueslip.expect("error", "Moment could not parse datetime supplied by backend: invalid");
+    blueslip.expect("error", "Could not parse datetime supplied by backend: invalid");
 
     // Initial asserts
     assert.equal($timestamp.text(), "never-been-set");
@@ -173,7 +180,7 @@ run_test("timestamp", () => {
     rm.update_elements($content);
 
     // Final asserts
-    assert.equal($timestamp.text(), "Thu, Jan 1 1970, 12:00 AM");
+    assert.equal($timestamp.html(), '<i class="fa fa-clock-o"></i>\nThu, Jan 1 1970, 12:00 AM\n');
     assert.equal(
         $timestamp.attr("title"),
         "This time is in your timezone. Original text was 'never-been-set'.",
@@ -188,18 +195,18 @@ run_test("timestamp-twenty-four-hour-time", () => {
     $content.set_find_results("time", $array([$timestamp]));
 
     // We will temporarily change the 24h setting for this test.
-    const old_page_params = global.page_params;
+    with_field(page_params, "twenty_four_hour_time", true, () => {
+        rm.update_elements($content);
+        assert.equal($timestamp.html(), '<i class="fa fa-clock-o"></i>\nWed, Jul 15 2020, 20:40\n');
+    });
 
-    set_global("page_params", {...old_page_params, twenty_four_hour_time: true});
-    rm.update_elements($content);
-    assert.equal($timestamp.text(), "Wed, Jul 15 2020, 20:40");
-
-    set_global("page_params", {...old_page_params, twenty_four_hour_time: false});
-    rm.update_elements($content);
-    assert.equal($timestamp.text(), "Wed, Jul 15 2020, 8:40 PM");
-
-    // Set page_params back to its original value.
-    set_global("page_params", old_page_params);
+    with_field(page_params, "twenty_four_hour_time", false, () => {
+        rm.update_elements($content);
+        assert.equal(
+            $timestamp.html(),
+            '<i class="fa fa-clock-o"></i>\nWed, Jul 15 2020, 8:40 PM\n',
+        );
+    });
 });
 
 run_test("timestamp-error", () => {
@@ -236,7 +243,7 @@ run_test("emoji", () => {
 
     assert(called);
 
-    // Set page paramaters back so that test run order is independent
+    // Set page parameters back so that test run order is independent
     page_params.emojiset = "apple";
 });
 
@@ -266,5 +273,5 @@ run_test("spoiler-header-empty-fill", () => {
         '<span class="spoiler-button" aria-expanded="false"><span class="spoiler-arrow"></span></span>';
     $header.html("");
     rm.update_elements($content);
-    assert.equal(toggle_button_html + "<p>translated: Spoiler</p>", $header.html());
+    assert.equal(toggle_button_html + "<p>translated HTML: Spoiler</p>", $header.html());
 });

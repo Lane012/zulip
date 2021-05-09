@@ -1,25 +1,30 @@
-zrequire("message_events");
-zrequire("message_store");
-zrequire("muting");
-zrequire("people");
-zrequire("recent_senders");
-zrequire("stream_data");
-zrequire("stream_topic_history");
-zrequire("unread");
+"use strict";
 
-set_global("$", global.make_zjquery());
-set_global("alert_words", {});
-set_global("condense", {});
-set_global("current_msg_list", {});
-set_global("message_edit", {});
-set_global("message_list", {});
-set_global("notifications", {});
-set_global("page_params", {});
-set_global("pm_list", {});
-set_global("stream_list", {});
-set_global("unread_ui", {});
+const {strict: assert} = require("assert");
 
-alert_words.process_message = () => {};
+const {mock_cjs, mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const $ = require("../zjsunit/zjquery");
+const {page_params} = require("../zjsunit/zpage_params");
+
+mock_cjs("jquery", $);
+const condense = mock_esm("../../static/js/condense");
+const message_edit = mock_esm("../../static/js/message_edit");
+const message_list = mock_esm("../../static/js/message_list");
+const message_lists = mock_esm("../../static/js/message_lists");
+const notifications = mock_esm("../../static/js/notifications");
+const pm_list = mock_esm("../../static/js/pm_list");
+const stream_list = mock_esm("../../static/js/stream_list");
+const unread_ui = mock_esm("../../static/js/unread_ui");
+message_lists.current = {};
+
+const people = zrequire("people");
+const message_events = zrequire("message_events");
+const message_helper = zrequire("message_helper");
+const message_store = zrequire("message_store");
+const stream_data = zrequire("stream_data");
+const stream_topic_history = zrequire("stream_topic_history");
+const unread = zrequire("unread");
 
 const alice = {
     email: "alice@example.com",
@@ -39,13 +44,9 @@ stream_data.add_sub(denmark);
 function test_helper(side_effects) {
     const events = [];
 
-    for (const side_effect of side_effects) {
-        const parts = side_effect.split(".");
-        const module = parts[0];
-        const field = parts[1];
-
-        global[module][field] = () => {
-            events.push(side_effect);
+    for (const [module, field] of side_effects) {
+        module[field] = () => {
+            events.push([module, field]);
         };
     }
 
@@ -69,7 +70,7 @@ run_test("update_messages", () => {
         type: "stream",
     };
 
-    message_store.add_message_metadata(original_message);
+    message_helper.process_new_message(original_message);
     message_store.set_message_booleans(original_message);
 
     assert.equal(original_message.mentioned, true);
@@ -90,26 +91,26 @@ run_test("update_messages", () => {
         },
     ];
 
-    current_msg_list.get_row = (message_id) => {
+    message_lists.current.get_row = (message_id) => {
         assert.equal(message_id, 111);
         return ["row-stub"];
     };
-    current_msg_list.view = {};
+    message_lists.current.view = {};
 
     let rendered_mgs;
 
-    current_msg_list.view.rerender_messages = (msgs_to_rerender, message_content_edited) => {
+    message_lists.current.view.rerender_messages = (msgs_to_rerender, message_content_edited) => {
         rendered_mgs = msgs_to_rerender;
         assert.equal(message_content_edited, true);
     };
 
     const side_effects = [
-        "condense.un_cache_message_content_height",
-        "message_edit.end_message_row_edit",
-        "notifications.received_messages",
-        "unread_ui.update_unread_counts",
-        "stream_list.update_streams_sidebar",
-        "pm_list.update_private_messages",
+        [condense, "un_cache_message_content_height"],
+        [message_edit, "end_message_row_edit"],
+        [notifications, "received_messages"],
+        [unread_ui, "update_unread_counts"],
+        [stream_list, "update_streams_sidebar"],
+        [pm_list, "update_private_messages"],
     ];
 
     const helper = test_helper(side_effects);

@@ -9,7 +9,7 @@ Google Code-in, Zulip can provide you with a virtual machine with the
 development environment already set up.
 
 The machines (droplets) are being generously provided by
-[Digital Ocean](https://www.digitalocean.com/). Thank you Digital Ocean!
+[DigitalOcean](https://www.digitalocean.com/). Thank you DigitalOcean!
 
 ## Step 1: Join GitHub and create SSH Keys
 
@@ -63,7 +63,10 @@ Once your remote dev instance is ready:
 - Once you log in, you should see `(zulip-py3-venv) ~$`.
 - To start the dev server, `cd zulip` and then run `./tools/run-dev.py`.
 - While the dev server is running, you can see the Zulip server in your browser
-  at http://username.zulipdev.org:9991.
+  at http://zulip.username.zulipdev.org:9991.
+- The development server actually runs on all subdomains of
+  `username.zulipdev.org`; this is important for testing Zulip's
+  support for multiple organizations in your development server.
 
 Once you've confirmed you can connect to your remote server, take a look at:
 
@@ -73,7 +76,7 @@ Once you've confirmed you can connect to your remote server, take a look at:
 
 Next, read the following to learn more about developing for Zulip:
 
-* [Using the Development Environment](../development/using.md)
+* [Using the development environment](../development/using.md)
 * [Testing](../testing/testing.md)
 
 [github-join]: https://github.com/join

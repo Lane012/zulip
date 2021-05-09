@@ -1,54 +1,56 @@
-set_global("$", global.make_zjquery());
+"use strict";
 
-zrequire("people");
-const settings_config = zrequire("settings_config");
-zrequire("user_events");
+const {strict: assert} = require("assert");
 
-set_global("activity", {
-    redraw() {},
-});
+const {mock_cjs, mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const blueslip = require("../zjsunit/zblueslip");
+const $ = require("../zjsunit/zjquery");
+const {page_params} = require("../zjsunit/zpage_params");
 
-set_global("settings_linkifiers", {
-    maybe_disable_widgets() {},
-});
-set_global("settings_org", {
-    maybe_disable_widgets() {},
-});
-set_global("settings_profile_fields", {
-    maybe_disable_widgets() {},
-});
-set_global("settings_streams", {
-    maybe_disable_widgets() {},
-});
-set_global("settings_users", {
-    update_user_data() {},
-});
-
-set_global("gear_menu", {
-    update_org_settings_menu_item() {},
-});
-set_global("page_params", {
-    is_admin: true,
-});
-
-set_global("pm_list", {
-    update_private_messages() {},
-});
-
-set_global("narrow_state", {
-    update_email() {},
-});
-
-set_global("compose", {
-    update_email() {},
-});
-
-set_global("settings_account", {
+mock_cjs("jquery", $);
+const message_live_update = mock_esm("../../static/js/message_live_update");
+const settings_account = mock_esm("../../static/js/settings_account", {
     update_email() {},
     update_full_name() {},
 });
 
-set_global("message_live_update", {});
+mock_esm("../../static/js/activity", {
+    redraw() {},
+});
+mock_esm("../../static/js/compose", {
+    update_email() {},
+});
+mock_esm("../../static/js/gear_menu", {
+    update_org_settings_menu_item() {},
+});
+mock_esm("../../static/js/narrow_state", {
+    update_email() {},
+});
+mock_esm("../../static/js/pm_list", {
+    update_private_messages() {},
+});
+mock_esm("../../static/js/settings_linkifiers", {
+    maybe_disable_widgets() {},
+});
+mock_esm("../../static/js/settings_org", {
+    maybe_disable_widgets() {},
+});
+mock_esm("../../static/js/settings_profile_fields", {
+    maybe_disable_widgets() {},
+});
+mock_esm("../../static/js/settings_streams", {
+    maybe_disable_widgets() {},
+});
+mock_esm("../../static/js/settings_users", {
+    update_user_data() {},
+});
+
+page_params.is_admin = true;
+
+const people = zrequire("people");
+const settings_config = zrequire("settings_config");
+const user_events = zrequire("user_events");
 
 const me = {
     email: "me@example.com",
@@ -81,12 +83,22 @@ run_test("updates", () => {
     });
     person = people.get_by_email(isaac.email);
     assert(person.is_guest);
+    assert(person.role, settings_config.user_role_values.guest.code);
     user_events.update_person({
         user_id: isaac.user_id,
         role: settings_config.user_role_values.member.code,
     });
     person = people.get_by_email(isaac.email);
     assert(!person.is_guest);
+    assert(person.role, settings_config.user_role_values.member.code);
+
+    user_events.update_person({
+        user_id: isaac.user_id,
+        role: settings_config.user_role_values.moderator.code,
+    });
+    person = people.get_by_email(isaac.email);
+    assert.equal(person.is_moderator, true);
+    assert(person.role, settings_config.user_role_values.moderator.code);
 
     user_events.update_person({
         user_id: isaac.user_id,
@@ -94,7 +106,9 @@ run_test("updates", () => {
     });
     person = people.get_by_email(isaac.email);
     assert.equal(person.full_name, "Isaac Newton");
+    assert.equal(person.is_moderator, false);
     assert.equal(person.is_admin, true);
+    assert(person.role, settings_config.user_role_values.admin.code);
 
     user_events.update_person({
         user_id: isaac.user_id,
@@ -102,10 +116,11 @@ run_test("updates", () => {
     });
     assert.equal(person.is_admin, true);
     assert.equal(person.is_owner, true);
+    assert(person.role, settings_config.user_role_values.owner.code);
 
     let user_id;
     let full_name;
-    global.message_live_update.update_user_full_name = function (user_id_arg, full_name_arg) {
+    message_live_update.update_user_full_name = (user_id_arg, full_name_arg) => {
         user_id = user_id_arg;
         full_name = full_name_arg;
     };
@@ -121,7 +136,7 @@ run_test("updates", () => {
         user_id: me.user_id,
         role: settings_config.user_role_values.member.code,
     });
-    assert(!global.page_params.is_admin);
+    assert(!page_params.is_admin);
 
     user_events.update_person({user_id: me.user_id, full_name: "Me V2"});
     assert.equal(people.my_full_name(), "Me V2");
@@ -139,7 +154,7 @@ run_test("updates", () => {
     assert.equal(person.full_name, "Me V2");
 
     let avatar_url;
-    global.message_live_update.update_avatar = function (user_id_arg, avatar_url_arg) {
+    message_live_update.update_avatar = (user_id_arg, avatar_url_arg) => {
         user_id = user_id_arg;
         avatar_url = avatar_url_arg;
     };

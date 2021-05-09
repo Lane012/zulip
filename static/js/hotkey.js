@@ -1,10 +1,51 @@
+import $ from "jquery";
+
+import * as emoji from "../shared/js/emoji";
+
+import * as activity from "./activity";
+import * as browser_history from "./browser_history";
+import * as common from "./common";
+import * as compose from "./compose";
+import * as compose_actions from "./compose_actions";
+import * as compose_state from "./compose_state";
+import * as condense from "./condense";
+import * as copy_and_paste from "./copy_and_paste";
+import * as drafts from "./drafts";
+import * as emoji_picker from "./emoji_picker";
+import * as feedback_widget from "./feedback_widget";
+import * as gear_menu from "./gear_menu";
+import * as giphy from "./giphy";
+import * as hashchange from "./hashchange";
+import * as hotspots from "./hotspots";
+import * as lightbox from "./lightbox";
+import * as list_util from "./list_util";
+import * as message_edit from "./message_edit";
+import * as message_flags from "./message_flags";
+import * as message_lists from "./message_lists";
+import * as message_view_header from "./message_view_header";
+import * as muting_ui from "./muting_ui";
+import * as narrow from "./narrow";
+import * as navigate from "./navigate";
+import * as overlays from "./overlays";
+import {page_params} from "./page_params";
+import * as popovers from "./popovers";
+import * as reactions from "./reactions";
+import * as recent_topics from "./recent_topics";
+import * as search from "./search";
+import * as settings_data from "./settings_data";
+import * as stream_list from "./stream_list";
+import * as stream_popover from "./stream_popover";
+import * as subs from "./subs";
+import * as topic_zoom from "./topic_zoom";
+import * as ui from "./ui";
+
 function do_narrow_action(action) {
-    action(current_msg_list.selected_id(), {trigger: "hotkey"});
+    action(message_lists.current.selected_id(), {trigger: "hotkey"});
     return true;
 }
 
 // For message actions and user profile menu.
-const menu_dropdown_hotkeys = ["down_arrow", "up_arrow", "vim_up", "vim_down", "enter"];
+const menu_dropdown_hotkeys = new Set(["down_arrow", "up_arrow", "vim_up", "vim_down", "enter"]);
 
 // Note that multiple keys can map to the same event_name, which
 // we'll do in cases where they have the exact same semantics.
@@ -12,14 +53,14 @@ const menu_dropdown_hotkeys = ["down_arrow", "up_arrow", "vim_up", "vim_down", "
 
 // The `message_view_only` property is a convenient and performant way
 // to express a common case of which hotkeys do something in which
-// views.  It is set for hotkeys (like `Ctrl + s`) that only have an effect
+// views.  It is set for hotkeys (like `Ctrl + S`) that only have an effect
 // in the main message view with a selected message.
 // `message_view_only` hotkeys, as a group, are not processed if any
 // overlays are open (e.g. settings, streams, etc.).
 
 const keydown_shift_mappings = {
-    // these can be triggered by shift + key only
-    9: {name: "shift_tab", message_view_only: false}, // tab
+    // these can be triggered by Shift + key only
+    9: {name: "shift_tab", message_view_only: false}, // Tab
     32: {name: "shift_spacebar", message_view_only: true}, // space bar
     37: {name: "left_arrow", message_view_only: false}, // left arrow
     39: {name: "right_arrow", message_view_only: false}, // right arrow
@@ -28,14 +69,14 @@ const keydown_shift_mappings = {
 };
 
 const keydown_unshift_mappings = {
-    // these can be triggered by key only (without shift)
-    9: {name: "tab", message_view_only: false}, // tab
-    27: {name: "escape", message_view_only: false}, // escape
+    // these can be triggered by key only (without Shift)
+    9: {name: "tab", message_view_only: false}, // Tab
+    27: {name: "escape", message_view_only: false}, // Esc
     32: {name: "spacebar", message_view_only: true}, // space bar
-    33: {name: "page_up", message_view_only: true}, // page up
-    34: {name: "page_down", message_view_only: true}, // page down
-    35: {name: "end", message_view_only: true}, // end
-    36: {name: "home", message_view_only: true}, // home
+    33: {name: "page_up", message_view_only: true}, // PgUp
+    34: {name: "page_down", message_view_only: true}, // PgDn
+    35: {name: "end", message_view_only: true}, // End
+    36: {name: "home", message_view_only: true}, // Home
     37: {name: "left_arrow", message_view_only: false}, // left arrow
     39: {name: "right_arrow", message_view_only: false}, // right arrow
     38: {name: "up_arrow", message_view_only: false}, // up arrow
@@ -49,25 +90,25 @@ const keydown_ctrl_mappings = {
 const keydown_cmd_or_ctrl_mappings = {
     67: {name: "copy_with_c", message_view_only: false}, // 'C'
     75: {name: "search_with_k", message_view_only: false}, // 'K'
-    83: {name: "star_message", message_view_only: true}, // 's'
+    83: {name: "star_message", message_view_only: true}, // 'S'
     190: {name: "narrow_to_compose_target", message_view_only: true}, // '.'
 };
 
 const keydown_either_mappings = {
-    // these can be triggered by key or shift + key
+    // these can be triggered by key or Shift + key
     // Note that codes for letters are still case sensitive!
     //
-    // We may want to revisit both of these.  For backspace, we don't
+    // We may want to revisit both of these.  For Backspace, we don't
     // have any specific mapping behavior; we are just trying to disable
     // the normal browser features for certain OSes when we are in the
-    // compose box, and the little bit of backspace-related code here is
-    // dubious, but may apply to shift-backspace.
-    // For enter, there is some possibly that shift-enter is intended to
-    // have special behavior for folks that are used to shift-enter behavior
+    // compose box, and the little bit of Backspace-related code here is
+    // dubious, but may apply to Shift-Backspace.
+    // For Enter, there is some possibly that Shift-Enter is intended to
+    // have special behavior for folks that are used to Shift-Enter behavior
     // in other apps, but that's also slightly dubious.
-    8: {name: "backspace", message_view_only: true}, // backspace
-    13: {name: "enter", message_view_only: false}, // enter
-    46: {name: "delete", message_view_only: false}, // delete
+    8: {name: "backspace", message_view_only: true}, // Backspace
+    13: {name: "enter", message_view_only: false}, // Enter
+    46: {name: "delete", message_view_only: false}, // Delete
 };
 
 const keypress_mappings = {
@@ -85,18 +126,21 @@ const keypress_mappings = {
     71: {name: "G_end", message_view_only: true}, // 'G'
     74: {name: "vim_page_down", message_view_only: true}, // 'J'
     75: {name: "vim_page_up", message_view_only: true}, // 'K'
-    77: {name: "toggle_mute", message_view_only: true}, // 'M'
+    77: {name: "toggle_topic_mute", message_view_only: true}, // 'M'
     80: {name: "narrow_private", message_view_only: true}, // 'P'
     82: {name: "respond_to_author", message_view_only: true}, // 'R'
-    83: {name: "narrow_by_topic", message_view_only: true}, //'S'
-    86: {name: "view_selected_stream", message_view_only: false}, //'V'
+    83: {name: "narrow_by_topic", message_view_only: true}, // 'S'
+    86: {name: "view_selected_stream", message_view_only: false}, // 'V'
+    97: {name: "all_messages", message_view_only: true}, // 'a'
     99: {name: "compose", message_view_only: true}, // 'c'
     100: {name: "open_drafts", message_view_only: true}, // 'd'
     101: {name: "edit_message", message_view_only: true}, // 'e'
     103: {name: "gear_menu", message_view_only: true}, // 'g'
+    104: {name: "vim_left", message_view_only: true}, // 'h'
     105: {name: "message_actions", message_view_only: true}, // 'i'
     106: {name: "vim_down", message_view_only: true}, // 'j'
     107: {name: "vim_up", message_view_only: true}, // 'k'
+    108: {name: "vim_right", message_view_only: true}, // 'l'
     110: {name: "n_key", message_view_only: false}, // 'n'
     112: {name: "p_key", message_view_only: false}, // 'p'
     113: {name: "query_streams", message_view_only: true}, // 'q'
@@ -109,9 +153,9 @@ const keypress_mappings = {
     120: {name: "compose_private_message", message_view_only: true}, // 'x'
 };
 
-exports.get_keydown_hotkey = function (e) {
+export function get_keydown_hotkey(e) {
     if (e.altKey) {
-        return;
+        return undefined;
     }
 
     let hotkey;
@@ -129,9 +173,9 @@ exports.get_keydown_hotkey = function (e) {
         if (hotkey) {
             return hotkey;
         }
-        return;
+        return undefined;
     } else if (e.metaKey || e.ctrlKey) {
-        return;
+        return undefined;
     }
 
     if (e.shiftKey) {
@@ -149,17 +193,17 @@ exports.get_keydown_hotkey = function (e) {
     }
 
     return keydown_either_mappings[e.which];
-};
+}
 
-exports.get_keypress_hotkey = function (e) {
+export function get_keypress_hotkey(e) {
     if (e.metaKey || e.ctrlKey || e.altKey) {
-        return;
+        return undefined;
     }
 
     return keypress_mappings[e.which];
-};
+}
 
-exports.processing_text = function () {
+export function processing_text() {
     const $focused_elt = $(":focus");
     return (
         $focused_elt.is("input") ||
@@ -169,20 +213,34 @@ exports.processing_text = function () {
         $focused_elt.parents(".pill-container").length >= 1 ||
         $focused_elt.attr("id") === "compose-send-button"
     );
-};
+}
 
-exports.in_content_editable_widget = function (e) {
+export function in_content_editable_widget(e) {
     return $(e.target).is(".editable-section");
-};
+}
 
 // Returns true if we handled it, false if the browser should.
-exports.process_escape_key = function (e) {
-    if (exports.in_content_editable_widget(e)) {
+export function process_escape_key(e) {
+    if (
+        hashchange.in_recent_topics_hash() &&
+        recent_topics.change_focused_element($(e.target), "escape")
+    ) {
+        // Recent topics uses escape to make focus from RT search / filters to topics table.
+        // If focus already in table it returns false.
+        return true;
+    }
+
+    if (in_content_editable_widget(e)) {
         return false;
     }
 
     if (feedback_widget.is_open()) {
         feedback_widget.dismiss();
+        return true;
+    }
+
+    if (popovers.any_active()) {
+        popovers.hide_all();
         return true;
     }
 
@@ -201,7 +259,7 @@ exports.process_escape_key = function (e) {
         return true;
     }
 
-    if (exports.processing_text()) {
+    if (processing_text()) {
         if (activity.searching()) {
             activity.escape_search();
             return true;
@@ -218,14 +276,29 @@ exports.process_escape_key = function (e) {
             return true;
         }
 
+        if (giphy.is_popped_from_edit_messsage()) {
+            giphy.focus_current_edit_message();
+            // Hide after setting focus so that `edit_message_id` is
+            // still set in giphy.
+            giphy.hide_giphy_popover();
+            return true;
+        }
+
         if (compose_state.composing()) {
+            // Check if the giphy popover was open using compose box.
+            // Hide GIPHY popover if it's open.
+            if (!giphy.is_popped_from_edit_messsage() && giphy.hide_giphy_popover()) {
+                $("#compose-textarea").trigger("focus");
+                return true;
+            }
+
             // Check for errors in compose box; close errors if they exist
             if ($("#compose-send-status").css("display") !== "none") {
                 $("#compose-send-status").hide();
                 return true;
             }
 
-            // If the user hit the escape key, cancel the current compose
+            // If the user hit the Esc key, cancel the current compose
             compose_actions.cancel();
             return true;
         }
@@ -236,7 +309,7 @@ exports.process_escape_key = function (e) {
                 $("#searchbox .pill").trigger("blur");
                 $("#searchbox #search_query").trigger("blur");
             } else {
-                tab_bar.exit_search();
+                message_view_header.exit_search();
             }
             return true;
         }
@@ -244,11 +317,6 @@ exports.process_escape_key = function (e) {
         // We pressed Esc and something was focused, and the composebox
         // wasn't open. In that case, we should blur the input.
         $("input:focus,textarea:focus").trigger("blur");
-        return true;
-    }
-
-    if (popovers.any_active()) {
-        popovers.hide_all();
         return true;
     }
 
@@ -262,12 +330,55 @@ exports.process_escape_key = function (e) {
         return true;
     }
 
-    narrow.deactivate();
+    hashchange.show_default_view();
     return true;
-};
+}
+
+function handle_popover_events(event_name) {
+    if (popovers.actions_popped()) {
+        popovers.actions_menu_handle_keyboard(event_name);
+        return true;
+    }
+
+    if (popovers.message_info_popped()) {
+        popovers.user_info_popover_for_message_handle_keyboard(event_name);
+        return true;
+    }
+
+    if (popovers.user_info_popped()) {
+        popovers.user_info_popover_handle_keyboard(event_name);
+        return true;
+    }
+
+    if (popovers.user_sidebar_popped()) {
+        popovers.user_sidebar_popover_handle_keyboard(event_name);
+        return true;
+    }
+
+    if (stream_popover.stream_popped()) {
+        stream_popover.stream_sidebar_menu_handle_keyboard(event_name);
+        return true;
+    }
+
+    if (stream_popover.topic_popped()) {
+        stream_popover.topic_sidebar_menu_handle_keyboard(event_name);
+        return true;
+    }
+
+    if (stream_popover.all_messages_popped()) {
+        stream_popover.all_messages_sidebar_menu_handle_keyboard(event_name);
+        return true;
+    }
+
+    if (stream_popover.starred_messages_popped()) {
+        stream_popover.starred_messages_sidebar_menu_handle_keyboard(event_name);
+        return true;
+    }
+    return false;
+}
 
 // Returns true if we handled it, false if the browser should.
-exports.process_enter_key = function (e) {
+export function process_enter_key(e) {
     if ($(".dropdown.open").length && $(e.target).attr("role") === "menuitem") {
         // on #gear-menu li a[tabindex] elements, force a click and prevent default.
         // this is because these links do not have an href and so don't force a
@@ -285,19 +396,18 @@ exports.process_enter_key = function (e) {
         return emoji_picker.navigate("enter", e);
     }
 
-    if (exports.in_content_editable_widget(e)) {
+    if (in_content_editable_widget(e)) {
         $(e.target).parent().find(".checkmark").trigger("click");
         return false;
     }
 
-    if (popovers.actions_popped()) {
-        popovers.actions_menu_handle_keyboard("enter");
+    if (handle_popover_events("enter")) {
         return true;
     }
 
     if (overlays.settings_open()) {
         // On the settings page just let the browser handle
-        // the enter key for things like submitting forms.
+        // the Enter key for things like submitting forms.
         return false;
     }
 
@@ -305,7 +415,7 @@ exports.process_enter_key = function (e) {
         return false;
     }
 
-    if (exports.processing_text()) {
+    if (processing_text()) {
         if (stream_list.searching()) {
             // This is sort of funny behavior, but I think
             // the intention is that we want it super easy
@@ -317,20 +427,25 @@ exports.process_enter_key = function (e) {
         return false;
     }
 
-    // This handles when pressing enter while looking at drafts.
+    // This handles when pressing Rnter while looking at drafts.
     // It restores draft that is focused.
     if (overlays.drafts_open()) {
         drafts.drafts_handle_events(e, "enter");
         return true;
     }
 
-    // If we're on a button or a link and have pressed enter, let the
+    if ($(e.target).attr("role") === "button") {
+        e.target.click();
+        return false;
+    }
+
+    // If we're on a button or a link and have pressed Enter, let the
     // browser handle the keypress
     //
     // This is subtle and here's why: Suppose you have the focus on a
     // stream name in your left sidebar. j and k will still move your
     // cursor up and down, but Enter won't reply -- it'll just trigger
-    // the link on the sidebar! So you keep pressing enter over and
+    // the link on the sidebar! So you keep pressing Enter over and
     // over again. Until you click somewhere or press r.
     if ($("a:focus,button:focus").length > 0) {
         return false;
@@ -342,20 +457,20 @@ exports.process_enter_key = function (e) {
     }
 
     // If we got this far, then we're presumably in the message
-    // view, so in that case "enter" is the hotkey to respond to a message.
+    // view, so in that case "Enter" is the hotkey to respond to a message.
     // Note that "r" has same effect, but that is handled in process_hotkey().
     compose_actions.respond_to_message({trigger: "hotkey enter"});
     return true;
-};
+}
 
-exports.process_tab_key = function () {
+export function process_tab_key() {
     // Returns true if we handled it, false if the browser should.
     // TODO: See if browsers like Safari can now handle tabbing correctly
     // without our intervention.
 
     let message_edit_form;
 
-    const focused_message_edit_content = $(".message_edit_content").filter(":focus");
+    const focused_message_edit_content = $(".message_edit_content:focus");
     if (focused_message_edit_content.length > 0) {
         message_edit_form = focused_message_edit_content.closest(".message_edit_form");
         // Open message edit forms either have a save button or a close button, but not both.
@@ -363,7 +478,7 @@ exports.process_tab_key = function () {
         return true;
     }
 
-    const focused_message_edit_save = $(".message_edit_save").filter(":focus");
+    const focused_message_edit_save = $(".message_edit_save:focus");
     if (focused_message_edit_save.length > 0) {
         message_edit_form = focused_message_edit_save.closest(".message_edit_form");
         message_edit_form.find(".message_edit_cancel").trigger("focus");
@@ -375,9 +490,9 @@ exports.process_tab_key = function () {
     }
 
     return false;
-};
+}
 
-exports.process_shift_tab_key = function () {
+export function process_shift_tab_key() {
     // Returns true if we handled it, false if the browser should.
     // TODO: See if browsers like Safari can now handle tabbing correctly
     // without our intervention.
@@ -389,14 +504,14 @@ exports.process_shift_tab_key = function () {
         return true;
     }
 
-    // Shift-tabbing from the edit message cancel button takes you to save.
-    if ($(".message_edit_cancel").filter(":focus").length > 0) {
+    // Shift-Tabbing from the edit message cancel button takes you to save.
+    if ($(".message_edit_cancel:focus").length > 0) {
         $(".message_edit_save").trigger("focus");
         return true;
     }
 
-    // Shift-tabbing from the edit message save button takes you to the content.
-    const focused_message_edit_save = $(".message_edit_save").filter(":focus");
+    // Shift-Tabbing from the edit message save button takes you to the content.
+    const focused_message_edit_save = $(".message_edit_save:focus");
     if (focused_message_edit_save.length > 0) {
         focused_message_edit_save
             .closest(".message_edit_form")
@@ -405,43 +520,48 @@ exports.process_shift_tab_key = function () {
         return true;
     }
 
-    // Shift-tabbing from emoji catalog/search results takes you back to search textbox.
+    // Shift-Tabbing from emoji catalog/search results takes you back to search textbox.
     if (emoji_picker.reactions_popped()) {
         return emoji_picker.navigate("shift_tab");
     }
 
     return false;
-};
+}
 
 // Process a keydown or keypress event.
 //
 // Returns true if we handled it, false if the browser should.
-exports.process_hotkey = function (e, hotkey) {
+export function process_hotkey(e, hotkey) {
     const event_name = hotkey.name;
 
-    // This block needs to be before the `tab` handler.
+    // This block needs to be before the `Tab` handler.
     switch (event_name) {
         case "up_arrow":
         case "down_arrow":
         case "left_arrow":
         case "right_arrow":
+        case "vim_up":
+        case "vim_down":
+        case "vim_left":
+        case "vim_right":
         case "tab":
         case "shift_tab":
-            if (overlays.recent_topics_open()) {
-                return recent_topics.change_focused_element(e, event_name);
+        case "open_recent_topics":
+            if (recent_topics.is_in_focus()) {
+                return recent_topics.change_focused_element($(e.target), event_name);
             }
     }
 
     // We handle the most complex keys in their own functions.
     switch (event_name) {
         case "escape":
-            return exports.process_escape_key(e);
+            return process_escape_key(e);
         case "enter":
-            return exports.process_enter_key(e);
+            return process_enter_key(e);
         case "tab":
-            return exports.process_tab_key();
+            return process_tab_key();
         case "shift_tab":
-            return exports.process_shift_tab_key();
+            return process_shift_tab_key();
     }
 
     // TODO: break out specific handlers for up_arrow,
@@ -458,7 +578,7 @@ exports.process_hotkey = function (e, hotkey) {
     }
 
     if (hotkey.message_view_only && overlays.is_active()) {
-        if (exports.processing_text()) {
+        if (processing_text()) {
             return false;
         }
         if (event_name === "narrow_by_topic" && overlays.streams_open()) {
@@ -473,10 +593,6 @@ exports.process_hotkey = function (e, hotkey) {
             overlays.close_overlay("drafts");
             return true;
         }
-        if (event_name === "open_recent_topics" && overlays.recent_topics_open()) {
-            overlays.close_overlay("recent_topics");
-            return true;
-        }
         return false;
     }
 
@@ -484,7 +600,7 @@ exports.process_hotkey = function (e, hotkey) {
         return false;
     }
 
-    if (overlays.settings_open()) {
+    if (overlays.settings_open() && !popovers.user_info_popped()) {
         return false;
     }
 
@@ -508,46 +624,32 @@ exports.process_hotkey = function (e, hotkey) {
         return subs.switch_rows(event_name);
     }
 
-    if (exports.in_content_editable_widget(e)) {
-        // We handle the enter key in process_enter_key().
+    if (in_content_editable_widget(e)) {
+        // We handle the Enter key in process_enter_key().
         // We ignore all other keys.
         return false;
     }
 
-    if (event_name === "up_arrow") {
-        if (list_util.inside_list(e)) {
-            list_util.go_up(e);
-            return true;
-        }
+    if (event_name === "up_arrow" && list_util.inside_list(e)) {
+        list_util.go_up(e);
+        return true;
     }
 
-    if (event_name === "down_arrow") {
-        if (list_util.inside_list(e)) {
-            list_util.go_down(e);
-            return true;
-        }
+    if (event_name === "down_arrow" && list_util.inside_list(e)) {
+        list_util.go_down(e);
+        return true;
     }
 
-    if (menu_dropdown_hotkeys.includes(event_name)) {
-        if (popovers.actions_popped()) {
-            popovers.actions_menu_handle_keyboard(event_name);
-            return true;
-        }
-
-        if (popovers.message_info_popped()) {
-            popovers.user_info_popover_handle_keyboard(event_name);
-            return true;
-        }
+    if (menu_dropdown_hotkeys.has(event_name) && handle_popover_events(event_name)) {
+        return true;
     }
 
     // The next two sections date back to 00445c84 and are Mac/Chrome-specific,
     // and they should possibly be eliminated in favor of keeping standard
     // browser behavior.
-    if (event_name === "backspace") {
-        if ($("#compose-send-button").is(":focus")) {
-            // Ignore backspace; don't navigate back a page.
-            return true;
-        }
+    if (event_name === "backspace" && $("#compose-send-button").is(":focus")) {
+        // Ignore Backspace; don't navigate back a page.
+        return true;
     }
 
     if (event_name === "narrow_to_compose_target") {
@@ -556,8 +658,8 @@ exports.process_hotkey = function (e, hotkey) {
     }
 
     // Process hotkeys specially when in an input, select, textarea, or send button
-    if (exports.processing_text()) {
-        // Note that there is special handling for enter/escape too, but
+    if (processing_text()) {
+        // Note that there is special handling for Enter/Esc too, but
         // we handle this in other functions.
 
         if (event_name === "left_arrow" && compose_state.focus_in_empty_compose()) {
@@ -566,7 +668,12 @@ exports.process_hotkey = function (e, hotkey) {
         }
 
         if (
-            (event_name === "up_arrow" || event_name === "down_arrow") &&
+            (event_name === "up_arrow" ||
+                event_name === "down_arrow" ||
+                event_name === "page_up" ||
+                event_name === "page_down" ||
+                event_name === "home" ||
+                event_name === "end") &&
             compose_state.focus_in_empty_compose()
         ) {
             compose_actions.cancel();
@@ -577,12 +684,12 @@ exports.process_hotkey = function (e, hotkey) {
         } else if (event_name === "page_down") {
             // so that it always goes to the end of the text box.
             const height = $(":focus")[0].scrollHeight;
-            $(":focus").caret(Infinity).animate({scrollTop: height}, "fast");
+            $(":focus").caret(Number.POSITIVE_INFINITY).animate({scrollTop: height}, "fast");
             return true;
         } else if (event_name === "search_with_k") {
-            // Do nothing; this allows one to use ctrl+k inside compose.
+            // Do nothing; this allows one to use Ctrl+K inside compose.
         } else if (event_name === "star_message") {
-            // Do nothing; this allows one to use ctrl+s inside compose.
+            // Do nothing; this allows one to use Ctrl+S inside compose.
         } else {
             // Let the browser handle the key normally.
             return false;
@@ -618,7 +725,11 @@ exports.process_hotkey = function (e, hotkey) {
             subs.view_stream();
             return true;
         }
-        if (event_name === "n_key" && overlays.streams_open() && page_params.can_create_streams) {
+        if (
+            event_name === "n_key" &&
+            overlays.streams_open() &&
+            settings_data.user_can_create_streams()
+        ) {
             subs.open_create_stream();
             return true;
         }
@@ -627,12 +738,6 @@ exports.process_hotkey = function (e, hotkey) {
 
     // Shortcuts that don't require a message
     switch (event_name) {
-        case "compose": // 'c': compose
-            compose_actions.start("stream", {trigger: "compose_hotkey"});
-            return true;
-        case "compose_private_message":
-            compose_actions.start("private", {trigger: "compose_hotkey"});
-            return true;
         case "narrow_private":
             return do_narrow_action((target, opts) => {
                 narrow.by("is", "private", opts);
@@ -651,7 +756,7 @@ exports.process_hotkey = function (e, hotkey) {
             gear_menu.open();
             return true;
         case "show_shortcuts": // Show keyboard shortcuts page
-            info_overlay.maybe_show_keyboard_shortcuts();
+            browser_history.go_to_location("keyboard-shortcuts");
             return true;
         case "stream_cycle_backward":
             narrow.stream_cycle_backward();
@@ -665,13 +770,29 @@ exports.process_hotkey = function (e, hotkey) {
         case "p_key":
             narrow.narrow_to_next_pm_string();
             return true;
-        case "open_drafts":
-            drafts.launch();
+        case "open_recent_topics":
+            browser_history.go_to_location("#recent_topics");
             return true;
+        case "all_messages":
+            browser_history.go_to_location("#all_messages");
+            return true;
+    }
+
+    // Shortcuts that are useful with an empty message feed, like opening compose.
+    switch (event_name) {
         case "reply_message": // 'r': respond to message
-            // Note that you can "enter" to respond to messages as well,
+            // Note that you can "Enter" to respond to messages as well,
             // but that is handled in process_enter_key().
             compose_actions.respond_to_message({trigger: "hotkey"});
+            return true;
+        case "compose": // 'c': compose
+            compose_actions.start("stream", {trigger: "compose_hotkey"});
+            return true;
+        case "compose_private_message":
+            compose_actions.start("private", {trigger: "compose_hotkey"});
+            return true;
+        case "open_drafts":
+            drafts.launch();
             return true;
         case "C_deprecated":
             ui.maybe_show_deprecation_notice("C");
@@ -679,19 +800,20 @@ exports.process_hotkey = function (e, hotkey) {
         case "star_deprecated":
             ui.maybe_show_deprecation_notice("*");
             return true;
-        case "copy_with_c":
-            copy_and_paste.copy_handler();
-            return true;
-        case "open_recent_topics":
-            hashchange.go_to_location("recent_topics");
-            return true;
     }
 
-    if (current_msg_list.empty()) {
+    // We don't want hotkeys below this to work when recent topics is
+    // open. These involve hotkeys that can only be performed on a message.
+    if (recent_topics.is_visible()) {
         return false;
     }
 
-    // Navigation shortcuts
+    if (message_lists.current.empty()) {
+        return false;
+    }
+
+    // Shortcuts for navigation and other applications that require a
+    // nonempty message feed but do not depend on the selected message.
     switch (event_name) {
         case "down_arrow":
         case "vim_down":
@@ -718,9 +840,12 @@ exports.process_hotkey = function (e, hotkey) {
         case "spacebar":
             navigate.page_down();
             return true;
+        case "copy_with_c":
+            copy_and_paste.copy_handler();
+            return true;
     }
 
-    const msg = current_msg_list.selected_message();
+    const msg = message_lists.current.selected_message();
     // Shortcuts that operate on a message
     switch (event_name) {
         case "message_actions":
@@ -755,8 +880,8 @@ exports.process_hotkey = function (e, hotkey) {
             reactions.toggle_emoji_reaction(msg.id, canonical_name);
             return true;
         }
-        case "toggle_mute":
-            muting_ui.toggle_mute(msg);
+        case "toggle_topic_mute":
+            muting_ui.toggle_topic_mute(msg);
             return true;
         case "toggle_message_collapse":
             condense.toggle_collapse(msg);
@@ -765,17 +890,17 @@ exports.process_hotkey = function (e, hotkey) {
             compose_actions.quote_and_reply({trigger: "hotkey"});
             return true;
         case "edit_message": {
-            const row = current_msg_list.get_row(msg.id);
+            const row = message_lists.current.get_row(msg.id);
             message_edit.start(row);
             return true;
         }
     }
 
     return false;
-};
+}
 
 /* We register both a keydown and a keypress function because
-   we want to intercept pgup/pgdn, escape, etc, and process them
+   we want to intercept PgUp/PgDn, Esc, etc, and process them
    as they happen on the keyboard. However, if we processed
    letters/numbers in keydown, we wouldn't know what the case of
    the letters were.
@@ -784,33 +909,31 @@ exports.process_hotkey = function (e, hotkey) {
    so we bail in .keydown if the event is a letter or number and
    instead just let keypress go for it. */
 
-exports.process_keydown = function (e) {
-    activity.new_user_input = true;
-    const hotkey = exports.get_keydown_hotkey(e);
+export function process_keydown(e) {
+    activity.set_new_user_input(true);
+    const hotkey = get_keydown_hotkey(e);
     if (!hotkey) {
         return false;
     }
-    return exports.process_hotkey(e, hotkey);
-};
+    return process_hotkey(e, hotkey);
+}
 
 $(document).on("keydown", (e) => {
-    if (exports.process_keydown(e)) {
+    if (process_keydown(e)) {
         e.preventDefault();
     }
 });
 
-exports.process_keypress = function (e) {
-    const hotkey = exports.get_keypress_hotkey(e);
+export function process_keypress(e) {
+    const hotkey = get_keypress_hotkey(e);
     if (!hotkey) {
         return false;
     }
-    return exports.process_hotkey(e, hotkey);
-};
+    return process_hotkey(e, hotkey);
+}
 
 $(document).on("keypress", (e) => {
-    if (exports.process_keypress(e)) {
+    if (process_keypress(e)) {
         e.preventDefault();
     }
 });
-
-window.hotkey = exports;

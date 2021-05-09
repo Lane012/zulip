@@ -5,18 +5,24 @@ Realms are the Zulip codebases's internal name for what we refer to in
 user documentation as an organization (the name "realm" comes from
 [Kerberos](https://web.mit.edu/kerberos/)).
 
+Wherever possible, we avoid using the term `realm` in any user-facing
+string or documentation; "Organization" is the equivalent term used in
+those contexts (and we have linters that attempt to enforce this rule
+in translateable strings).  We may in the future modify Zulip's
+internals to use `organization` instead.
+
 The
 [production docs on multiple realms](../production/multiple-organizations.md)
-are likely also relevant reading.
+are also relevant reading.
 
-## Creating Realms
+## Creating realms
 
 There are two main methods for creating realms.
 
 * Using unique link generator
 * Enabling open realm creation
 
-#### Using Unique Link Generator
+#### Using unique link generator
 
 ```bash
     ./manage.py generate_realm_creation_link
@@ -28,10 +34,10 @@ after the creation of the realm.  The link also expires if not used
 within 7 days. The expiration period can be changed by modifying
 `REALM_CREATION_LINK_VALIDITY_DAYS` in settings.py.
 
-### Enabling Open Realm Creation
+### Enabling open realm creation
 
 If you want anyone to be able to create new realms on your server, you
-can enable Open Realm Creation.  This will add a **Create new
+can enable open realm creation.  This will add a **Create new
 organization** link to your Zulip homepage footer, and anyone can
 create a new realm by visiting this link (**/new**).  This
 feature is disabled by default in production instances, and can be
@@ -55,7 +61,7 @@ releases had much less nice handling for subdomains.  See our
 [docs on using subdomains](../production/multiple-organizations.md) for
 user-facing documentation on this.
 
-### Working With Subdomains In Development Environment
+### Working with subdomains in development environment
 
 By default, Linux does not provide a convenient way to use subdomains
 in your local development environment.  To solve this problem, we use
@@ -84,5 +90,5 @@ lookup should still work even if you disable proxy for
 127.0.0.1    testsubdomain.zulipdev.com
 ```
 
-These records are also useful if you want to e.g. run the casper tests
+These records are also useful if you want to e.g. run the Puppeteer tests
 when you are not connected to the Internet.

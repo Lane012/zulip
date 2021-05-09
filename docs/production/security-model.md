@@ -1,4 +1,4 @@
-# Security Model
+# Security model
 
 This section attempts to document the Zulip security model.  It likely
 does not cover every issue; if there are details you're curious about,
@@ -25,18 +25,18 @@ announcement).
   entire message history, and thus someone with control over the
   server has access to that data as well.
 
-## Encryption and Authentication
+## Encryption and authentication
 
-* Traffic between clients (web, desktop and mobile) and the Zulip is
-  encrypted using HTTPS.  By default, all Zulip services talk to each
-  other either via a localhost connection or using an encrypted SSL
-  connection.
+* Traffic between clients (web, desktop and mobile) and the Zulip
+  server is encrypted using HTTPS.  By default, all Zulip services
+  talk to each other either via a localhost connection or using an
+  encrypted SSL connection.
 
 * Zulip requires CSRF tokens in all interactions with the web API to
   prevent CSRF attacks.
 
-* The preferred way to login to Zulip is using an SSO solution like
-  Google Auth, LDAP, or similar, but Zulip also supports password
+* The preferred way to log in to Zulip is using an SSO solution like
+  Google auth, LDAP, or similar, but Zulip also supports password
   authentication.  See
   [the authentication methods documentation](../production/authentication-methods.md)
   for details on Zulip's available authentication methods.
@@ -90,7 +90,7 @@ strength allowed is controlled by two settings in
 [zxcvbn-paper]: https://www.usenix.org/system/files/conference/usenixsecurity16/sec16_paper_wheeler.pdf
 [Bon12]: http://ieeexplore.ieee.org/document/6234435/
 
-## Messages and History
+## Messages and history
 
 * Zulip message content is rendered using a specialized Markdown
   parser which escapes content to protect against cross-site scripting
@@ -132,14 +132,14 @@ strength allowed is controlled by two settings in
     [Configuring message editing and deletion](https://zulip.com/help/configure-message-editing-and-deletion)
     for more details.
 
-## Users and Bots
+## Users and bots
 
-* There are several types of users in a Zulip organization: Organization
-  Owners, Organization Administrators, Members (normal users), Guests,
-  and Bots.
+* There are several types of users in a Zulip organization: organization
+  owners, organization administrators, members (normal users), guests,
+  and bots.
 
-* Owners and Administrators have the ability to deactivate and
-  reactivate other human and bot users, delete streams, add/remove
+* Owners and administrators have the ability to deactivate and
+  reactivate other human and bot users, archive streams, add/remove
   administrator privileges, as well as change configuration for the
   organization.
 
@@ -184,18 +184,18 @@ strength allowed is controlled by two settings in
   * Incoming webhook bots can only send messages into Zulip.
   * Outgoing webhook bots and Generic bots can essentially do anything a
     non-administrator user can, with a few exceptions (e.g. a bot cannot
-    login to the web application, register for mobile push
+    log in to the web application, register for mobile push
     notifications, or create other bots).
-  * API super user bots can send messages that appear to have been sent by
+  * Bots with the `can_forge_sender` permission can send messages that appear to have been sent by
     another user. They also have the ability to see the names of all
     streams, including private streams.  This is important for implementing
     integrations like the Jabber, IRC, and Zephyr mirrors.
 
-    API super user bots cannot be created by Zulip users, including
+    These bots cannot be created by Zulip users, including
     organization owners. They can only be created on the command
-    line (via `manage.py knight --permission=api_super_user`).
+    line (via `manage.py change_user_role can_forge_sender`).
 
-## User-uploaded content
+## User-uploaded content and user-generated requests
 
 * Zulip supports user-uploaded files.  Ideally they should be hosted
   from a separate domain from the main Zulip server to protect against
@@ -236,12 +236,25 @@ strength allowed is controlled by two settings in
   uploaded file in question).
 
 * Zulip supports using the Camo image proxy to proxy content like
-  inline image previews that can be inserted into the Zulip message
-  feed by other users over HTTPS.
+  inline image previews, that can be inserted into the Zulip message feed by
+  other users. This ensures that clients do not make requests to external
+  servers to fetch images, improving privacy.
 
 * By default, Zulip will provide image previews inline in the body of
   messages when a message contains a link to an image.  You can
   control this using the `INLINE_IMAGE_PREVIEW` setting.
+
+* A Zulip server can make outgoing HTTP requests through features like
+  outgoing webhooks and embedded video previews. End users have
+  (limited) control the content of these HTTP requests. As a result,
+  Zulip supports routing these outgoing requests [through
+  `smokescreen`][smokescreen-setup] to ensure that Zulip cannot be
+  used to execute [SSRF attacks][SSRF] against other systems on an
+  internal corporate network.  The default `smokescreen` configuration
+  denies access to all non-public IP addresses, including 127.0.0.1.
+
+[SSRF]: https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+[smokescreen-setup]: ../production/deployment.html#using-an-outgoing-http-proxy
 
 ## Final notes and security response
 

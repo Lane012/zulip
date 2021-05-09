@@ -48,7 +48,7 @@
  *   returns a string containing the header text, or false.
  *
  *   Our custom changes include all mentions of this.header, some CSS changes
- *   in compose.scss and splitting $container out of $menu so we can insert
+ *   in compose.css and splitting $container out of $menu so we can insert
  *   additional HTML before $menu.
  *
  * 4. Escape hooks:
@@ -307,7 +307,7 @@
 
   , listen: function () {
       this.$element
-        .on('blur',     this.blur(this))
+        .on('blur',     this.blur.bind(this))
         .on('keypress', this.keypress.bind(this))
         .on('keyup',    this.keyup.bind(this))
 

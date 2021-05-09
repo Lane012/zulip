@@ -31,7 +31,7 @@ networks.
 
 ## Setting up user accounts
 
-You will need a non-root user account with sudo privileges to setup
+You will need a non-root user account with sudo privileges to set up
 the Zulip development environment.  If you have one already, continue
 to the next section.
 
@@ -44,7 +44,7 @@ account.)
 * You can add the user to the sudo group by running the command
 `usermod -aG sudo zulipdev`.
 * Finally, you can switch to the user by running the command `su -
-zulipdev` (or just login to that user using `ssh`).
+zulipdev` (or just log in to that user using `ssh`).
 
 ## Setting up the development environment
 
@@ -58,13 +58,16 @@ the remote virtual machine, we recommend installing
 need to.
 
 The main difference from the standard instructions is that for a
-remote development environment, you'll need to run `export
-EXTERNAL_HOST=<REMOTE_IP>:9991` in a shell before running `run-dev.py`
-(and see also the `--interface=''` option documented below).  If your
-server has a static IP address, we recommend putting this command in
-`~/.bashrc`, so you don't need to remember to run it every time. This
-allows you to access Zulip running in your development environment
-using a browser on another host.
+remote development environment, and you're not using our Digital Ocean
+Droplet infrastructure (which handles `EXTERNAL_HOST` for you), you'll
+need to run `export EXTERNAL_HOST=<REMOTE_IP>:9991` in a shell before
+running `run-dev.py` (and see also the `--interface=''` option
+documented below).
+
+If your server has a static IP address, we recommend putting this
+command in `~/.bashrc`, so you don't need to remember to run it every
+time. This allows you to access Zulip running in your development
+environment using a browser on another host.
 
 ## Running the development server
 
@@ -91,7 +94,7 @@ To properly secure your remote development environment, you can
 [port forward](https://help.ubuntu.com/community/SSH/OpenSSH/PortForwarding)
 using ssh instead of running the development environment on an exposed
 interface.  For example, if you're running Zulip on a remote server
-such as a DigitalOcean Droplet or an AWS EC2 instance, you can setup
+such as a DigitalOcean Droplet or an AWS EC2 instance, you can set up
 port-forwarding to access Zulip by running the following command in
 your terminal:
 
@@ -128,6 +131,7 @@ don't have a favorite, here are some suggestions:
 * [vim](https://www.vim.org/)
 * [spacemacs](https://github.com/syl20bnr/spacemacs)
 * [sublime](https://www.sublimetext.com/)
+* [PyCharm](https://www.jetbrains.com/pycharm/)
 
 Next, follow our [Git and GitHub Guide](../git/index.md) to clone and configure
 your fork of zulip on your local computer.
@@ -137,7 +141,7 @@ Once you have cloned your code locally, you can get to work.
 ##### Syncing changes
 
 The easiest way to see your changes on your remote development server
-is to **push them to GitHub** and them **fetch and merge** them from
+is to **push them to GitHub** and then **fetch and merge** them from
 the remote server.
 
 For more detailed instructions about how to do this, see our [Git & GitHub
@@ -180,6 +184,7 @@ you prefer for development in general.
 
 If you use [TextMate](https://macromates.com), Atom, VS Code, or a
 similar GUI editor, tools like
+[VSCode Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh) and
 [rmate](https://github.com/textmate/rmate) that are designed to
 integrate that editor with remote development over SSH allow you to
 develop remotely from the comfort of your local machine.
@@ -187,25 +192,32 @@ develop remotely from the comfort of your local machine.
 Similar packages/extensions exist for other popular code editors as
 well; contributions of precise documentation for them are welcome!
 
-To setup [rmate](https://github.com/textmate/rmate) for VS Code:
+- [VSCode Remote - SSH][vscode-remote-ssh]: Lets you use Visual Studio
+Code against a remote repository with a similar user experience to
+developing locally.
+
+[vscode-remote-ssh]: https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh
+
+- [rmate](https://github.com/textmate/rmate) for TextMate + VS Code:
 1. Install the extension
-[Remote VSCode](https://marketplace.visualstudio.com/items?itemName=rafaelmaiolla.remote-vscode).
+   [Remote VSCode](https://marketplace.visualstudio.com/items?itemName=rafaelmaiolla.remote-vscode).
 2. On your remote machine, run:
-```
-$ mkdir -p ~/bin
-$ curl -Lo ~/bin/rmate https://raw.githubusercontent.com/textmate/rmate/master/bin/rmate
-$ chmod a+x ~/bin/rmate
-```
-3. Make sure the remote server is running in VS Code (you can force-start through the Command Palette).
+   ```
+   $ mkdir -p ~/bin
+   $ curl -Lo ~/bin/rmate https://raw.githubusercontent.com/textmate/rmate/master/bin/rmate
+   $ chmod a+x ~/bin/rmate
+   ```
+3. Make sure the remote server is running in VS Code (you can
+   force-start through the Command Palette).
 4. SSH to your remote machine using
-```
-$ ssh -R 52698:localhost:52698 user@example.org
-```
+   ```
+   $ ssh -R 52698:localhost:52698 user@example.org
+   ```
 5. On your remote machine, run
-```
-$ rmate [options] file
-```
-and the file should open up in VS Code. Any changes you make now will be saved remotely.
+   ```
+   $ rmate [options] file
+   ```
+   and the file should open up in VS Code. Any changes you make now will be saved remotely.
 
 ##### Command line editors
 
@@ -217,11 +229,11 @@ Two editors often available by default on Linux systems are:
 * **Nano**: A very simple, beginner-friendly editor. However, it lacks a lot of
   features useful for programming, such as syntax highlighting, so we only
   recommended it for quick edits to things like configuration files. Launch by
-  running command `nano <filename>`. Exit by pressing *control-X*.
+  running command `nano <filename>`. Exit by pressing *Ctrl-X*.
 
 * **[Vim](https://www.vim.org/)**: A very powerful editor that can take a while
-  to learn. Launch by running `vim <filename>`. Quit Vim by pressing *escape*,
-  typing `:q`, and then pressing *return*. Vim comes with a program to learn it
+  to learn. Launch by running `vim <filename>`. Quit Vim by pressing *Esc*,
+  typing `:q`, and then pressing *Enter*. Vim comes with a program to learn it
   called `vimtutor` (just run that command to start it).
 
 Other options include:
@@ -235,7 +247,7 @@ If you are relatively new to working on the command line, or just want to get
 started working quickly, we recommend web-based IDE
 [Codeanywhere][codeanywhere].
 
-To setup Codeanywhere for Zulip:
+To set up Codeanywhere for Zulip:
 
 1. Create a [Codeanywhere][codeanywhere] account and log in.
 2. Create a new **SFTP-SSH** project. Use *Public key* for authentication.
@@ -253,7 +265,7 @@ Now your workspace should look similar this:
 Next, read the following to learn more about developing for Zulip:
 
 * [Git & GitHub Guide][rtd-git-guide]
-* [Using the Development Environment][rtd-using-dev-env]
+* [Using the development environment][rtd-using-dev-env]
 * [Testing][rtd-testing]
 
 [install-direct]: ../development/setup-advanced.html#installing-directly-on-ubuntu-debian-centos-or-fedora

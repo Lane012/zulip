@@ -1,27 +1,33 @@
-set_global("page_params", {});
-set_global("$", global.make_zjquery());
-set_global("loading", {});
-set_global("Sortable", {create: () => {}});
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const {stub_templates} = require("../zjsunit/handlebars");
+const {mock_cjs, mock_esm, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const $ = require("../zjsunit/zjquery");
+const {page_params} = require("../zjsunit/zpage_params");
+
+mock_cjs("jquery", $);
+const loading = mock_esm("../../static/js/loading");
 
 const SHORT_TEXT_ID = 1;
-const CHOICE_ID = 3;
+
+const SELECT_ID = 3;
 const EXTERNAL_ACCOUNT_ID = 7;
 
 const SHORT_TEXT_NAME = "Short Text";
-const CHOICE_NAME = "Choice";
+const SELECT_NAME = "Select";
 const EXTERNAL_ACCOUNT_NAME = "External account";
 
-page_params.custom_profile_fields = {};
-page_params.realm_default_external_accounts = JSON.stringify({});
-
-page_params.custom_profile_field_types = {
+const custom_profile_field_types = {
     SHORT_TEXT: {
         id: SHORT_TEXT_ID,
         name: SHORT_TEXT_NAME,
     },
-    CHOICE: {
-        id: CHOICE_ID,
-        name: CHOICE_NAME,
+    SELECT: {
+        id: SELECT_ID,
+        name: SELECT_NAME,
     },
     EXTERNAL_ACCOUNT: {
         id: EXTERNAL_ACCOUNT_ID,
@@ -29,7 +35,11 @@ page_params.custom_profile_field_types = {
     },
 };
 
-zrequire("settings_profile_fields");
+page_params.custom_profile_field_types = custom_profile_field_types;
+
+mock_esm("sortablejs", {Sortable: {create: () => {}}});
+
+const settings_profile_fields = zrequire("settings_profile_fields");
 
 function test_populate(opts) {
     const fields_data = opts.fields_data;
@@ -41,6 +51,11 @@ function test_populate(opts) {
     table.set_find_results("tr.profile-field-row", rows);
     table.set_find_results("tr.profile-field-form", form);
 
+    table[0] = "stub";
+
+    rows.remove = () => {};
+    form.remove = () => {};
+
     let num_appends = 0;
     table.append = () => {
         num_appends += 1;
@@ -49,8 +64,8 @@ function test_populate(opts) {
     loading.destroy_indicator = () => {};
 
     const template_data = [];
-    global.stub_templates((fn, data) => {
-        assert.equal(fn, "admin_profile_field_list");
+    stub_templates((fn, data) => {
+        assert.equal(fn, "settings/admin_profile_field_list");
         template_data.push(data);
         return "whatever";
     });
@@ -62,6 +77,9 @@ function test_populate(opts) {
 }
 
 run_test("populate_profile_fields", () => {
+    page_params.custom_profile_fields = {};
+    page_params.realm_default_external_accounts = JSON.stringify({});
+
     const fields_data = [
         {
             type: SHORT_TEXT_ID,
@@ -71,7 +89,7 @@ run_test("populate_profile_fields", () => {
             field_data: "",
         },
         {
-            type: CHOICE_ID,
+            type: SELECT_ID,
             id: 30,
             name: "meal",
             hint: "lunch",
@@ -114,7 +132,7 @@ run_test("populate_profile_fields", () => {
                 hint: "blue?",
                 type: SHORT_TEXT_NAME,
                 choices: [],
-                is_choice_field: false,
+                is_select_field: false,
                 is_external_account_field: false,
             },
             can_modify: true,
@@ -125,12 +143,12 @@ run_test("populate_profile_fields", () => {
                 id: 30,
                 name: "meal",
                 hint: "lunch",
-                type: CHOICE_NAME,
+                type: SELECT_NAME,
                 choices: [
                     {order: 0, value: "0", text: "lunch"},
                     {order: 1, value: "1", text: "dinner"},
                 ],
-                is_choice_field: true,
+                is_select_field: true,
                 is_external_account_field: false,
             },
             can_modify: true,
@@ -143,7 +161,7 @@ run_test("populate_profile_fields", () => {
                 hint: "username only",
                 type: EXTERNAL_ACCOUNT_NAME,
                 choices: [],
-                is_choice_field: false,
+                is_select_field: false,
                 is_external_account_field: true,
             },
             can_modify: true,
@@ -156,7 +174,7 @@ run_test("populate_profile_fields", () => {
                 hint: "username only",
                 type: EXTERNAL_ACCOUNT_NAME,
                 choices: [],
-                is_choice_field: false,
+                is_select_field: false,
                 is_external_account_field: true,
             },
             can_modify: true,

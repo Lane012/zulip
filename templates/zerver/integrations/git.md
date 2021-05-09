@@ -16,10 +16,10 @@ Get Zulip notifications for your Git repositories!
     notification.
 
 1. Symlink `/usr/local/share/zulip/integrations/git/zulip_git_config.py`
-   to the `.git/hooks` directory of your git repository.
+   to the `.git/hooks` directory of your Git repository.
 
 1. Symlink `/usr/local/share/zulip/integrations/git/post-receive`
-   to the `.git/hooks` directory of your git repository.
+   to the `.git/hooks` directory of your Git repository.
 
 !!! tip ""
 
@@ -28,4 +28,4 @@ Get Zulip notifications for your Git repositories!
 
 {!congrats.md!}
 
-![](/static/images/integrations/git/001.png)
+![Git bot message](/static/images/integrations/git/001.png)

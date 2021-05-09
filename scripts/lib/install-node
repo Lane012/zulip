@@ -4,9 +4,9 @@ set -eo pipefail
 ZULIP_PATH="$(dirname "$0")/../.."
 ZULIP_SRV="/srv"
 YARN_PACKAGE_JSON="$ZULIP_SRV/zulip-yarn/package.json"
-node_version=12.18.2
-yarn_version=1.22.4
-nvm_version=0.35.3
+node_version=14.16.1
+yarn_version=1.22.10
+nvm_version=0.38.0
 
 # This is a fix for the fact that nvm uses $HOME to determine which
 # user account's home directory to ~/.config to.  Ideally, we'd have a
@@ -31,7 +31,10 @@ fi
 if [ "$current_node_version" != "v$node_version" ] || ! [ -L "$node_wrapper_path" ]; then
     export NVM_DIR=/usr/local/nvm
     # shellcheck source=/dev/null
-    if ! [ -e "$NVM_DIR/nvm.sh" ] || { . "$NVM_DIR/nvm.sh"; [ "$(nvm --version)" != "$nvm_version" ]; }; then
+    if ! [ -e "$NVM_DIR/nvm.sh" ] || {
+        . "$NVM_DIR/nvm.sh"
+        [ "$(nvm --version)" != "$nvm_version" ]
+    }; then
         mkdir -p "$NVM_DIR"
         wget_opts=(-nv)
         if [ -n "${CUSTOM_CA_CERTIFICATES:-}" ]; then
@@ -42,8 +45,8 @@ if [ "$current_node_version" != "v$node_version" ] || ! [ -L "$node_wrapper_path
         . "$NVM_DIR/nvm.sh"
     fi
 
-    nvm install "$node_version" && nvm alias default "$node_version"
-    NODE_BIN="$(nvm which default)"
+    nvm install "$node_version"
+    NODE_BIN="$(nvm which $node_version)"
 
     # Fix messed-up uid=500 and group write bits produced by nvm
     n=${NODE_BIN%/bin/node}
@@ -52,6 +55,14 @@ if [ "$current_node_version" != "v$node_version" ] || ! [ -L "$node_wrapper_path
 
     # Install node symlink to /usr/local/bin
     ln -nsf "$NODE_BIN" /usr/local/bin/node
+    ln -nsf "$(dirname "$NODE_BIN")/npm" /usr/local/bin/npm
+    ln -nsf "$(dirname "$NODE_BIN")/npx" /usr/local/bin/npx
+
+    # Tell NVM that we don't want it messing around with $PATH, which
+    # can get us into trouble, if we've just upgraded but our parent
+    # env still has the old version first in its PATH.  Tell it to use
+    # the newly-symlinked one that it will find in /usr/local/bin
+    nvm alias default system
 fi
 
 # Work around the fact that apparently sudo doesn't clear the HOME

@@ -1,5 +1,82 @@
-const emojisets = require("./emojisets");
-const markdown_config = require("./markdown_config");
+import $ from "jquery";
+import _ from "lodash";
+
+import generated_emoji_codes from "../generated/emoji/emoji_codes.json";
+import generated_pygments_data from "../generated/pygments_data.json";
+import * as emoji from "../shared/js/emoji";
+import * as fenced_code from "../shared/js/fenced_code";
+import render_edit_content_button from "../templates/edit_content_button.hbs";
+
+import * as activity from "./activity";
+import * as alert_words from "./alert_words";
+import * as blueslip from "./blueslip";
+import * as bot_data from "./bot_data";
+import * as click_handlers from "./click_handlers";
+import * as compose from "./compose";
+import * as compose_closed_ui from "./compose_closed_ui";
+import * as compose_pm_pill from "./compose_pm_pill";
+import * as composebox_typeahead from "./composebox_typeahead";
+import * as condense from "./condense";
+import * as copy_and_paste from "./copy_and_paste";
+import * as drafts from "./drafts";
+import * as echo from "./echo";
+import * as emoji_picker from "./emoji_picker";
+import * as emojisets from "./emojisets";
+import * as gear_menu from "./gear_menu";
+import * as giphy from "./giphy";
+import * as hashchange from "./hashchange";
+import * as hotspots from "./hotspots";
+import * as invite from "./invite";
+import * as lightbox from "./lightbox";
+import * as markdown from "./markdown";
+import * as markdown_config from "./markdown_config";
+import * as message_edit from "./message_edit";
+import * as message_fetch from "./message_fetch";
+import * as message_lists from "./message_lists";
+import * as message_scroll from "./message_scroll";
+import * as message_view_header from "./message_view_header";
+import * as message_viewport from "./message_viewport";
+import * as muting from "./muting";
+import * as navigate from "./navigate";
+import * as notifications from "./notifications";
+import * as overlays from "./overlays";
+import {page_params} from "./page_params";
+import * as panels from "./panels";
+import * as people from "./people";
+import * as pm_conversations from "./pm_conversations";
+import * as presence from "./presence";
+import * as realm_playground from "./realm_playground";
+import * as recent_topics from "./recent_topics";
+import * as reload from "./reload";
+import * as resize from "./resize";
+import * as rows from "./rows";
+import * as scroll_bar from "./scroll_bar";
+import * as search from "./search";
+import * as search_pill_widget from "./search_pill_widget";
+import * as sent_messages from "./sent_messages";
+import * as server_events from "./server_events";
+import * as settings_panel_menu from "./settings_panel_menu";
+import * as settings_sections from "./settings_sections";
+import * as settings_toggle from "./settings_toggle";
+import * as spoilers from "./spoilers";
+import * as starred_messages from "./starred_messages";
+import * as stream_bar from "./stream_bar";
+import * as stream_data from "./stream_data";
+import * as stream_edit from "./stream_edit";
+import * as stream_list from "./stream_list";
+import * as subs from "./subs";
+import * as timerender from "./timerender";
+import * as tippyjs from "./tippyjs";
+import * as topic_list from "./topic_list";
+import * as topic_zoom from "./topic_zoom";
+import * as tutorial from "./tutorial";
+import * as typing from "./typing";
+import * as ui from "./ui";
+import * as unread from "./unread";
+import * as unread_ui from "./unread_ui";
+import * as user_groups from "./user_groups";
+import * as user_status from "./user_status";
+import * as user_status_ui from "./user_status_ui";
 
 // This is where most of our initialization takes place.
 // TODO: Organize it a lot better.  In particular, move bigger
@@ -23,41 +100,29 @@ function message_hover(message_row) {
     if (current_message_hover && rows.id(current_message_hover) === id) {
         return;
     }
-    // Don't allow on-hover editing for local-only messages
-    if (message_row.hasClass("local")) {
-        return;
-    }
-    const message = current_msg_list.get(rows.id(message_row));
+
+    const message = message_lists.current.get(rows.id(message_row));
     message_unhover();
     current_message_hover = message_row;
 
+    // Locally echoed messages have !is_topic_editable and thus go
+    // through this code path.
     if (!message_edit.is_topic_editable(message)) {
         // The actions and reactions icon hover logic is handled entirely by CSS
         return;
     }
 
     // But the message edit hover icon is determined by whether the message is still editable
-    if (
-        message_edit.get_editability(message) === message_edit.editability_types.FULL &&
-        !message.status_message
-    ) {
-        message_row
-            .find(".edit_content")
-            .html(
-                '<i class="fa fa-pencil edit_content_button" aria-hidden="true" title="{{ _("Edit") }} (e)"></i>',
-            );
-    } else {
-        message_row
-            .find(".edit_content")
-            .html(
-                '<i class="fa fa-file-code-o edit_content_button" aria-hidden="true" title="{{ _("View source") }} (e)" data-message-id="' +
-                    id +
-                    '"></i>',
-            );
-    }
+    const is_message_editable =
+        message_edit.get_editability(message) === message_edit.editability_types.FULL;
+    const args = {
+        is_editable: is_message_editable && !message.status_message,
+        msg_id: id,
+    };
+    message_row.find(".edit_content").html(render_edit_content_button(args));
 }
 
-exports.initialize_kitchen_sink_stuff = function () {
+export function initialize_kitchen_sink_stuff() {
     // TODO:
     //      This function is a historical dumping ground
     //      for lots of miscellaneous setup.  Almost all of
@@ -69,14 +134,10 @@ exports.initialize_kitchen_sink_stuff = function () {
         // scroll handler, but when we're at the top or bottom of the
         // page, the pointer may still need to move.
 
-        if (delta < 0) {
-            if (message_viewport.at_top()) {
-                navigate.up();
-            }
-        } else if (delta > 0) {
-            if (message_viewport.at_bottom()) {
-                navigate.down();
-            }
+        if (delta < 0 && message_viewport.at_top()) {
+            navigate.up();
+        } else if (delta > 0 && message_viewport.at_bottom()) {
+            navigate.down();
         }
 
         message_viewport.set_last_movement_direction(delta);
@@ -84,7 +145,7 @@ exports.initialize_kitchen_sink_stuff = function () {
 
     message_viewport.message_pane.on("wheel", (e) => {
         const delta = e.originalEvent.deltaY;
-        if (!overlays.is_active()) {
+        if (!overlays.is_active() && !recent_topics.is_visible()) {
             // In the message view, we use a throttled mousewheel handler.
             throttled_mousewheelhandler(e, delta);
         }
@@ -197,7 +258,7 @@ exports.initialize_kitchen_sink_stuff = function () {
     });
 
     $("#stream_message_recipient_stream").on("blur", function () {
-        ui_util.decorate_stream_bar(this.value, $("#stream-message .message_header_stream"), true);
+        stream_bar.decorate(this.value, $("#stream-message .message_header_stream"), true);
     });
 
     $(window).on("blur", () => {
@@ -209,7 +270,7 @@ exports.initialize_kitchen_sink_stuff = function () {
     });
 
     $(document).on("message_selected.zulip", (event) => {
-        if (current_msg_list !== event.msg_list) {
+        if (message_lists.current !== event.msg_list) {
             return;
         }
         if (event.id === -1) {
@@ -222,10 +283,10 @@ exports.initialize_kitchen_sink_stuff = function () {
 
         if (event.then_scroll) {
             if (row.length === 0) {
-                const row_from_dom = current_msg_list.get_row(event.id);
+                const row_from_dom = message_lists.current.get_row(event.id);
                 const messages = event.msg_list.all_messages();
                 blueslip.debug("message_selected missing selected row", {
-                    previously_selected: event.previously_selected,
+                    previously_selected_id: event.previously_selected_id,
                     selected_id: event.id,
                     selected_idx: event.msg_list.selected_idx(),
                     selected_idx_exact: messages.indexOf(event.msg_list.get(event.id)),
@@ -234,20 +295,23 @@ exports.initialize_kitchen_sink_stuff = function () {
                     selected_id_from_idx: messages[event.msg_list.selected_idx()].id,
                     msg_list_sorted: _.isEqual(
                         messages.map((message) => message.id),
-                        _.chain(current_msg_list.all_messages()).pluck("id").clone().value().sort(),
+                        message_lists.current
+                            .all_messages()
+                            .map((message) => message.id)
+                            .sort(),
                     ),
                     found_in_dom: row_from_dom.length,
                 });
             }
             if (event.target_scroll_offset !== undefined) {
-                current_msg_list.view.set_message_offset(event.target_scroll_offset);
+                message_lists.current.view.set_message_offset(event.target_scroll_offset);
             } else {
                 // Scroll to place the message within the current view;
                 // but if this is the initial placement of the pointer,
                 // just place it in the very center
                 message_viewport.recenter_view(row, {
                     from_scroll: event.from_scroll,
-                    force_center: event.previously_selected === -1,
+                    force_center: event.previously_selected_id === -1,
                 });
             }
         }
@@ -256,25 +320,9 @@ exports.initialize_kitchen_sink_stuff = function () {
     $("#main_div").on("mouseenter", ".message_time", (e) => {
         const time_elem = $(e.target);
         const row = time_elem.closest(".message_row");
-        const message = current_msg_list.get(rows.id(row));
+        const message = message_lists.current.get(rows.id(row));
         timerender.set_full_datetime(message, time_elem);
     });
-
-    $("#streams_header h4").tooltip({placement: "right", animation: false});
-
-    $('#streams_header i[data-toggle="tooltip"]').tooltip({placement: "left", animation: false});
-
-    $("#userlist-header #userlist-title").tooltip({placement: "right", animation: false});
-
-    $("#userlist-header #user_filter_icon").tooltip({placement: "left", animation: false});
-
-    $('.message_failed i[data-toggle="tooltip"]').tooltip();
-
-    $('.copy_message[data-toggle="tooltip"]').tooltip();
-
-    // We disable animations here because they can cause the tooltip
-    // to change shape while fading away in weird way.
-    $("#keyboard-icon").tooltip({animation: false});
 
     $("body").on("mouseover", ".message_edit_content", function () {
         $(this).closest(".message_row").find(".copy_message").show();
@@ -286,11 +334,6 @@ exports.initialize_kitchen_sink_stuff = function () {
 
     $("body").on("mouseenter", ".copy_message", function () {
         $(this).show();
-        $(this).tooltip("show");
-    });
-
-    $("body").on("mouseleave", ".copy_message", function () {
-        $(this).tooltip("hide");
     });
 
     if (!page_params.realm_allow_message_editing) {
@@ -300,16 +343,16 @@ exports.initialize_kitchen_sink_stuff = function () {
     if (page_params.realm_presence_disabled) {
         $("#user-list").hide();
     }
-};
+}
 
-exports.initialize_everything = function () {
+export function initialize_everything() {
     /*
         When we initialize our various modules, a lot
         of them will consume data from the server
         in the form of `page_params`.
 
-        The global `page_params` var is basically
-        a massive dictionary with all the information
+        The `page_params` variable is basically a
+        massive dictionary with all the information
         that the client needs to run the app.  Here
         are some examples of what it includes:
 
@@ -415,14 +458,22 @@ exports.initialize_everything = function () {
 
     const user_status_params = pop_fields("user_status");
 
+    tippyjs.initialize();
+    // We need to initialize compose early, because other modules'
+    // initialization expects `#compose` to be already present in the
+    // DOM, dating from when the compose area was part of the backend
+    // template.
+    compose.initialize();
+    message_lists.initialize();
     alert_words.initialize(alert_words_params);
     emojisets.initialize();
     people.initialize(page_params.user_id, people_params);
     scroll_bar.initialize();
     message_viewport.initialize();
-    exports.initialize_kitchen_sink_stuff();
+    panels.initialize();
+    compose_closed_ui.initialize();
+    initialize_kitchen_sink_stuff();
     echo.initialize();
-    stream_color.initialize();
     stream_edit.initialize();
     stream_data.initialize(stream_data_params);
     pm_conversations.recent.initialize(pm_conversations_params);
@@ -437,7 +488,7 @@ exports.initialize_everything = function () {
     overlays.initialize();
     invite.initialize();
     timerender.initialize();
-    tab_bar.initialize();
+    message_view_header.initialize();
     server_events.initialize();
     user_status.initialize(user_status_params);
     compose_pm_pill.initialize();
@@ -446,16 +497,20 @@ exports.initialize_everything = function () {
     user_groups.initialize(user_groups_params);
     unread.initialize();
     bot_data.initialize(bot_params); // Must happen after people.initialize()
-    message_fetch.initialize();
+    message_fetch.initialize(server_events.home_view_loaded);
     message_scroll.initialize();
-    emoji.initialize(emoji_params);
-    markdown.initialize(page_params.realm_filters, markdown_config.get_helpers());
-    compose.initialize();
+    emoji.initialize({
+        realm_emoji: emoji_params.realm_emoji,
+        emoji_codes: generated_emoji_codes,
+    });
+    markdown.initialize(page_params.realm_linkifiers, markdown_config.get_helpers());
+    realm_playground.initialize(page_params.realm_playgrounds, generated_pygments_data);
     composebox_typeahead.initialize(); // Must happen after compose.initialize()
     search.initialize();
     tutorial.initialize();
     notifications.initialize();
     gear_menu.initialize();
+    giphy.initialize();
     presence.initialize(presence_params);
     settings_panel_menu.initialize();
     settings_sections.initialize();
@@ -464,21 +519,20 @@ exports.initialize_everything = function () {
     unread_ui.initialize();
     activity.initialize();
     emoji_picker.initialize();
-    pm_list.initialize();
     topic_list.initialize();
     topic_zoom.initialize();
     drafts.initialize();
     sent_messages.initialize();
     hotspots.initialize();
     ui.initialize();
-    panels.initialize();
     typing.initialize();
     starred_messages.initialize();
     user_status_ui.initialize();
-};
+    fenced_code.initialize(generated_pygments_data);
+}
 
 $(() => {
-    const finish = blueslip.start_timing("initialize_everything");
-    exports.initialize_everything();
-    finish();
+    blueslip.measure_time("initialize_everything", () => {
+        initialize_everything();
+    });
 });

@@ -1,37 +1,32 @@
-set_global("$", global.make_zjquery());
+"use strict";
 
-zrequire("hash_util");
-zrequire("narrow");
-zrequire("narrow_state");
-zrequire("people");
-zrequire("presence");
-zrequire("buddy_data");
-zrequire("user_status");
-zrequire("feature_flags");
-zrequire("message_edit");
+const {strict: assert} = require("assert");
+
+const {stub_templates} = require("../zjsunit/handlebars");
+const {$t} = require("../zjsunit/i18n");
+const {mock_cjs, mock_esm, set_global, with_field, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const $ = require("../zjsunit/zjquery");
+const {page_params} = require("../zjsunit/zpage_params");
 
 const noop = function () {};
-$.fn.popover = noop; // this will get wrapped by our code
 
-zrequire("popovers");
-
-set_global("current_msg_list", {});
-set_global("page_params", {
-    is_admin: false,
-    realm_email_address_visibility: 3,
-    custom_profile_fields: [],
-});
-set_global("rows", {});
-
-set_global("message_viewport", {
-    height: () => 500,
-});
-
-set_global("emoji_picker", {
+mock_cjs("jquery", $);
+const rows = mock_esm("../../static/js/rows");
+const stream_data = mock_esm("../../static/js/stream_data");
+mock_esm("../../static/js/emoji_picker", {
     hide_emoji_popover: noop,
 });
-
-set_global("stream_popover", {
+mock_esm("../../static/js/giphy", {
+    hide_giphy_popover: noop,
+});
+const message_lists = mock_esm("../../static/js/message_lists", {
+    current: {},
+});
+mock_esm("../../static/js/message_viewport", {
+    height: () => 500,
+});
+mock_esm("../../static/js/stream_popover", {
     hide_stream_popover: noop,
     hide_topic_popover: noop,
     hide_all_messages_popover: noop,
@@ -39,12 +34,12 @@ set_global("stream_popover", {
     hide_streamlist_sidebar: noop,
 });
 
-set_global("stream_data", {});
+const people = zrequire("people");
+const user_status = zrequire("user_status");
+const message_edit = zrequire("message_edit");
 
-function ClipboardJS(sel) {
-    assert.equal(sel, ".copy_link");
-}
-set_global("ClipboardJS", ClipboardJS);
+// Bypass some scary code that runs when we import the module.
+const popovers = with_field($.fn, "popover", noop, () => zrequire("popovers"));
 
 const alice = {
     email: "alice@example.com",
@@ -53,19 +48,15 @@ const alice = {
     avatar_version: 5,
     is_guest: false,
     is_admin: false,
+    role: 400,
 };
 
 const me = {
     email: "me@example.com",
     user_id: 30,
     full_name: "Me Myself",
-    timezone: "US/Pacific",
+    timezone: "America/Los_Angeles",
 };
-
-const target = $.create("click target");
-target.offset = () => ({
-    top: 10,
-});
 
 const e = {
     stopPropagation: noop,
@@ -102,10 +93,22 @@ function make_image_stubber() {
     };
 }
 
-popovers.register_click_handlers();
+function test_ui(label, f) {
+    run_test(label, (override) => {
+        page_params.is_admin = false;
+        page_params.realm_email_address_visibility = 3;
+        page_params.custom_profile_fields = [];
+        page_params.development_environment = false;
+        override(popovers, "clipboard_enable", noop);
+        popovers.clear_for_testing();
+        popovers.register_click_handlers();
+        f(override);
+    });
+}
 
-run_test("sender_hover", (override) => {
-    override("popovers.hide_user_profile", noop);
+test_ui("sender_hover", (override) => {
+    override(popovers, "hide_user_profile", noop);
+    override($.fn, "popover", noop);
 
     const selection = ".sender_name, .sender_name-in-status, .inline_profile_picture";
     const handler = $("#main_div").get_on_handler("click", selection);
@@ -122,21 +125,23 @@ run_test("sender_hover", (override) => {
 
     rows.id = () => message.id;
 
-    current_msg_list.get = (msg_id) => {
+    message_lists.current.get = (msg_id) => {
         assert.equal(msg_id, message.id);
         return message;
     };
 
-    current_msg_list.select_id = (msg_id) => {
+    message_lists.current.select_id = (msg_id) => {
         assert.equal(msg_id, message.id);
     };
+
+    const target = $.create("click target");
 
     target.closest = (sel) => {
         assert.equal(sel, ".message_row");
         return {};
     };
 
-    global.stub_templates((fn, opts) => {
+    stub_templates((fn, opts) => {
         switch (fn) {
             case "no_arrow_popover":
                 assert.deepEqual(opts, {
@@ -155,11 +160,13 @@ run_test("sender_hover", (override) => {
                 assert.deepEqual(opts, {
                     can_set_away: false,
                     can_revoke_away: false,
+                    can_mute: false,
+                    can_unmute: false,
                     user_full_name: "Alice Smith",
                     user_email: "alice@example.com",
                     user_id: 42,
                     user_time: undefined,
-                    user_type: i18n.t("Member"),
+                    user_type: $t({defaultMessage: "Member"}),
                     user_circle_class: "user_circle_empty",
                     user_last_seen_time_status: "translated: More than 2 weeks ago",
                     pm_with_uri: "#narrow/pm-with/42-alice",
@@ -171,16 +178,18 @@ run_test("sender_hover", (override) => {
                     is_active: true,
                     is_bot: undefined,
                     is_sender_popover: true,
+                    has_message_context: true,
                     status_text: "on the beach",
+                    user_mention_syntax: "@**Alice Smith**",
                 });
                 return "content-html";
 
             default:
-                throw Error("unrecognized template: " + fn);
+                throw new Error("unrecognized template: " + fn);
         }
     });
 
-    $(".user_popover_email").each = noop;
+    $.create(".user_popover_email", {children: []});
     const image_stubber = make_image_stubber();
     window.location = {
         href: "http://chat.zulip.org/",
@@ -195,8 +204,12 @@ run_test("sender_hover", (override) => {
     // todo: load image
 });
 
-run_test("actions_popover", (override) => {
-    override("popovers.hide_user_profile", noop);
+test_ui("actions_popover", (override) => {
+    override($.fn, "popover", noop);
+
+    const target = $.create("click target");
+
+    override(popovers, "hide_user_profile", noop);
 
     const handler = $("#main_div").get_on_handler("click", ".actions_hover");
 
@@ -213,12 +226,12 @@ run_test("actions_popover", (override) => {
         stream_id: 123,
     };
 
-    current_msg_list.get = (msg_id) => {
+    message_lists.current.get = (msg_id) => {
         assert.equal(msg_id, message.id);
         return message;
     };
 
-    message_edit.get_editability = () => 4;
+    override(message_edit, "get_editability", () => 4);
 
     stream_data.id_to_slug = (stream_id) => {
         assert.equal(stream_id, 123);
@@ -232,17 +245,17 @@ run_test("actions_popover", (override) => {
         };
     };
 
-    global.stub_templates((fn, opts) => {
+    stub_templates((fn, opts) => {
         // TODO: Test all the properties of the popover
         switch (fn) {
             case "actions_popover_content":
                 assert.equal(
                     opts.conversation_time_uri,
-                    "http://chat.zulip.org/#narrow/stream/Bracket.20%28.20stream/topic/Actions.20%281%29/near/999",
+                    "http://chat.zulip.org/#narrow/stream/Bracket.20.28.20stream/topic/Actions.20.281.29/near/999",
                 );
                 return "actions-content";
             default:
-                throw Error("unrecognized template: " + fn);
+                throw new Error("unrecognized template: " + fn);
         }
     });
 

@@ -1,20 +1,35 @@
-const render_admin_invites_list = require("../templates/admin_invites_list.hbs");
-const render_settings_revoke_invite_modal = require("../templates/settings/revoke_invite_modal.hbs");
+import $ from "jquery";
 
-const settings_config = require("./settings_config");
-const util = require("./util");
+import render_admin_invites_list from "../templates/settings/admin_invites_list.hbs";
+import render_settings_revoke_invite_modal from "../templates/settings/revoke_invite_modal.hbs";
+
+import * as blueslip from "./blueslip";
+import * as channel from "./channel";
+import {$t, $t_html} from "./i18n";
+import * as ListWidget from "./list_widget";
+import * as loading from "./loading";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as settings_config from "./settings_config";
+import * as timerender from "./timerender";
+import * as ui_report from "./ui_report";
+import * as util from "./util";
 
 const meta = {
     loaded: false,
 };
 
-exports.reset = function () {
+export function reset() {
     meta.loaded = false;
-};
+}
 
 function failed_listing_invites(xhr) {
     loading.destroy_indicator($("#admin_page_invites_loading_indicator"));
-    ui_report.error(i18n.t("Error listing invites"), xhr, $("#invites-field-status"));
+    ui_report.error(
+        $t_html({defaultMessage: "Error listing invites"}),
+        xhr,
+        $("#invites-field-status"),
+    );
 }
 
 function add_invited_as_text(invites) {
@@ -42,7 +57,7 @@ function populate_invites(invites_data) {
 
     const invites_table = $("#admin_invites_table").expectOne();
 
-    list_render.create(invites_table, invites_data.invites, {
+    ListWidget.create(invites_table, invites_data.invites, {
         name: "admin_invites_list",
         modifier(item) {
             item.invited_absolute_time = timerender.absolute_time(item.invited * 1000);
@@ -50,19 +65,22 @@ function populate_invites(invites_data) {
             item.disable_buttons =
                 item.invited_as === settings_config.user_role_values.owner.code &&
                 !page_params.is_owner;
-            item.referrer_email = people.get_by_user_id(item.invited_by_user_id).email;
+            item.referrer_name = people.get_by_user_id(item.invited_by_user_id).full_name;
             return render_admin_invites_list({invite: item});
         },
         filter: {
             element: invites_table.closest(".settings-section").find(".search"),
             predicate(item, value) {
-                const referrer_email = people.get_by_user_id(item.invited_by_user_id).email;
+                const referrer = people.get_by_user_id(item.invited_by_user_id);
+                const referrer_email = referrer.email;
+                const referrer_name = referrer.full_name;
+                const referrer_name_matched = referrer_name.toLowerCase().includes(value);
                 const referrer_email_matched = referrer_email.toLowerCase().includes(value);
                 if (item.is_multiuse) {
-                    return referrer_email_matched;
+                    return referrer_name_matched || referrer_email_matched;
                 }
                 const invitee_email_matched = item.email.toLowerCase().includes(value);
-                return referrer_email_matched || invitee_email_matched;
+                return referrer_email_matched || referrer_name_matched || invitee_email_matched;
             },
         },
         parent_container: $("#admin-invites-list").expectOne(),
@@ -87,14 +105,15 @@ function do_revoke_invite() {
 
     if (modal_invite_id !== meta.invite_id || modal_is_multiuse !== meta.is_multiuse) {
         blueslip.error("Invite revoking canceled due to non-matching fields.");
-        ui_report.message(
-            i18n.t("Resending encountered an error. Please reload and try again."),
+        ui_report.client_error(
+            $t_html({
+                defaultMessage: "Resending encountered an error. Please reload and try again.",
+            }),
             $("#home-error"),
-            "alert-error",
         );
     }
     $("#revoke_invite_modal").modal("hide");
-    revoke_button.prop("disabled", true).text(i18n.t("Working…"));
+    revoke_button.prop("disabled", true).text($t({defaultMessage: "Working…"}));
     let url = "/json/invites/" + meta.invite_id;
 
     if (modal_is_multiuse === "true") {
@@ -111,11 +130,8 @@ function do_revoke_invite() {
     });
 }
 
-exports.set_up = function (initialize_event_handlers) {
+export function set_up(initialize_event_handlers = true) {
     meta.loaded = true;
-    if (typeof initialize_event_handlers === "undefined") {
-        initialize_event_handlers = true;
-    }
 
     // create loading indicators
     loading.make_indicator($("#admin_page_invites_loading_indicator"));
@@ -126,13 +142,13 @@ exports.set_up = function (initialize_event_handlers) {
         idempotent: true,
         timeout: 10 * 1000,
         success(data) {
-            exports.on_load_success(data, initialize_event_handlers);
+            on_load_success(data, initialize_event_handlers);
         },
         error: failed_listing_invites,
     });
-};
+}
 
-exports.on_load_success = function (invites_data, initialize_event_handlers) {
+export function on_load_success(invites_data, initialize_event_handlers) {
     meta.loaded = true;
     populate_invites(invites_data);
     if (!initialize_event_handlers) {
@@ -190,27 +206,26 @@ exports.on_load_success = function (invites_data, initialize_event_handlers) {
 
         if (modal_invite_id !== meta.invite_id) {
             blueslip.error("Invite resending canceled due to non-matching fields.");
-            ui_report.message(
-                i18n.t("Resending encountered an error. Please reload and try again."),
+            ui_report.client_error(
+                $t_html({
+                    defaultMessage: "Resending encountered an error. Please reload and try again.",
+                }),
                 $("#home-error"),
-                "alert-error",
             );
         }
         $("#resend_invite_modal").modal("hide");
-        resend_button.prop("disabled", true).text(i18n.t("Working…"));
+        resend_button.prop("disabled", true).text($t({defaultMessage: "Working…"}));
         channel.post({
             url: "/json/invites/" + meta.invite_id + "/resend",
             error(xhr) {
                 ui_report.generic_row_button_error(xhr, resend_button);
             },
             success(data) {
-                resend_button.text(i18n.t("Sent!"));
+                resend_button.text($t({defaultMessage: "Sent!"}));
                 resend_button.removeClass("resend btn-warning").addClass("sea-green");
                 data.timestamp = timerender.absolute_time(data.timestamp * 1000);
                 meta.current_resend_invite_user_modal_row.find(".invited_at").text(data.timestamp);
             },
         });
     });
-};
-
-window.settings_invites = exports;
+}

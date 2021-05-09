@@ -1,4 +1,4 @@
-# UI: Input Pills
+# UI: input pills
 
 This is a high level and API explanation of the input pill interface in the
 frontend of the Zulip web application.
@@ -15,7 +15,7 @@ A pill container should have the following markup:
 
 The pills will automatically be inserted in before the ".input" in order.
 
-## Basic Usage
+## Basic usage
 
 ```js
 var pill_containter = $("#input_container");
@@ -49,16 +49,16 @@ source: function () {
 And then in `user_pill.js`...
 
 ```js
-exports.typeahead_source = function (pill_widget) {
+export function typeahead_source(pill_widget) {
     const persons = people.get_realm_users();
-    return exports.filter_taken_users(persons, pill_widget);
-};
+    return filter_taken_users(persons, pill_widget);
+}
 
-exports.filter_taken_users = function (items, pill_widget) {
-    const taken_user_ids = exports.get_user_ids(pill_widget);
-    items = items.filter(item => !taken_user_ids.includes(item.user_id));
+export function filter_taken_users(items, pill_widget) {
+    const taken_user_ids = get_user_ids(pill_widget);
+    items = items.filter((item) => !taken_user_ids.includes(item.user_id));
     return items;
-};
+}
 ```
 
 ### `onPillCreate` and `onPillRemove` methods

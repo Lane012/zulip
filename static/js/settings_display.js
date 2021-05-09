@@ -1,22 +1,33 @@
-const emojisets = require("./emojisets.js");
-const settings_config = require("./settings_config");
+import $ from "jquery";
+
+import * as channel from "./channel";
+import * as emojisets from "./emojisets";
+import {$t_html} from "./i18n";
+import * as loading from "./loading";
+import * as overlays from "./overlays";
+import {page_params} from "./page_params";
+import * as settings_config from "./settings_config";
+import * as settings_ui from "./settings_ui";
+import * as ui_report from "./ui_report";
 
 const meta = {
     loaded: false,
 };
 
-function change_display_setting(data, status_element, success_msg, sticky) {
+function change_display_setting(data, status_element, success_msg_html, sticky) {
     const $status_el = $(status_element);
     const status_is_sticky = $status_el.data("is_sticky");
-    const display_message = status_is_sticky ? $status_el.data("sticky_msg") : success_msg;
+    const display_message_html = status_is_sticky
+        ? $status_el.data("sticky_msg_html")
+        : success_msg_html;
     const opts = {
-        success_msg: display_message,
+        success_msg_html: display_message_html,
         sticky: status_is_sticky || sticky,
     };
 
     if (sticky) {
         $status_el.data("is_sticky", true);
-        $status_el.data("sticky_msg", success_msg);
+        $status_el.data("sticky_msg_html", success_msg_html);
     }
     settings_ui.do_settings_change(
         channel.patch,
@@ -27,7 +38,7 @@ function change_display_setting(data, status_element, success_msg, sticky) {
     );
 }
 
-exports.set_up = function () {
+export function set_up() {
     meta.loaded = true;
     $("#display-settings-status").hide();
 
@@ -37,9 +48,11 @@ exports.set_up = function () {
 
     $("#color_scheme").val(page_params.color_scheme);
 
+    $("#default_view").val(page_params.default_view);
+
     $("#twenty_four_hour_time").val(JSON.stringify(page_params.twenty_four_hour_time));
 
-    $(".emojiset_choice[value=" + page_params.emojiset + "]").prop("checked", true);
+    $(`.emojiset_choice[value="${CSS.escape(page_params.emojiset)}"]`).prop("checked", true);
 
     $("#default_language_modal [data-dismiss]").on("click", () => {
         overlays.close_modal("#default_language_modal");
@@ -47,7 +60,7 @@ exports.set_up = function () {
 
     const all_display_settings = settings_config.get_all_display_settings();
     for (const setting of all_display_settings.settings.user_display_settings) {
-        $("#" + setting).on("change", function () {
+        $(`#${CSS.escape(setting)}`).on("change", function () {
             const data = {};
             data[setting] = JSON.stringify($(this).prop("checked"));
 
@@ -55,8 +68,12 @@ exports.set_up = function () {
                 change_display_setting(
                     data,
                     "#display-settings-status",
-                    i18n.t(
-                        "Saved. Please <a class='reload_link'>reload</a> for the change to take effect.",
+                    $t_html(
+                        {
+                            defaultMessage:
+                                "Saved. Please <z-link>reload</z-link> for the change to take effect.",
+                        },
+                        {"z-link": (content_html) => `<a class='reload_link'>${content_html}</a>`},
                     ),
                     true,
                 );
@@ -73,7 +90,7 @@ exports.set_up = function () {
 
         const $link = $(e.target).closest("a[data-code]");
         const setting_value = $link.attr("data-code");
-        const data = {default_language: JSON.stringify(setting_value)};
+        const data = {default_language: setting_value};
 
         const new_language = $link.attr("data-name");
         $("#default_language_name").text(new_language);
@@ -81,8 +98,12 @@ exports.set_up = function () {
         change_display_setting(
             data,
             "#language-settings-status",
-            i18n.t(
-                "Saved. Please <a class='reload_link'>reload</a> for the change to take effect.",
+            $t_html(
+                {
+                    defaultMessage:
+                        "Saved. Please <z-link>reload</z-link> for the change to take effect.",
+                },
+                {"z-link": (content_html) => `<a class='reload_link'>${content_html}</a>`},
             ),
             true,
         );
@@ -101,6 +122,11 @@ exports.set_up = function () {
 
     $("#color_scheme").on("change", function () {
         const data = {color_scheme: this.value};
+        change_display_setting(data, "#display-settings-status");
+    });
+
+    $("#default_view").on("change", function () {
+        const data = {default_view: JSON.stringify(this.value)};
         change_display_setting(data, "#display-settings-status");
     });
 
@@ -132,7 +158,7 @@ exports.set_up = function () {
             success() {},
             error(xhr) {
                 ui_report.error(
-                    settings_ui.strings.failure,
+                    settings_ui.strings.failure_html,
                     xhr,
                     $("#emoji-settings-status").expectOne(),
                 );
@@ -144,9 +170,9 @@ exports.set_up = function () {
         const data = {translate_emoticons: JSON.stringify(this.checked)};
         change_display_setting(data, "#emoji-settings-status");
     });
-};
+}
 
-exports.report_emojiset_change = async function () {
+export async function report_emojiset_change() {
     // TODO: Clean up how this works so we can use
     // change_display_setting.  The challenge is that we don't want to
     // report success before the server_events request returns that
@@ -160,23 +186,22 @@ exports.report_emojiset_change = async function () {
         loading.destroy_indicator($("#emojiset_spinner"));
         $("#emojiset_select").val(page_params.emojiset);
         ui_report.success(
-            i18n.t("Emojiset changed successfully!"),
+            $t_html({defaultMessage: "Emojiset changed successfully!"}),
             $("#emoji-settings-status").expectOne(),
         );
         const spinner = $("#emoji-settings-status").expectOne();
         settings_ui.display_checkmark(spinner);
     }
-};
+}
 
-exports.update_page = function () {
+export function update_page() {
     $("#left_side_userlist").prop("checked", page_params.left_side_userlist);
     $("#default_language_name").text(page_params.default_language_name);
     $("#translate_emoticons").prop("checked", page_params.translate_emoticons);
     $("#twenty_four_hour_time").val(JSON.stringify(page_params.twenty_four_hour_time));
     $("#color_scheme").val(JSON.stringify(page_params.color_scheme));
+    $("#default_view").val(page_params.default_view);
 
     // TODO: Set emojiset selector here.
     // Longer term, we'll want to automate this function
-};
-
-window.settings_display = exports;
+}

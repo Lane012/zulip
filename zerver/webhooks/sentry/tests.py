@@ -2,9 +2,9 @@ from zerver.lib.test_classes import WebhookTestCase
 
 
 class SentryHookTests(WebhookTestCase):
-    STREAM_NAME = 'sentry'
+    STREAM_NAME = "sentry"
     URL_TEMPLATE = "/api/v1/external/sentry?&api_key={api_key}&stream={stream}"
-    FIXTURE_DIR_NAME = 'sentry'
+    FIXTURE_DIR_NAME = "sentry"
 
     def test_event_for_exception_golang(self) -> None:
         expected_topic = '*url.Error: Get "bad_url": unsupported protocol scheme ""'
@@ -30,7 +30,7 @@ Traceback:
          defer resp.Body.Close()
 
 ```"""
-        self.send_and_test_stream_message('event_for_exception_golang', expected_topic, expected_message)
+        self.check_webhook("event_for_exception_golang", expected_topic, expected_message)
 
     def test_event_for_exception_node(self) -> None:
         expected_topic = "Error: Sample error from node."
@@ -44,22 +44,19 @@ Traceback:
 
 Traceback:
 ```javascript
-     const Sentry = require('@sentry/node');
-
-     Sentry.init({
        dsn: 'https://redacted.ingest.sentry.io/5216640',
      });
 
----> Sentry.withScope(function(scope) {
+     Sentry.withScope(function(scope) {
        scope.addEventProcessor(function(event, hint) {
          return event;
        });
-       Sentry.captureException(new Error('Sample error from node.'));
+--->   Sentry.captureException(new Error('Sample error from node.'));
      });
 
 
 ```"""
-        self.send_and_test_stream_message('event_for_exception_node', expected_topic, expected_message)
+        self.check_webhook("event_for_exception_node", expected_topic, expected_message)
 
     def test_event_for_exception_python(self) -> None:
         expected_topic = "Exception: Custom exception!"
@@ -83,7 +80,54 @@ Traceback:
              sentry_sdk.capture_exception(e)
 
 ```"""
-        self.send_and_test_stream_message('event_for_exception_python', expected_topic, expected_message)
+        self.check_webhook("event_for_exception_python", expected_topic, expected_message)
+
+    def test_webhook_event_for_exception_python(self) -> None:
+        expected_topic = "ValueError: new sentry error."
+        expected_message = """
+**New exception:** [ValueError: new sentry error.](https://sentry.io/organizations/bar-foundation/issues/1972208801/events/c916dccfd58e41dcabaebef0091f0736/)
+```quote
+**level:** error
+**timestamp:** 2020-10-21 23:25:11
+**filename:** trigger-exception.py
+```
+
+Traceback:
+```python3
+
+
+     if __name__ == "__main__":
+         sentry_sdk.init(dsn=DSN_SECRET)
+         try:
+--->         raise ValueError("new sentry error.")
+         except Exception as e:
+             sentry_sdk.capture_exception(e)
+```"""
+        self.check_webhook("webhook_event_for_exception_python", expected_topic, expected_message)
+
+    def test_webhook_event_for_exception_javascript(self) -> None:
+        expected_topic = 'TypeError: can\'t access property "bar", x.foo is undefined'
+        expected_message = """
+**New exception:** [TypeError: can't access property "bar", x.foo is undefined](https://sentry.io/organizations/foo-bar-org/issues/1982047746/events/f3bf5fc4e354451db9e885a69b2a2b51/)
+```quote
+**level:** error
+**timestamp:** 2020-10-26 16:39:54
+**filename:** None
+```"""
+        self.check_webhook(
+            "webhook_event_for_exception_javascript", expected_topic, expected_message
+        )
+
+    def test_event_for_exception_js(self) -> None:
+        expected_topic = "Error: Something external broke."
+        expected_message = """
+**New exception:** [Error: Something external broke.](https://sentry.io/organizations/hypro999-personal-organization/issues/1731239773/events/355c3b2a142046629dd410db2fdda003/)
+```quote
+**level:** error
+**timestamp:** 2020-06-17 14:42:54
+**filename:** /mnt/data/Documents/Stuff%20for%20Zulip/Repos/sentry/js/external.js
+```"""
+        self.check_webhook("event_for_exception_js", expected_topic, expected_message)
 
     def test_event_for_message_golang(self) -> None:
         expected_topic = "A test message event from golang."
@@ -93,7 +137,7 @@ Traceback:
 **level:** info
 **timestamp:** 2020-04-30 06:14:13
 ```"""
-        self.send_and_test_stream_message('event_for_message_golang', expected_topic, expected_message)
+        self.check_webhook("event_for_message_golang", expected_topic, expected_message)
 
     def test_event_for_message_node(self) -> None:
         expected_topic = "Test event from node."
@@ -103,7 +147,7 @@ Traceback:
 **level:** info
 **timestamp:** 2020-04-30 06:09:56
 ```"""
-        self.send_and_test_stream_message('event_for_message_node', expected_topic, expected_message)
+        self.check_webhook("event_for_message_node", expected_topic, expected_message)
 
     def test_event_for_message_python(self) -> None:
         expected_topic = "A simple message-based issue."
@@ -113,17 +157,17 @@ Traceback:
 **level:** info
 **timestamp:** 2020-04-28 14:05:04
 ```"""
-        self.send_and_test_stream_message('event_for_message_python', expected_topic, expected_message)
+        self.check_webhook("event_for_message_python", expected_topic, expected_message)
 
     def test_issue_assigned_to_individual(self) -> None:
         expected_topic = "A test message event from golang."
         expected_message = """\nIssue **A test message event from golang.** has now been assigned to **Hemanth V. Alluri** by **Hemanth V. Alluri**."""
-        self.send_and_test_stream_message('issue_assigned_to_individual', expected_topic, expected_message)
+        self.check_webhook("issue_assigned_to_individual", expected_topic, expected_message)
 
     def test_issue_assigned_to_team(self) -> None:
         expected_topic = "Exception: program has entered an invalid state."
         expected_message = """\nIssue **Exception: program has entered an invalid state.** has now been assigned to **team lone-wolf** by **Hemanth V. Alluri**."""
-        self.send_and_test_stream_message('issue_assigned_to_team', expected_topic, expected_message)
+        self.check_webhook("issue_assigned_to_team", expected_topic, expected_message)
 
     def test_issue_created_for_exception(self) -> None:
         expected_topic = "Exception: Custom exception!"
@@ -134,7 +178,7 @@ Traceback:
 **timestamp:** 2020-04-28 13:56:05
 **assignee:** No one
 ```"""
-        self.send_and_test_stream_message('issue_created_for_exception', expected_topic, expected_message)
+        self.check_webhook("issue_created_for_exception", expected_topic, expected_message)
 
     def test_issue_created_for_message(self) -> None:
         expected_topic = "A simple message-based issue."
@@ -145,17 +189,17 @@ Traceback:
 **timestamp:** 2020-04-28 14:05:04
 **assignee:** No one
 ```"""
-        self.send_and_test_stream_message('issue_created_for_message', expected_topic, expected_message)
+        self.check_webhook("issue_created_for_message", expected_topic, expected_message)
 
     def test_issue_ignored(self) -> None:
         expected_topic = "Exception: program has entered an invalid state."
         expected_message = """\nIssue **Exception: program has entered an invalid state.** was ignored by **Hemanth V. Alluri**."""
-        self.send_and_test_stream_message('issue_ignored', expected_topic, expected_message)
+        self.check_webhook("issue_ignored", expected_topic, expected_message)
 
     def test_issue_resolved(self) -> None:
         expected_topic = "Exception: program has entered an invalid state."
         expected_message = """\nIssue **Exception: program has entered an invalid state.** was marked as resolved by **Hemanth V. Alluri**."""
-        self.send_and_test_stream_message('issue_resolved', expected_topic, expected_message)
+        self.check_webhook("issue_resolved", expected_topic, expected_message)
 
     def test_deprecated_exception_message(self) -> None:
         expected_topic = "zulip"
@@ -165,4 +209,4 @@ New [issue](https://sentry.io/zulip/zulip/issues/156699934/) (level: ERROR):
 ``` quote
 This is an example python exception
 ```"""
-        self.send_and_test_stream_message('deprecated_exception_message', expected_topic, expected_message)
+        self.check_webhook("deprecated_exception_message", expected_topic, expected_message)

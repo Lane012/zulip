@@ -56,14 +56,14 @@ below by sending email to
   text (like signatures). With this option, Zulip will include all footers.
 
 * **.include-quotes**: In many email clients, when you reply to a message
-  (e.g. a missed message email), a copy of the original message is
+  (e.g. a message notification email), a copy of the original message is
   automatically added to the bottom of your reply. By default, Zulip tries
   to remove that copied message. With this option, Zulip will include it.
 
 * **.prefer-html**: The body of an email is typically encoded using
   one or both of two common formats: plain text (`text/plain`) and
   HTML (`text/html`).  Zulip supports constructing the Zulip message
-  content using either (converting HTML to markdown for the HTML
+  content using either (converting HTML to Markdown for the HTML
   format).  By default, Zulip will prefer using the plain text version
   of an email over the converted HTML version if both are present.
   This option overrides that behavior to prefer the HTML version

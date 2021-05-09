@@ -12,12 +12,12 @@ these first, before beginning the user-facing downtime.  However, if
 you'd like to watch the downtime phase of the upgrade closely, you
 can run them manually before starting the upgrade:
 
-1. Log into your Zulip server as the `zulip` user (or as `root` and
+1. Log in to your Zulip server as the `zulip` user (or as `root` and
   then run `su zulip` to drop privileges), and `cd
   /home/zulip/deployments/current`
 2. Run `./manage.py dbshell`.  This will open a shell connected to the
-  Postgres database.
-3. In the postgres shell, run the following commands:
+  PostgreSQL database.
+3. In the PostgreSQL shell, run the following commands:
 
         CREATE INDEX CONCURRENTLY
         zerver_usermessage_is_private_message_id

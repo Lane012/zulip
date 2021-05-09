@@ -1,5 +1,5 @@
 #######################
-Code Contribution Guide
+Code contribution guide
 #######################
 
 .. toctree::
@@ -13,4 +13,5 @@ Code Contribution Guide
    accessibility
    bug-reports
    ../code-of-conduct
+   gsoc-ideas
    summer-with-zulip

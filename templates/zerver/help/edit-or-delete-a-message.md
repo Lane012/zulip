@@ -38,11 +38,12 @@ icon instead. Clicking the file icon will allow you to view the
 
 ## Delete a message
 
-Deleting the content of a message will cause the message to be displayed as
-`(deleted)`.  The original sender and timestamp of the message will still be
-displayed, and the original content of the message is still accessible via
-Zulip's edit history feature.  This can be the least confusing option for
-other users.
+Editing a message to delete its content will cause the message to be
+displayed as `(deleted)`.  The original sender and timestamp of the
+message will still be displayed, and the original content of the
+message is still accessible via Zulip's [edit
+history](/help/view-a-messages-edit-history) feature.  This can be the
+least confusing option for other users.
 
 ### Delete a message completely
 
@@ -59,6 +60,8 @@ administrator.
 {!message-actions-menu.md!}
 
 1. Select **Delete message**.
+
+1. Approve by clicking **Confirm**.
 
 {end_tabs}
 
@@ -91,5 +94,6 @@ permissions to delete that message.
 ## Related articles
 
 * [Delete a topic](/help/delete-a-topic)
-* [Delete a stream](/help/delete-a-stream)
+* [Archive a stream](/help/archive-a-stream)
 * [Message retention policy](/help/message-retention-policy)
+* [Configure editing and deletion policies](/help/configure-message-editing-and-deletion)

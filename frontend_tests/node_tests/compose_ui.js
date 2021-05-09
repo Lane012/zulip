@@ -1,6 +1,15 @@
-zrequire("compose_ui");
-zrequire("people");
-zrequire("user_status");
+"use strict";
+
+const {strict: assert} = require("assert");
+
+const autosize = require("autosize");
+
+const {$t} = require("../zjsunit/i18n");
+const {mock_cjs, set_global, zrequire} = require("../zjsunit/namespace");
+const {run_test} = require("../zjsunit/test");
+const $ = require("../zjsunit/zjquery");
+
+mock_cjs("jquery", $);
 
 set_global("document", {
     execCommand() {
@@ -8,7 +17,9 @@ set_global("document", {
     },
 });
 
-set_global("$", global.make_zjquery());
+const compose_ui = zrequire("compose_ui");
+const people = zrequire("people");
+const user_status = zrequire("user_status");
 
 const alice = {
     email: "alice@zulip.com",
@@ -34,7 +45,7 @@ function make_textbox(s) {
     widget.caret = function (arg) {
         if (typeof arg === "number") {
             widget.pos = arg;
-            return;
+            return this;
         }
 
         if (arg) {
@@ -44,7 +55,7 @@ function make_textbox(s) {
             const after = widget.s.slice(widget.pos);
             widget.s = before + arg + after;
             widget.pos += arg.length;
-            return;
+            return this;
         }
 
         return widget.pos;
@@ -53,9 +64,9 @@ function make_textbox(s) {
     widget.val = function (new_val) {
         if (new_val) {
             widget.s = new_val;
-        } else {
-            return widget.s;
+            return this;
         }
+        return widget.s;
     };
 
     widget.trigger = function (type) {
@@ -64,19 +75,35 @@ function make_textbox(s) {
         } else if (type === "blur") {
             widget.focused = false;
         }
+        return this;
     };
 
     return widget;
 }
+
+run_test("autosize_textarea", (override) => {
+    const textarea_autosized = {};
+
+    override(autosize, "update", (textarea) => {
+        textarea_autosized.textarea = textarea;
+        textarea_autosized.autosized = true;
+    });
+
+    // Call autosize_textarea with an argument
+    const container = "container-stub";
+    compose_ui.autosize_textarea(container);
+    assert.equal(textarea_autosized.textarea, container);
+    assert(textarea_autosized.autosized);
+});
 
 run_test("insert_syntax_and_focus", () => {
     $("#compose-textarea").val("xyz ");
     $("#compose-textarea").caret = function (syntax) {
         if (syntax !== undefined) {
             $("#compose-textarea").val($("#compose-textarea").val() + syntax);
-        } else {
-            return 4;
+            return this;
         }
+        return 4;
     };
     compose_ui.insert_syntax_and_focus(":octopus:");
     assert.equal($("#compose-textarea").caret(), 4);
@@ -167,13 +194,19 @@ run_test("compute_placeholder_text", () => {
     };
 
     // Stream narrows
-    assert.equal(compose_ui.compute_placeholder_text(opts), i18n.t("Compose your message here"));
+    assert.equal(
+        compose_ui.compute_placeholder_text(opts),
+        $t({defaultMessage: "Compose your message here"}),
+    );
 
     opts.stream = "all";
-    assert.equal(compose_ui.compute_placeholder_text(opts), i18n.t("Message #all"));
+    assert.equal(compose_ui.compute_placeholder_text(opts), $t({defaultMessage: "Message #all"}));
 
     opts.topic = "Test";
-    assert.equal(compose_ui.compute_placeholder_text(opts), i18n.t("Message #all > Test"));
+    assert.equal(
+        compose_ui.compute_placeholder_text(opts),
+        $t({defaultMessage: "Message #all > Test"}),
+    );
 
     // PM Narrows
     opts = {
@@ -182,23 +215,32 @@ run_test("compute_placeholder_text", () => {
         topic: "",
         private_message_recipient: "",
     };
-    assert.equal(compose_ui.compute_placeholder_text(opts), i18n.t("Compose your message here"));
+    assert.equal(
+        compose_ui.compute_placeholder_text(opts),
+        $t({defaultMessage: "Compose your message here"}),
+    );
 
     opts.private_message_recipient = "bob@zulip.com";
     user_status.set_status_text({
         user_id: bob.user_id,
         status_text: "out to lunch",
     });
-    assert.equal(compose_ui.compute_placeholder_text(opts), i18n.t("Message Bob (out to lunch)"));
+    assert.equal(
+        compose_ui.compute_placeholder_text(opts),
+        $t({defaultMessage: "Message Bob (out to lunch)"}),
+    );
 
     opts.private_message_recipient = "alice@zulip.com";
     user_status.set_status_text({
         user_id: alice.user_id,
         status_text: "",
     });
-    assert.equal(compose_ui.compute_placeholder_text(opts), i18n.t("Message Alice"));
+    assert.equal(compose_ui.compute_placeholder_text(opts), $t({defaultMessage: "Message Alice"}));
 
     // Group PM
     opts.private_message_recipient = "alice@zulip.com,bob@zulip.com";
-    assert.equal(compose_ui.compute_placeholder_text(opts), i18n.t("Message Alice, Bob"));
+    assert.equal(
+        compose_ui.compute_placeholder_text(opts),
+        $t({defaultMessage: "Message Alice, Bob"}),
+    );
 });

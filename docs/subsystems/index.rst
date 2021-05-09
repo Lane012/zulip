@@ -1,5 +1,5 @@
 ########################
-Subsystems Documentation
+Subsystems documentation
 ########################
 
 .. toctree::
@@ -10,11 +10,12 @@ Subsystems Documentation
    html-css
    events-system
    sending-messages
+   notifications
    queuing
-   custom-apps
    pointer
    markdown
    caching
+   performance
    realms
    management-commands
    schema-migrations
@@ -27,13 +28,10 @@ Subsystems Documentation
    client
    logging
    typing-indicators
-   users
    django-upgrades
    release-checklist
    api-release-checklist
-   conversion
    input-pills
-   thumbnailing
    presence
    unread_messages
    billing

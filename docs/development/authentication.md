@@ -5,26 +5,26 @@ Zulip's various [authentication
 methods](../production/authentication-methods.md) for testing in a
 development environment.
 
-Because many of these authentication methods involve a complex
-interaction between Zulip, an external service, and the user's
-browser, and particularly because browsers can (rightly!) be picky
-about the identity of sites you interact with, the preferred way to
-set them up in a development environment is provide the secret keys
-for these authentication methods in your development so that you can
-go through the real flow.
+Many of these authentication methods involve a complex interaction
+between Zulip, an external service, and the user's browser. Because
+browsers can (rightly!) be picky about the identity of sites you
+interact with, the preferred way to set up authentication methods in a
+development environment is provide secret keys so that you can go
+through the real flow.
 
 The steps to do this are a variation of the steps discussed in the
-production docs and `docs/prod_settings_template.py`.  The main
-differences here are driven by the fact that `dev_settings.py` is in
-Git, so it can be inconvenient to put secrets there.  As a result, in
-the development environmentm, we allow providing those values in the
-untracked file `zproject/dev-secrets.conf`, using the standard
-lower-case naming convention for that file.
+production documentation, including the comments in
+`zproject/prod_settings_template.py`.  The differences here are driven
+by the fact that `dev_settings.py` is in Git, so it is inconvenient
+for local [settings configuration](../subsystems/settings.md).  As a
+result, in the development environment, we allow setting certain
+settings in the untracked file `zproject/dev-secrets.conf` (which is
+also serves as `/etc/zulip/zulip-secrets.conf`).
 
 Below, we document the procedure for each of the major authentication
 methods supported by Zulip.
 
-### Email and Password
+### Email and password
 
 Zulip's default EmailAuthBackend authenticates users by verifying
 control over their email address, and then allowing them to set a
@@ -39,14 +39,15 @@ details worth understanding:
 * There's a management command, `manage.py print_initial_password
   username@example.com`, that prints out **default** passwords for the
   development environment users.  Note that if you change a user's
-  password in the development environment, those passwords won't
+  password in the development environment, those passwords will no longer
   work.  It also prints out the user's **current** API key.
 
 ### Google
 
-* Visit https://console.developers.google.com and navigate to "APIs &
-  services" > "Credentials".  Create a "Project" which will correspond
-  to your dev environment.
+* Visit [the Google developer
+console](https://console.developers.google.com) and navigate to "APIs
+& services" > "Credentials". Create a "Project", which will correspond
+to your dev environment.
 
 * Navigate to "APIs & services" > "Library", and find the "Identity
   Toolkit API".  Choose "Enable".
@@ -63,8 +64,8 @@ details worth understanding:
 ### GitHub
 
 * Register an OAuth2 application with GitHub at one of
-  https://github.com/settings/developers or
-  https://github.com/organizations/ORGNAME/settings/developers.
+  <https://github.com/settings/developers> or
+  <https://github.com/organizations/ORGNAME/settings/developers>.
   Specify `http://zulipdev.com:9991/complete/github/` as the callback URL.
 
 * You should get a page with settings for your new application,
@@ -75,7 +76,7 @@ details worth understanding:
 ### GitLab
 
 * Register an OAuth application with GitLab at
-  https://gitlab.com/oauth/applications.
+  <https://gitlab.com/oauth/applications>.
   Specify `http://zulipdev.com:9991/complete/gitlab` as the callback URL.
 
 * You should get a page containing the Application ID and Secret for
@@ -85,9 +86,9 @@ details worth understanding:
 
 ### Apple
 
-* Visit https://developer.apple.com/account/resources/,
+* Visit <https://developer.apple.com/account/resources/>,
   Enable App ID and Create a Services ID with the instructions in
-  https://help.apple.com/developer-account/?lang=en#/dev1c0e25352 .
+  <https://help.apple.com/developer-account/?lang=en#/dev1c0e25352> .
   When prompted for a "Return URL", enter
   `http://zulipdev.com:9991/complete/apple/` .
 
@@ -96,8 +97,8 @@ details worth understanding:
 * In `dev-secrets.conf`, set
     * `social_auth_apple_services_id` to your
       "Services ID" (eg. com.application.your).
-    * `social_auth_apple_bundle_id` to "Bundle ID". This is
-      only required if you are testing Apple auth on iOS.
+    * `social_auth_apple_app_id` to "App ID" or "Bundle ID".
+      This is only required if you are testing Apple auth on iOS.
     * `social_auth_apple_key` to your "Key ID".
     * `social_auth_apple_team` to your "Team ID".
 * Put the private key file you got from apple at the path
@@ -204,20 +205,30 @@ exactly what data is being used in the test without looking at other
 resources.  It also gives us more freedom to edit the development
 environment directory without worrying about tests.
 
-## Two Factor Authentication
+## Two factor authentication
 
 Zulip uses [django-two-factor-auth][0] as a beta 2FA integration.
 
 To enable 2FA, set `TWO_FACTOR_AUTHENTICATION_ENABLED` in settings to
-`True`, then log into Zulip and add otp device from settings
+`True`, then log in to Zulip and add an OTP device from the settings
 page. Once the device is added, password based authentication will ask
-for one-time-password.  In the development environment., this
+for a one-time-password.  In the development environment, this
 one-time-password will be printed to the console when you try to
-login.  Just copy-paste it into the form field to continue.
+log in.  Just copy-paste it into the form field to continue.
 
 Direct development logins don't prompt for 2FA one-time-passwords, so
-to test 2FA in development, make sure that you login using a
+to test 2FA in development, make sure that you log in using a
 password.  You can get the passwords for the default test users using
 `./manage.py print_initial_password`.
+
+## Password form implementation
+
+By default, Zulip uses `autocomplete=off` for password fields where we
+enter the current password, and `autocomplete="new-password"` for
+password fields where we create a new account or change the existing
+password.  This prevents the browser from auto-filling the existing
+password.
+
+Visit <https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete> for more details.
 
 [0]: https://github.com/Bouke/django-two-factor-auth

@@ -2,7 +2,7 @@
 
 {!admin-only.md!}
 
-Users join as [owners, administrators, members, or
+Users join as [owners, administrators, moderators, members, or
 guests](/help/roles-and-permissions), depending on how they were
 invited.
 
@@ -11,7 +11,7 @@ organization administrator can change the role of most users, but
 cannot create or demote an organization owner.
 
 You can can revoke your own owner or administrative privileges if
-there is at least one other owner in the organization (Consider
+there is at least one other owner in the organization (consider
 promoting a new owner or [deactivating the
 organization](/help/deactivate-your-organization) instead).
 
@@ -29,7 +29,7 @@ automatically converted during the upgrade to Zulip 3.0 into owners
 1. Find the user you would like to manage. Click the **pencil**
 (<i class="fa fa-pencil"></i>) to the right of their name.
 
-1. Under **User role**, select **Owner**, **Administrator**, **Member** or **Guest**.
+1. Under **User role**, select **Owner**, **Administrator**, **Moderators**, **Member** or **Guest**.
 
 1. Click **Save changes**. The new rights will take effect immediately.
 

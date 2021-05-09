@@ -31,25 +31,17 @@ as world-readable, whereas the "uploaded files" one is not.
 
 1. Set the `S3_AUTH_UPLOADS_BUCKET` and `S3_AVATAR_BUCKET` settings in
    `/etc/zulip/settings.py` to be the names of the S3 buckets you
-   created (e.g. `exampleinc-zulip-uploads`).
+   created (e.g. `"exampleinc-zulip-uploads"`).
 
 1. Comment out the `LOCAL_UPLOADS_DIR` setting in
    `/etc/zulip/settings.py` (add a `#` at the start of the line).
 
-1. If you are using a non-AWS block storage provider, or certain AWS
-   regions, you may need to explicitly
-   [configure boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.html).
-   For AWS, you may need to use AWS's SIGv4 signature format (because AWS has stopped
-    supporting the older v3 format in those regions); for other
-   providers, you may just need to set the hostname.  You can do this
-    by adding an `/etc/zulip/boto.cfg` containing the following:
-    ```
-    [s3]
-    use-sigv4 = True
-    # Edit to provide your bucket's AWS region or hostname here.
-    host = s3.eu-central-1.amazonaws.com
-    ```
+1. If you are using a non-AWS block storage provider,
+   you need to set the `S3_ENDPOINT_URL` setting to your
+   endpoint url (e.g. `"https://s3.eu-central-1.amazonaws.com"`).
 
+   For certain AWS regions, you may need to set the `S3_REGION`
+   setting to your default AWS region's code (e.g. `"eu-central-1"`).
 
 1. You will need to configure `nginx` to direct requests for uploaded
     files to the Zulip server (which will then serve a redirect to the
@@ -148,7 +140,7 @@ As you scale your server, you might want to migrate the uploads from
 your local backend to Amazon S3.  Follow these instructions, step by
 step, to do the migration.
 
-1. First, [setup the S3 backend](#s3-backend-configuration) in the settings
+1. First, [set up the S3 backend](#s3-backend-configuration) in the settings
     (all the auth stuff), but leave `LOCAL_UPLOADS_DIR` set -- the
     migration tool will need that value to know where to find your uploads.
 2. Run `./manage.py transfer_uploads_to_s3`. This will upload all the

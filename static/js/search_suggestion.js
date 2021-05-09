@@ -1,7 +1,17 @@
-const huddle_data = require("./huddle_data");
-const settings_data = require("./settings_data");
+import Handlebars from "handlebars/runtime";
 
-exports.max_num_of_search_results = 12;
+import * as common from "./common";
+import {Filter} from "./filter";
+import * as huddle_data from "./huddle_data";
+import * as narrow_state from "./narrow_state";
+import {page_params} from "./page_params";
+import * as people from "./people";
+import * as settings_data from "./settings_data";
+import * as stream_data from "./stream_data";
+import * as stream_topic_history from "./stream_topic_history";
+import * as typeahead_helper from "./typeahead_helper";
+
+export const max_num_of_search_results = 12;
 
 function stream_matches_query(stream_name, q) {
     return common.phrase_match(q, stream_name);
@@ -401,7 +411,7 @@ function get_special_filter_suggestions(last, operators, suggestions) {
         }
 
         // returns the substring after the ":" symbol.
-        const suggestion_operand = s.search_string.substring(s.search_string.indexOf(":") + 1);
+        const suggestion_operand = s.search_string.slice(s.search_string.indexOf(":") + 1);
         // e.g for `att` search query, `has:attachment` should be suggested.
         const show_operator_suggestions =
             last.operator === "search" && suggestion_operand.toLowerCase().startsWith(last_string);
@@ -592,7 +602,7 @@ class Attacher {
     }
 }
 
-exports.get_search_result = function (base_query, query) {
+export function get_search_result(base_query, query) {
     let suggestion;
     let all_operators;
 
@@ -688,7 +698,7 @@ exports.get_search_result = function (base_query, query) {
         all_operators = search_operators;
     }
     const base_operators = all_operators.slice(0, -1);
-    const max_items = exports.max_num_of_search_results;
+    const max_items = max_num_of_search_results;
 
     for (const filterer of filterers) {
         if (attacher.result.length < max_items) {
@@ -697,27 +707,28 @@ exports.get_search_result = function (base_query, query) {
         }
     }
 
-    if (!page_params.search_pills_enabled) {
+    if (
+        !page_params.search_pills_enabled &&
         // This is unique to the legacy search system.  With pills
         // it is difficult to "suggest" a subset of operators,
         // and there's a more natural mechanism under that paradigm,
         // where the user just deletes one or more pills.  So you
         // won't see this is in the new code.
-        if (attacher.result.length < max_items) {
-            const subset_suggestions = get_operator_subset_suggestions(search_operators);
-            attacher.concat(subset_suggestions);
-        }
+        attacher.result.length < max_items
+    ) {
+        const subset_suggestions = get_operator_subset_suggestions(search_operators);
+        attacher.concat(subset_suggestions);
     }
 
     return attacher.result.slice(0, max_items);
-};
+}
 
-exports.get_suggestions = function (base_query, query) {
-    const result = exports.get_search_result(base_query, query);
-    return exports.finalize_search_result(result);
-};
+export function get_suggestions(base_query, query) {
+    const result = get_search_result(base_query, query);
+    return finalize_search_result(result);
+}
 
-exports.finalize_search_result = function (result) {
+export function finalize_search_result(result) {
     for (const sug of result) {
         const first = sug.description.charAt(0).toUpperCase();
         sug.description = first + sug.description.slice(1);
@@ -736,6 +747,4 @@ exports.finalize_search_result = function (result) {
         strings,
         lookup_table,
     };
-};
-
-window.search_suggestion = exports;
+}

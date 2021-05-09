@@ -1,19 +1,16 @@
-# Creates a Droplet on Digital Ocean for remote Zulip development.
+# Creates a Zulip remote development environment droplet or
+# a production droplet in DigitalOcean.
+#
 # Particularly useful for sprints/hackathons, interns, and other
 # situation where one wants to quickly onboard new contributors.
-#
-# This script takes one argument: the name of the GitHub user for whom you want
-# to create a Zulip developer environment. Requires Python 3.
 #
 # Requires python-digitalocean library:
 # https://github.com/koalalorenzo/python-digitalocean
 #
-# Also requires Digital Ocean team membership for Zulip and api token:
+# Also requires DigitalOcean team membership for Zulip and API token:
 # https://cloud.digitalocean.com/settings/api/tokens
 #
-# Copy conf.ini-template to conf.ini and populate with your api token.
-#
-# usage: python3 create.py <username>
+# Copy conf.ini-template to conf.ini and populate with your API token.
 import argparse
 import configparser
 import json
@@ -25,21 +22,26 @@ import urllib.request
 from typing import Any, Dict, List
 
 import digitalocean
+import requests
 
-# initiation argument parser
-parser = argparse.ArgumentParser(description='Create a Zulip devopment VM Digital Ocean droplet.')
-parser.add_argument("username", help="Github username for whom you want to create a Zulip dev droplet")
-parser.add_argument('--tags', nargs='+', default=[])
-parser.add_argument('-f', '--recreate', dest='recreate', action="store_true", default=False)
+parser = argparse.ArgumentParser(description="Create a Zulip devopment VM DigitalOcean droplet.")
+parser.add_argument(
+    "username", help="GitHub username for whom you want to create a Zulip dev droplet"
+)
+parser.add_argument("--tags", nargs="+", default=[])
+parser.add_argument("-f", "--recreate", action="store_true")
+parser.add_argument("-p", "--production", action="store_true")
+
 
 def get_config() -> configparser.ConfigParser:
     config = configparser.ConfigParser()
-    config.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'conf.ini'))
+    config.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), "conf.ini"))
     return config
 
-def user_exists(username: str) -> bool:
-    print(f"Checking to see if GitHub user {username} exists...")
-    user_api_url = f"https://api.github.com/users/{username}"
+
+def assert_github_user_exists(github_username: str) -> bool:
+    print(f"Checking to see if GitHub user {github_username} exists...")
+    user_api_url = f"https://api.github.com/users/{github_username}"
     try:
         response = urllib.request.urlopen(user_api_url)
         json.load(response)
@@ -47,26 +49,30 @@ def user_exists(username: str) -> bool:
         return True
     except urllib.error.HTTPError as err:
         print(err)
-        print(f"Does the github user {username} exist?")
+        print(f"Does the GitHub user {github_username} exist?")
         sys.exit(1)
 
-def get_keys(username: str) -> List[Dict[str, Any]]:
+
+def get_ssh_public_keys_from_github(github_username: str) -> List[Dict[str, Any]]:
     print("Checking to see that GitHub user has available public keys...")
-    apiurl_keys = f"https://api.github.com/users/{username}/keys"
+    apiurl_keys = f"https://api.github.com/users/{github_username}/keys"
     try:
         response = urllib.request.urlopen(apiurl_keys)
         userkeys = json.load(response)
         if not userkeys:
-            print(f"No keys found. Has user {username} added ssh keys to their github account?")
+            print(
+                f"No keys found. Has user {github_username} added SSH keys to their GitHub account?"
+            )
             sys.exit(1)
         print("...public keys found!")
         return userkeys
     except urllib.error.HTTPError as err:
         print(err)
-        print(f"Has user {username} added ssh keys to their github account?")
+        print(f"Has user {github_username} added SSH keys to their GitHub account?")
         sys.exit(1)
 
-def fork_exists(username: str) -> bool:
+
+def assert_user_forked_zulip_server_repo(username: str) -> bool:
     print("Checking to see GitHub user has forked zulip/zulip...")
     apiurl_fork = f"https://api.github.com/repos/{username}/zulip"
     try:
@@ -79,29 +85,34 @@ def fork_exists(username: str) -> bool:
         print(f"Has user {username} forked zulip/zulip?")
         sys.exit(1)
 
-def exit_if_droplet_exists(my_token: str, username: str, recreate: bool) -> None:
-    print(f"Checking to see if droplet for {username} already exists...")
+
+def assert_droplet_does_not_exist(my_token: str, droplet_name: str, recreate: bool) -> None:
+    print(f"Checking to see if droplet {droplet_name} already exists...")
     manager = digitalocean.Manager(token=my_token)
     my_droplets = manager.get_all_droplets()
     for droplet in my_droplets:
-        if droplet.name.lower() == f"{username}.zulipdev.org":
+        if droplet.name.lower() == droplet_name:
             if not recreate:
-                print("Droplet for user {} already exists. Pass --recreate if you "
-                      "need to recreate the droplet.".format(username))
+                print(
+                    "Droplet {} already exists. Pass --recreate if you "
+                    "need to recreate the droplet.".format(droplet_name)
+                )
                 sys.exit(1)
             else:
-                print(f"Deleting existing droplet for {username}.")
+                print(f"Deleting existing droplet {droplet_name}.")
                 droplet.destroy()
                 return
     print("...No droplet found...proceeding.")
 
-def set_user_data(username: str, userkey_dicts: List[Dict[str, Any]]) -> str:
-    print("Setting cloud-config data, populated with GitHub user's public keys...")
-    userkeys = [userkey_dict["key"] for userkey_dict in userkey_dicts]
-    ssh_keys = "\n".join(userkeys)
 
-    setup_root_ssh_keys = f"printf '{ssh_keys}' > /root/.ssh/authorized_keys"
-    setup_zulipdev_ssh_keys = f"printf '{ssh_keys}' > /home/zulipdev/.ssh/authorized_keys"
+def get_ssh_keys_string_from_github_ssh_key_dicts(userkey_dicts: List[Dict[str, Any]]) -> str:
+    return "\n".join([userkey_dict["key"] for userkey_dict in userkey_dicts])
+
+
+def generate_dev_droplet_user_data(username: str, userkey_dicts: List[Dict[str, Any]]) -> str:
+    ssh_keys_string = get_ssh_keys_string_from_github_ssh_key_dicts(userkey_dicts)
+    setup_root_ssh_keys = f"printf '{ssh_keys_string}' > /root/.ssh/authorized_keys"
+    setup_zulipdev_ssh_keys = f"printf '{ssh_keys_string}' > /home/zulipdev/.ssh/authorized_keys"
 
     # We pass the hostname as username.zulipdev.org to the DigitalOcean API.
     # But some droplets (eg on 18.04) are created with with hostname set to just username.
@@ -134,16 +145,36 @@ su -c 'git config --global pull.rebase true' zulipdev
     print("...returning cloud-config data.")
     return cloudconf
 
-def create_droplet(my_token: str, template_id: str, username: str, tags: List[str], user_data: str) -> str:
+
+def generate_prod_droplet_user_data(username: str, userkey_dicts: List[Dict[str, Any]]) -> str:
+    ssh_keys_string = get_ssh_keys_string_from_github_ssh_key_dicts(userkey_dicts)
+    setup_root_ssh_keys = f"printf '{ssh_keys_string}' > /root/.ssh/authorized_keys"
+
+    cloudconf = f"""\
+#!/bin/bash
+
+{setup_root_ssh_keys}
+passwd -d root
+sed -i "s/PasswordAuthentication yes/PasswordAuthentication no/g" /etc/ssh/sshd_config
+service ssh restart
+"""
+    print("...returning cloud-config data.")
+    return cloudconf
+
+
+def create_droplet(
+    my_token: str, template_id: str, name: str, tags: List[str], user_data: str
+) -> str:
     droplet = digitalocean.Droplet(
         token=my_token,
-        name=f'{username}.zulipdev.org',
-        region='nyc3',
+        name=name,
+        region="nyc3",
         image=template_id,
-        size_slug='s-1vcpu-2gb',
+        size_slug="s-1vcpu-2gb",
         user_data=user_data,
         tags=tags,
-        backups=False)
+        backups=False,
+    )
 
     print("Initiating droplet creation...")
     droplet.create()
@@ -154,7 +185,7 @@ def create_droplet(my_token: str, template_id: str, username: str, tags: List[st
         for action in actions:
             action.load()
             print(f"...[{action.type}]: {action.status}")
-            if action.type == 'create' and action.status == 'completed':
+            if action.type == "create" and action.status == "completed":
                 incomplete = False
                 break
         if incomplete:
@@ -164,31 +195,35 @@ def create_droplet(my_token: str, template_id: str, username: str, tags: List[st
     print(f"...ip address for new droplet is: {droplet.ip_address}.")
     return droplet.ip_address
 
+
 def delete_existing_records(records: List[digitalocean.Record], record_name: str) -> None:
     count = 0
     for record in records:
-        if record.name == record_name and record.domain == 'zulipdev.org' and record.type == 'A':
+        if record.name == record_name and record.domain == "zulipdev.org" and record.type == "A":
             record.destroy()
             count = count + 1
     if count:
         print(f"Deleted {count} existing A records for {record_name}.zulipdev.org.")
 
-def create_dns_record(my_token: str, username: str, ip_address: str) -> None:
-    domain = digitalocean.Domain(token=my_token, name='zulipdev.org')
+
+def create_dns_record(my_token: str, record_name: str, ip_address: str) -> None:
+    domain = digitalocean.Domain(token=my_token, name="zulipdev.org")
     domain.load()
     records = domain.get_records()
 
-    delete_existing_records(records, username)
-    wildcard_name = "*." + username
+    delete_existing_records(records, record_name)
+    wildcard_name = "*." + record_name
     delete_existing_records(records, wildcard_name)
 
-    print(f"Creating new A record for {username}.zulipdev.org that points to {ip_address}.")
-    domain.create_new_domain_record(type='A', name=username, data=ip_address)
-    print(f"Creating new A record for *.{username}.zulipdev.org that points to {ip_address}.")
-    domain.create_new_domain_record(type='A', name=wildcard_name, data=ip_address)
+    print(f"Creating new A record for {record_name}.zulipdev.org that points to {ip_address}.")
+    domain.create_new_domain_record(type="A", name=record_name, data=ip_address)
+    print(f"Creating new A record for *.{record_name}.zulipdev.org that points to {ip_address}.")
+    domain.create_new_domain_record(type="A", name=wildcard_name, data=ip_address)
 
-def print_completion(username: str) -> None:
-    print("""
+
+def print_dev_droplet_instructions(droplet_domain_name: str) -> None:
+    print(
+        """
 COMPLETE! Droplet for GitHub user {0} is available at {0}.zulipdev.org.
 
 Instructions for use are below. (copy and paste to the user)
@@ -197,67 +232,115 @@ Instructions for use are below. (copy and paste to the user)
 Your remote Zulip dev server has been created!
 
 - Connect to your server by running
-  `ssh zulipdev@{0}.zulipdev.org` on the command line
+  `ssh zulipdev@{0}` on the command line
   (Terminal for macOS and Linux, Bash for Git on Windows).
-- There is no password; your account is configured to use your ssh keys.
+- There is no password; your account is configured to use your SSH keys.
 - Once you log in, you should see `(zulip-py3-venv) ~$`.
 - To start the dev server, `cd zulip` and then run `./tools/run-dev.py`.
 - While the dev server is running, you can see the Zulip server in your browser at
-  http://{0}.zulipdev.org:9991.
-""".format(username))
+  http://{0}:9991.
+""".format(
+            droplet_domain_name
+        )
+    )
 
-    print("See [Developing remotely](https://zulip.readthedocs.io/en/latest/development/remote.html) "
-          "for tips on using the remote dev instance and "
-          "[Git & GitHub Guide](https://zulip.readthedocs.io/en/latest/git/index.html) "
-          "to learn how to use Git with Zulip.\n")
-    print("Note that this droplet will automatically be deleted after a month of inactivity. "
-          "If you are leaving Zulip for more than a few weeks, we recommend pushing all of your "
-          "active branches to GitHub.")
+    print(
+        "See [Developing remotely](https://zulip.readthedocs.io/en/latest/development/remote.html) "
+        "for tips on using the remote dev instance and "
+        "[Git & GitHub Guide](https://zulip.readthedocs.io/en/latest/git/index.html) "
+        "to learn how to use Git with Zulip.\n"
+    )
+    print(
+        "Note that this droplet will automatically be deleted after a month of inactivity. "
+        "If you are leaving Zulip for more than a few weeks, we recommend pushing all of your "
+        "active branches to GitHub."
+    )
     print("------")
 
-if __name__ == '__main__':
-    # define id of image to create new droplets from
-    # You can get this with something like the following. You may need to try other pages.
-    # Broken in two to satisfy linter (line too long)
-    # curl -X GET -H "Content-Type: application/json" -u <API_KEY>: "https://api.digitaloc
-    # ean.com/v2/images?page=5" | grep --color=always base.zulipdev.org
-    template_id = "63219191"
 
-    # get command line arguments
+def print_production_droplet_instructions(droplet_domain_name: str) -> None:
+    print(
+        """
+-----
+
+Production droplet created successfully!
+
+Connect to the server by running
+
+ssh root@{}
+
+-----
+""".format(
+            droplet_domain_name
+        )
+    )
+
+
+def get_zulip_oneclick_app_slug(api_token: str) -> str:
+    response = requests.get(
+        "https://api.digitalocean.com/v2/1-clicks", headers={"Authorization": f"Bearer {api_token}"}
+    ).json()
+    one_clicks = response["1_clicks"]
+
+    for one_click in one_clicks:
+        if one_click["slug"].startswith("kandralabs"):
+            return one_click["slug"]
+    raise Exception("Unable to find Zulip One-click app slug")
+
+
+if __name__ == "__main__":
     args = parser.parse_args()
     username = args.username.lower()
-    print(f"Creating Zulip developer environment for GitHub user {username}...")
 
-    # get config details
+    if args.production:
+        print(f"Creating production droplet for GitHub user {username}...")
+    else:
+        print(f"Creating Zulip developer environment for GitHub user {username}...")
+
     config = get_config()
+    api_token = config["digitalocean"]["api_token"]
 
-    # see if droplet already exists for this user
-    user_exists(username=username)
+    assert_github_user_exists(github_username=username)
 
-    # grab user's public keys
-    public_keys = get_keys(username=username)
+    public_keys = get_ssh_public_keys_from_github(github_username=username)
 
-    # now make sure the user has forked zulip/zulip
-    fork_exists(username=username)
+    if args.production:
+        subdomain = f"{username}-prod"
+        droplet_domain_name = f"{subdomain}.zulipdev.org"
+        template_id = get_zulip_oneclick_app_slug(api_token)
+        user_data = generate_prod_droplet_user_data(username=username, userkey_dicts=public_keys)
 
-    api_token = config['digitalocean']['api_token']
-    # does the droplet already exist?
-    exit_if_droplet_exists(my_token=api_token, username=username, recreate=args.recreate)
+    else:
+        assert_user_forked_zulip_server_repo(username=username)
 
-    # set user_data
-    user_data = set_user_data(username=username, userkey_dicts=public_keys)
+        subdomain = username
+        droplet_domain_name = f"{subdomain}.zulipdev.org"
+        user_data = generate_dev_droplet_user_data(username=username, userkey_dicts=public_keys)
 
-    # create droplet
-    ip_address = create_droplet(my_token=api_token,
-                                template_id=template_id,
-                                username=username,
-                                tags=args.tags,
-                                user_data=user_data)
+        # define id of image to create new droplets from
+        # You can get this with something like the following. You may need to try other pages.
+        # Broken in two to satisfy linter (line too long)
+        # curl -X GET -H "Content-Type: application/json" -u <API_KEY>: "https://api.digitaloc
+        # ean.com/v2/images?page=5" | grep --color=always base.zulipdev.org
+        template_id = "63219191"
 
-    # create dns entry
-    create_dns_record(my_token=api_token, username=username, ip_address=ip_address)
+    assert_droplet_does_not_exist(
+        my_token=api_token, droplet_name=droplet_domain_name, recreate=args.recreate
+    )
 
-    # print completion message
-    print_completion(username=username)
+    ip_address = create_droplet(
+        my_token=api_token,
+        template_id=template_id,
+        name=droplet_domain_name,
+        tags=args.tags,
+        user_data=user_data,
+    )
+
+    create_dns_record(my_token=api_token, record_name=subdomain, ip_address=ip_address)
+
+    if args.production:
+        print_production_droplet_instructions(droplet_domain_name=droplet_domain_name)
+    else:
+        print_dev_droplet_instructions(droplet_domain_name=droplet_domain_name)
 
     sys.exit(1)

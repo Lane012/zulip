@@ -14,6 +14,7 @@
 * [Review your settings](/help/review-your-settings)
 * [Change your profile picture](/help/change-your-profile-picture)
 * [Change your language](/help/change-your-language)
+* [Change default view](/help/change-default-view)
 * [Use 24-hour time](/help/change-the-time-format)
 * [Joining an organization](/help/join-a-zulip-organization)
 * [Switching between organizations](/help/switching-between-organizations)
@@ -36,6 +37,9 @@
 * [Mention a user or group](/help/mention-a-user-or-group)
 * [Edit or delete a message](/help/edit-or-delete-a-message)
 * [Message a stream by email](/help/message-a-stream-by-email)
+* [Code blocks](/help/code-blocks)
+* [Add GIFs in your message](/help/animated-gifs-from-giphy)
+* [Create a poll](/help/create-a-poll)
 
 ## Reading messages
 * [Reading strategies](/help/reading-strategies)
@@ -76,7 +80,7 @@
 * [Mute a topic](/help/mute-a-topic)
 * [Alert words](/help/add-an-alert-word)
 * [Disable new login emails](/help/disable-new-login-emails)
-* [Configure missed message emails](/help/configure-missed-message-emails)
+* [Configure message notification emails](/help/configure-message-notification-emails)
 * [Change notification sound](/help/change-notification-sound)
 * [Troubleshoot desktop notifications](/help/troubleshooting-desktop-notifications)
 * [Test mobile notifications](/help/test-mobile-notifications)
@@ -84,7 +88,7 @@
 ## Tools & customization
 * [Bots and integrations](/help/bots-and-integrations)
 * [Add a bot or integration](/help/add-a-bot-or-integration)
-* [Create a poll](/help/create-a-poll)
+* [Request an integration](/help/request-an-integration)
 * [Night mode](/help/night-mode)
 * [Enable emoticon translations](/help/enable-emoticon-translations)
 * [Manage your uploaded files](/help/manage-your-uploaded-files)
@@ -106,7 +110,6 @@
 ## Organization basics
 * [Review your organization's settings](/help/review-your-organization-settings)
 * [Create your organization profile](/help/create-your-organization-profile)
-* [Import from HipChat/Stride](/help/import-from-hipchat)
 * [Import from Mattermost](/help/import-from-mattermost)
 * [Import from Slack](/help/import-from-slack)
 * [Import from Gitter](/help/import-from-gitter)
@@ -115,7 +118,7 @@
 * [Export your organization](/help/export-your-organization)
 * [Change organization URL](/help/change-organization-url)
 * [Deactivate your organization](/help/deactivate-your-organization)
-* [GDPR Compliance](/help/gdpr-compliance)
+* [GDPR compliance](/help/gdpr-compliance)
 
 ## Organization settings
 * [Restrict stream creation](/help/configure-who-can-create-streams)
@@ -133,10 +136,11 @@
 * [Weekly digest emails](/help/digest-emails)
 * [Disable welcome emails](/help/disable-welcome-emails)
 * [Configure notification bot](/help/configure-notification-bot)
+* [Restrict wildcard mentions](/help/restrict-wildcard-mentions)
 * [Require topics in stream messages](/help/require-topics)
 * [Add custom emoji](/help/add-custom-emoji)
 * [Configure authentication methods](/help/configure-authentication-methods)
-* [Add a custom linkification filter](/help/add-a-custom-linkification-filter)
+* [Add a custom linkifier](/help/add-a-custom-linkifier)
 * [Message retention policy](/help/message-retention-policy)
 * [SAML authentication](/help/saml-authentication)
 
@@ -156,7 +160,7 @@
 
 ## Stream management
 * [Stream permissions](/help/stream-permissions)
-* [Delete or archive a stream](/help/delete-a-stream)
+* [Delete or archive a stream](/help/archive-a-stream)
 * [Delete a topic](/help/delete-a-topic)
 * [Set default streams for new users](/help/set-default-streams-for-new-users)
 * [Rename a stream](/help/rename-a-stream)

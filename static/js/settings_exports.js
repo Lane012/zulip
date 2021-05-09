@@ -1,12 +1,23 @@
-const render_admin_export_list = require("../templates/admin_export_list.hbs");
+import $ from "jquery";
+
+import render_admin_export_list from "../templates/settings/admin_export_list.hbs";
+
+import * as channel from "./channel";
+import {$t_html} from "./i18n";
+import * as ListWidget from "./list_widget";
+import * as loading from "./loading";
+import * as people from "./people";
+import * as timerender from "./timerender";
+import * as ui from "./ui";
+import * as ui_report from "./ui_report";
 
 const meta = {
     loaded: false,
 };
 
-exports.reset = function () {
+export function reset() {
     meta.loaded = false;
-};
+}
 
 function sort_user(a, b) {
     const a_name = people.get_full_name(a.acting_user_id).toLowerCase();
@@ -19,13 +30,13 @@ function sort_user(a, b) {
     return -1;
 }
 
-exports.populate_exports_table = function (exports) {
+export function populate_exports_table(exports) {
     if (!meta.loaded) {
         return;
     }
 
     const exports_table = $("#admin_exports_table").expectOne();
-    list_render.create(exports_table, Object.values(exports), {
+    ListWidget.create(exports_table, Object.values(exports), {
         name: "admin_exports_list",
         modifier(data) {
             let failed_timestamp = data.failed_timestamp;
@@ -33,13 +44,13 @@ exports.populate_exports_table = function (exports) {
 
             if (failed_timestamp !== null) {
                 failed_timestamp = timerender.last_seen_status_from_date(
-                    new XDate(failed_timestamp * 1000),
+                    new Date(failed_timestamp * 1000),
                 );
             }
 
             if (deleted_timestamp !== null) {
                 deleted_timestamp = timerender.last_seen_status_from_date(
-                    new XDate(deleted_timestamp * 1000),
+                    new Date(deleted_timestamp * 1000),
                 );
             }
 
@@ -49,7 +60,7 @@ exports.populate_exports_table = function (exports) {
                     acting_user: people.get_full_name(data.acting_user_id),
                     // Convert seconds -> milliseconds
                     event_time: timerender.last_seen_status_from_date(
-                        new XDate(data.export_time * 1000),
+                        new Date(data.export_time * 1000),
                     ),
                     url: data.export_url,
                     time_failed: failed_timestamp,
@@ -81,9 +92,9 @@ exports.populate_exports_table = function (exports) {
     } else {
         loading.destroy_indicator(spinner);
     }
-};
+}
 
-exports.set_up = function () {
+export function set_up() {
     meta.loaded = true;
 
     $("#export-data").on("click", (e) => {
@@ -95,13 +106,13 @@ exports.set_up = function () {
             url: "/json/export/realm",
             success() {
                 ui_report.success(
-                    i18n.t("Export started. Check back in a few minutes."),
+                    $t_html({defaultMessage: "Export started. Check back in a few minutes."}),
                     export_status,
                     4000,
                 );
             },
             error(xhr) {
-                ui_report.error(i18n.t("Export failed"), xhr, export_status);
+                ui_report.error($t_html({defaultMessage: "Export failed"}), xhr, export_status);
             },
         });
     });
@@ -110,7 +121,7 @@ exports.set_up = function () {
     channel.get({
         url: "/json/export/realm",
         success(data) {
-            exports.populate_exports_table(data.exports);
+            populate_exports_table(data.exports);
         },
     });
 
@@ -127,6 +138,4 @@ exports.set_up = function () {
             // No success function, since UI updates are done via server_events
         });
     });
-};
-
-window.settings_exports = exports;
+}

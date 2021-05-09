@@ -108,40 +108,41 @@ export function get_emoji_matcher(query) {
     };
 }
 
-export function triage(query, objs, get_item) {
+export function triage(query, objs, get_item = (x) => x) {
     /*
-        We split objs into three groups:
+        We split objs into four groups:
 
+            - entire string exact match
             - match prefix exactly with `query`
             - match prefix case-insensitively
             - other
 
-        Then we concat the first two groups into
+        Then we concat the first three groups into
         `matches` and then call the rest `rest`.
     */
 
-    if (!get_item) {
-        get_item = (x) => x;
-    }
-
+    const exactMatch = [];
     const beginswithCaseSensitive = [];
     const beginswithCaseInsensitive = [];
     const noMatch = [];
-    const lowerQuery = query.toLowerCase();
+    const lowerQuery = query ? query.toLowerCase() : "";
 
     for (const obj of objs) {
         const item = get_item(obj);
+        const lowerItem = item.toLowerCase();
 
-        if (item.startsWith(query)) {
+        if (lowerItem === lowerQuery) {
+            exactMatch.push(obj);
+        } else if (item.startsWith(query)) {
             beginswithCaseSensitive.push(obj);
-        } else if (item.toLowerCase().startsWith(lowerQuery)) {
+        } else if (lowerItem.startsWith(lowerQuery)) {
             beginswithCaseInsensitive.push(obj);
         } else {
             noMatch.push(obj);
         }
     }
     return {
-        matches: beginswithCaseSensitive.concat(beginswithCaseInsensitive),
+        matches: exactMatch.concat(beginswithCaseSensitive.concat(beginswithCaseInsensitive)),
         rest: noMatch,
     };
 }
@@ -160,7 +161,7 @@ export function sort_emojis(objs, query) {
         return popular_set.has(obj.emoji_code) && decent_match(obj.emoji_name);
     }
 
-    const popular_emoji_matches = objs.filter(is_popular);
+    const popular_emoji_matches = objs.filter((obj) => is_popular(obj));
     const others = objs.filter((obj) => !is_popular(obj));
 
     const triage_results = triage(query, others, (x) => x.emoji_name);

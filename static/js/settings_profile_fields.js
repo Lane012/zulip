@@ -1,11 +1,19 @@
-const render_admin_profile_field_list = require("../templates/admin_profile_field_list.hbs");
-const render_settings_profile_field_choice = require("../templates/settings/profile_field_choice.hbs");
+import $ from "jquery";
+import {Sortable} from "sortablejs";
+
+import render_admin_profile_field_list from "../templates/settings/admin_profile_field_list.hbs";
+import render_settings_profile_field_choice from "../templates/settings/profile_field_choice.hbs";
+
+import * as channel from "./channel";
+import * as loading from "./loading";
+import {page_params} from "./page_params";
+import * as settings_ui from "./settings_ui";
 
 const meta = {
     loaded: false,
 };
 
-exports.maybe_disable_widgets = function () {
+export function maybe_disable_widgets() {
     if (page_params.is_admin) {
         return;
     }
@@ -13,12 +21,12 @@ exports.maybe_disable_widgets = function () {
     $(".organization-box [data-name='profile-field-settings']")
         .find("input, button, select")
         .prop("disabled", true);
-};
+}
 
 let order = [];
 const field_types = page_params.custom_profile_field_types;
 
-exports.field_type_id_to_string = function (type_id) {
+export function field_type_id_to_string(type_id) {
     for (const field_type of Object.values(field_types)) {
         if (field_type.id === type_id) {
             // Few necessary modifications in field-type-name for
@@ -31,7 +39,8 @@ exports.field_type_id_to_string = function (type_id) {
             return field_type.name;
         }
     }
-};
+    return undefined;
+}
 
 function update_profile_fields_table_element() {
     const profile_fields_table = $("#admin_profile_fields_table").expectOne();
@@ -57,7 +66,7 @@ function delete_profile_field(e) {
     update_profile_fields_table_element();
 }
 
-function read_choice_field_data_from_form(field_elem) {
+function read_select_field_data_from_form(field_elem) {
     const field_data = {};
     let field_order = 1;
     $(field_elem)
@@ -107,7 +116,7 @@ function clear_form_data() {
     $("#profile_field_hint").val("").closest(".control-group").show();
     // Set default type "Short Text" in field type dropdown
     $("#profile_field_type").val(field_types.SHORT_TEXT.id);
-    // Clear data from choice field form
+    // Clear data from select field form
     $("#profile_field_choices").html("");
     create_choice_row($("#profile_field_choices"));
     update_choice_delete_btn($("#profile_field_choices"), false);
@@ -125,7 +134,7 @@ function set_up_create_field_form() {
     const field_elem = $("#profile_field_external_accounts");
     const field_url_pattern_elem = $("#custom_external_account_url_pattern");
 
-    if (parseInt($("#profile_field_type").val(), 10) === field_types.EXTERNAL_ACCOUNT.id) {
+    if (Number.parseInt($("#profile_field_type").val(), 10) === field_types.EXTERNAL_ACCOUNT.id) {
         field_elem.show();
         if ($("#profile_field_external_accounts_type").val() === "custom") {
             field_url_pattern_elem.show();
@@ -145,13 +154,14 @@ function set_up_create_field_form() {
 }
 
 function read_field_data_from_form(field_type_id, field_elem) {
-    // Only read field data if we are creating a choice field
+    // Only read field data if we are creating a select field
     // or external account field.
-    if (field_type_id === field_types.CHOICE.id) {
-        return read_choice_field_data_from_form(field_elem);
+    if (field_type_id === field_types.SELECT.id) {
+        return read_select_field_data_from_form(field_elem);
     } else if (field_type_id === field_types.EXTERNAL_ACCOUNT.id) {
         return read_external_account_field_data(field_elem);
     }
+    return undefined;
 }
 
 function create_profile_field(e) {
@@ -163,7 +173,10 @@ function create_profile_field(e) {
     const opts = {
         success_continuation: clear_form_data,
     };
-    field_data = read_field_data_from_form(parseInt(field_type, 10), $(".new-profile-field-form"));
+    field_data = read_field_data_from_form(
+        Number.parseInt(field_type, 10),
+        $(".new-profile-field-form"),
+    );
 
     const form_data = {
         name: $("#profile_field_name").val(),
@@ -200,24 +213,16 @@ function delete_choice_row(e) {
 
 function get_profile_field_info(id) {
     const info = {};
-    info.row = $("tr.profile-field-row[data-profile-field-id='" + id + "']");
-    info.form = $("tr.profile-field-form[data-profile-field-id='" + id + "']");
+    info.row = $(`tr.profile-field-row[data-profile-field-id='${CSS.escape(id)}']`);
+    info.form = $(`tr.profile-field-form[data-profile-field-id='${CSS.escape(id)}']`);
     return info;
 }
 
 function get_profile_field(id) {
-    const all_custom_fields = page_params.custom_profile_fields;
-    let field;
-    for (let i = 0; i < all_custom_fields.length; i += 1) {
-        if (all_custom_fields[i].id === id) {
-            field = all_custom_fields[i];
-            break;
-        }
-    }
-    return field;
+    return page_params.custom_profile_fields.find((field) => field.id === id);
 }
 
-exports.parse_field_choices_from_field_data = function (field_data) {
+export function parse_field_choices_from_field_data(field_data) {
     const choices = [];
     for (const [value, choice] of Object.entries(field_data)) {
         choices.push({
@@ -228,7 +233,7 @@ exports.parse_field_choices_from_field_data = function (field_data) {
     }
 
     return choices;
-};
+}
 
 function set_up_external_account_field_edit_form(field_elem, url_pattern_val) {
     if (field_elem.form.find("select[name=external_acc_field_type]").val() === "custom") {
@@ -243,13 +248,13 @@ function set_up_external_account_field_edit_form(field_elem, url_pattern_val) {
     }
 }
 
-function set_up_choices_field_edit_form(profile_field, field_data) {
-    // Re-render field choices in edit form to load initial choice data
+function set_up_select_field_edit_form(profile_field, field_data) {
+    // Re-render field choices in edit form to load initial select data
     const choice_list = profile_field.form.find(".edit_profile_field_choices_container");
     choice_list.off();
     choice_list.html("");
 
-    const choices_data = exports.parse_field_choices_from_field_data(field_data);
+    const choices_data = parse_field_choices_from_field_data(field_data);
 
     for (const choice of choices_data) {
         choice_list.append(
@@ -264,11 +269,13 @@ function set_up_choices_field_edit_form(profile_field, field_data) {
     update_choice_delete_btn(choice_list, false);
     Sortable.create(choice_list[0], {
         onUpdate() {},
+        filter: "input",
+        preventOnFilter: false,
     });
 }
 
 function open_edit_form(e) {
-    const field_id = parseInt($(e.currentTarget).attr("data-profile-field-id"), 10);
+    const field_id = Number.parseInt($(e.currentTarget).attr("data-profile-field-id"), 10);
     const profile_field = get_profile_field_info(field_id);
 
     profile_field.row.hide();
@@ -282,11 +289,11 @@ function open_edit_form(e) {
         field_data = JSON.parse(field.field_data);
     }
 
-    if (parseInt(field.type, 10) === field_types.CHOICE.id) {
-        set_up_choices_field_edit_form(profile_field, field_data);
+    if (Number.parseInt(field.type, 10) === field_types.SELECT.id) {
+        set_up_select_field_edit_form(profile_field, field_data);
     }
 
-    if (parseInt(field.type, 10) === field_types.EXTERNAL_ACCOUNT.id) {
+    if (Number.parseInt(field.type, 10) === field_types.EXTERNAL_ACCOUNT.id) {
         profile_field.form.find("select[name=external_acc_field_type]").val(field_data.subtype);
         set_up_external_account_field_edit_form(profile_field, field_data.url_pattern);
     }
@@ -309,7 +316,7 @@ function open_edit_form(e) {
         data.name = profile_field.form.find("input[name=name]").val();
         data.hint = profile_field.form.find("input[name=hint]").val();
         data.field_data = JSON.stringify(
-            read_field_data_from_form(parseInt(field.type, 10), profile_field.form),
+            read_field_data_from_form(Number.parseInt(field.type, 10), profile_field.form),
         );
 
         settings_ui.do_settings_change(
@@ -327,7 +334,7 @@ function open_edit_form(e) {
         .find(".edit_profile_field_choices_container")
         .on("click", "button.delete-choice", delete_choice_row);
     $(".profile_field_external_accounts_edit select").on("change", (e) => {
-        const field_id = parseInt(
+        const field_id = Number.parseInt(
             $(e.target).closest(".profile-field-form").attr("data-profile-field-id"),
             10,
         );
@@ -336,14 +343,14 @@ function open_edit_form(e) {
     });
 }
 
-exports.reset = function () {
+export function reset() {
     meta.loaded = false;
-};
+}
 
 function update_field_order() {
     order = [];
     $(".profile-field-row").each(function () {
-        order.push(parseInt($(this).attr("data-profile-field-id"), 10));
+        order.push(Number.parseInt($(this).attr("data-profile-field-id"), 10));
     });
     settings_ui.do_settings_change(
         channel.patch,
@@ -353,16 +360,16 @@ function update_field_order() {
     );
 }
 
-exports.populate_profile_fields = function (profile_fields_data) {
+export function populate_profile_fields(profile_fields_data) {
     if (!meta.loaded) {
         // If outside callers call us when we're not loaded, just
         // exit and we'll draw the widgets again during set_up().
         return;
     }
-    exports.do_populate_profile_fields(profile_fields_data);
-};
+    do_populate_profile_fields(profile_fields_data);
+}
 
-exports.do_populate_profile_fields = function (profile_fields_data) {
+export function do_populate_profile_fields(profile_fields_data) {
     // We should only call this internally or from tests.
     const profile_fields_table = $("#admin_profile_fields_table").expectOne();
 
@@ -377,8 +384,8 @@ exports.do_populate_profile_fields = function (profile_fields_data) {
             field_data = JSON.parse(profile_field.field_data);
         }
         let choices = [];
-        if (profile_field.type === field_types.CHOICE.id) {
-            choices = exports.parse_field_choices_from_field_data(field_data);
+        if (profile_field.type === field_types.SELECT.id) {
+            choices = parse_field_choices_from_field_data(field_data);
         }
 
         profile_fields_table.append(
@@ -387,9 +394,9 @@ exports.do_populate_profile_fields = function (profile_fields_data) {
                     id: profile_field.id,
                     name: profile_field.name,
                     hint: profile_field.hint,
-                    type: exports.field_type_id_to_string(profile_field.type),
+                    type: field_type_id_to_string(profile_field.type),
                     choices,
-                    is_choice_field: profile_field.type === field_types.CHOICE.id,
+                    is_select_field: profile_field.type === field_types.SELECT.id,
                     is_external_account_field:
                         profile_field.type === field_types.EXTERNAL_ACCOUNT.id,
                 },
@@ -403,14 +410,16 @@ exports.do_populate_profile_fields = function (profile_fields_data) {
         const field_list = $("#admin_profile_fields_table")[0];
         Sortable.create(field_list, {
             onUpdate: update_field_order,
+            filter: "input",
+            preventOnFilter: false,
         });
     }
 
     update_profile_fields_table_element();
     loading.destroy_indicator($("#admin_page_profile_fields_loading_indicator"));
-};
+}
 
-function set_up_choices_field() {
+function set_up_select_field() {
     create_choice_row("#profile_field_choices");
     update_choice_delete_btn($("#profile_field_choices"), false);
 
@@ -418,19 +427,21 @@ function set_up_choices_field() {
         const choice_list = $("#profile_field_choices")[0];
         Sortable.create(choice_list, {
             onUpdate() {},
+            filter: "input",
+            preventOnFilter: false,
         });
     }
 
     const field_type = $("#profile_field_type").val();
 
-    if (parseInt(field_type, 10) !== field_types.CHOICE.id) {
-        // If 'Choice' type is already selected, show choice row.
+    if (Number.parseInt(field_type, 10) !== field_types.SELECT.id) {
+        // If 'Select' type is already selected, show choice row.
         $("#profile_field_choices_row").hide();
     }
 
     $("#profile_field_type").on("change", (e) => {
-        const selected_field_id = parseInt($(e.target).val(), 10);
-        if (selected_field_id === field_types.CHOICE.id) {
+        const selected_field_id = Number.parseInt($(e.target).val(), 10);
+        if (selected_field_id === field_types.SELECT.id) {
             $("#profile_field_choices_row").show();
         } else {
             $("#profile_field_choices_row").hide();
@@ -451,7 +462,7 @@ function set_up_external_account_field() {
     });
 }
 
-exports.get_external_account_link = function (field) {
+export function get_external_account_link(field) {
     const field_subtype = field.field_data.subtype;
     let field_url_pattern;
 
@@ -461,26 +472,24 @@ exports.get_external_account_link = function (field) {
         field_url_pattern = page_params.realm_default_external_accounts[field_subtype].url_pattern;
     }
     return field_url_pattern.replace("%(username)s", field.value);
-};
+}
 
-exports.set_up = function () {
-    exports.build_page();
-    exports.maybe_disable_widgets();
-};
+export function set_up() {
+    build_page();
+    maybe_disable_widgets();
+}
 
-exports.build_page = function () {
+export function build_page() {
     // create loading indicators
     loading.make_indicator($("#admin_page_profile_fields_loading_indicator"));
     // Populate profile_fields table
-    exports.do_populate_profile_fields(page_params.custom_profile_fields);
+    do_populate_profile_fields(page_params.custom_profile_fields);
     meta.loaded = true;
 
     $("#admin_profile_fields_table").on("click", ".delete", delete_profile_field);
     $("#profile-field-settings").on("click", "#add-custom-profile-field-btn", create_profile_field);
     $("#admin_profile_fields_table").on("click", ".open-edit-form", open_edit_form);
-    set_up_choices_field();
+    set_up_select_field();
     set_up_external_account_field();
     clear_form_data();
-};
-
-window.settings_profile_fields = exports;
+}

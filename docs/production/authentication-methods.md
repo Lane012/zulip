@@ -35,161 +35,6 @@ Each of these requires one to a handful of lines of configuration in
 `settings.py`, as well as a secret in `zulip-secrets.conf`.  Details
 are documented in your `settings.py`.
 
-## SAML
-
-Zulip 2.1 and later supports SAML authentication, used by Okta,
-OneLogin, and many other IdPs (identity providers).  You can configure
-it as follows:
-
-1. These instructions assume you have an installed Zulip server; if
-   you're using Zulip Cloud, see [this article][saml-help-center],
-   which also has IdP-side configuration advice for common IdPs.
-
-   You can have created a Zulip organization already using the default
-   EmailAuthBackend, or plan to create the organization using SAML
-   authentication.
-
-1. Tell your IdP how to find your Zulip server:
-
-    * **SP Entity ID**: `https://yourzulipdomain.example.com`.
-
-      The `Entity ID` should match the value of
-      `SOCIAL_AUTH_SAML_SP_ENTITY_ID` computed in the Zulip settings.
-       You can get the correct value by running the following:
-      `/home/zulip/deployments/current/scripts/get-django-setting
-       SOCIAL_AUTH_SAML_SP_ENTITY_ID`.
-
-    * **SSO URL**:
-      `https://yourzulipdomain.example.com/complete/saml/`.  This is
-      the "SAML ACS url" in SAML terminology.
-
-      If you're
-      [hosting multiple organizations](../production/multiple-organizations.html#authentication),
-      you need to use `SOCIAL_AUTH_SUBDOMAIN`.  For example,
-      if `SOCIAL_AUTH_SUBDOMAIN="auth"` and `EXTERNAL_HOST=zulip.example.com`,
-      this should be `https://auth.zulip.example.com/complete/saml/`.
-
-2. Tell Zulip how to connect to your SAML provider(s) by filling
-   out the section of `/etc/zulip/settings.py` on your Zulip server
-   with the heading "SAML Authentication".
-   * You will need to update `SOCIAL_AUTH_SAML_ORG_INFO` with your
-     organization name (`displayname` may appear in the IdP's
-     authentication flow; `name` won't be displayed to humans).
-   * Fill out `SOCIAL_AUTH_SAML_ENABLED_IDPS` with data provided by
-     your identity provider.  You may find [the python-social-auth
-     SAML
-     docs](https://python-social-auth.readthedocs.io/en/latest/backends/saml.html)
-     helpful.  You'll need to obtain several values from your IdP's
-     metadata and enter them on the right-hand side of this
-     Python dictionary:
-     1. Set the outer `idp_name` key to be an identifier for your IdP,
-        e.g. `testshib` or `okta`.  This field appears in URLs for
-        parts of your Zulip server's SAML authentication flow.
-     2. The IdP should provide the `url` and `entity_id` values.
-     3. Save the `x509cert` value to a file; you'll use it in the
-        instructions below.
-     4. The values needed in the `attr_` fields are often configurable
-        in your IdP's interface when setting up SAML authentication
-        (referred to as "Attribute Statements" with Okta, or
-        "Attribute Mapping" with GSuite).  You'll want to connect
-        these so that Zulip gets the email address (used as a unique
-        user ID) and name for the user.
-     5. The `display_name` and `display_icon` fields are used to
-        display the login/registration buttons for the IdP.
-
-3. Install the certificate(s) required for SAML authentication.  You
-    will definitely need the public certificate of your IdP.  Some IdP
-    providers also support the Zulip server (Service Provider) having
-    a certificate used for encryption and signing.  We detail these
-    steps as optional below, because they aren't required for basic
-    setup, and some IdPs like Okta don't fully support Service
-    Provider certificates.  You should install them as follows:
-
-    1. On your Zulip server, `mkdir -p /etc/zulip/saml/idps/`
-    2. Put the IDP public certificate in `/etc/zulip/saml/idps/{idp_name}.crt`
-    3. (Optional) Put the Zulip server public certificate in `/etc/zulip/saml/zulip-cert.crt`
-    4. (Optional) Put the Zulip server private key in `/etc/zulip/saml/zulip-private-key.key`
-    5. Set the proper permissions on these files and directories:
-
-    ```
-    chown -R zulip.zulip /etc/zulip/saml/
-    find /etc/zulip/saml/ -type f -exec chmod 644 -- {} +
-    chmod 640 /etc/zulip/saml/zulip-private-key.key
-    ```
-
-4. (Optional) If you configured the optional public and private server
-   certificates above, you can enable the additional setting
-   `"authnRequestsSigned": True` in `SOCIAL_AUTH_SAML_SECURITY_CONFIG`
-   to have the SAMLRequests the server will be issuing to the IdP
-   signed using those certificates.  Additionally, if the IdP supports
-   it, you can upload the public certificate to enable encryption of
-   assertions in the SAMLResponses the IdP will send about
-   authenticated users.
-
-5. Enable the `zproject.backends.SAMLAuthBackend` auth backend, in
-`AUTHENTICATION_BACKENDS` in `/etc/zulip/settings.py`.
-
-6. [Restart the Zulip server](../production/settings.md) to ensure
-your settings changes take effect.  The Zulip login page should now
-have a button for SAML authentication that you can use to login or
-create an account (including when creating a new organization).
-
-7. If the configuration was successful, the server's metadata can be
-found at `https://yourzulipdomain.example.com/saml/metadata.xml`. You
-can use this for verifying your configuration or provide it to your
-IdP.
-
-[saml-help-center]: https://zulip.com/help/saml-authentication
-
-### IdP-initiated SSO
-
-The above configuration is sufficient for Service Provider initialized
-SSO, i.e. you can visit the Zulip webapp and click "Sign in with
-{IdP}" and it'll correctly start the authentication flow.  If you are
-not hosting multiple organizations, with Zulip 3.0+, the above
-configuration is also sufficient for Identity Provider initiated SSO,
-i.e. clicking a "Sign in to Zulip" button on the IdP's website can
-correctly authenticate the user to Zulip.
-
-If you're hosting multiple organizations and thus using the
-`SOCIAL_AUTH_SUBDOMAIN` setting, you'll need to configure a custom
-`RelayState` in your IdP of the form `{"subdomain":
-"yourzuliporganization"}` to let Zulip know which organization to
-authenticate the user to when they visit your SSO URL from the IdP.
-(If the organization is on the root domain, use the empty string:
-`{"subdomain": ""}`.).
-
-```eval_rst
-.. _ldap:
-```
-
-### Restricting access to specific organizations
-
-If you're hosting multiple Zulip organizations, you can restrict which
-organizations can use a given IdP by setting `limit_to_subdomains`.
-For example, `limit_to_subdomains = ["", "engineering"]` would
-restrict an IdP the root domain and the `engineering` subdomain.
-
-You can achieve the same goal with a SAML attribute; just declare
-which attribute using `attr_org_membership` in the IdP configuration.
-For the root subdomain, `www` in the list will work, or any other of
-`settings.ROOT_SUBDOMAIN_ALIASES`.
-
-For example, with `attr_org_membership` set to `member`, a user with
-the following attribute in their `AttributeStatement` will have access
-to the root and `engineering` subdomains:
-
-```
-<saml2:Attribute Name="member" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:unspecified">
-  <saml2:AttributeValue xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">
-    www
-  </saml2:AttributeValue>
-  <saml2:AttributeValue xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">
-    engineering
-  </saml2:AttributeValue>
-</saml2:Attribute>
-```
-
 ## LDAP (including Active Directory)
 
 Zulip supports retrieving information about users via LDAP, and
@@ -292,7 +137,7 @@ of the following configurations:
 the `zproject.backends.ZulipLDAPAuthBackend` auth backend, in
 `AUTHENTICATION_BACKENDS` in `/etc/zulip/settings.py`.  After doing so
 (and as always [restarting the Zulip server](settings.md) to ensure
-your settings changes take effect), you should be able to log into
+your settings changes take effect), you should be able to log in to
 Zulip by entering your email address and LDAP password on the Zulip
 login form.
 
@@ -369,7 +214,7 @@ the Zulip server).  Zulip will then treat users that are disabled via
 the "Disable Account" feature in Active Directory as deactivated in
 Zulip.
 
-Users disabled in active directory will be immediately unable to login
+Users disabled in active directory will be immediately unable to log in
 to Zulip, since Zulip queries the LDAP/Active Directory server on
 every login attempt.  The user will be fully deactivated the next time
 your `manage.py sync_ldap_user_data` cron job runs (at which point
@@ -439,6 +284,47 @@ details.
 
 [upstream-ldap-groups]: https://django-auth-ldap.readthedocs.io/en/latest/groups.html#limiting-access
 
+### Restricting LDAP user access to specific organizations
+
+If you're hosting multiple Zulip organizations, you can restrict which
+users have access to which organizations.
+This is done by setting `org_membership` in `AUTH_LDAP_USER_ATTR_MAP` to the name of
+the LDAP attribute which will contain a list of  subdomains that the
+user should be allowed to access.
+
+For the root subdomain, `www` in the list will work, or any other of
+`settings.ROOT_SUBDOMAIN_ALIASES`.
+
+For example, with `org_membership` set to `department`, a user with
+the following attributes will have access to the root and `engineering` subdomains:
+```
+...
+department: engineering
+department: www
+...
+```
+
+More complex access control rules are possible via the
+`AUTH_LDAP_ADVANCED_REALM_ACCESS_CONTROL` setting.  Note that
+`org_membership` takes precedence over
+`AUTH_LDAP_ADVANCED_REALM_ACCESS_CONTROL`:
+
+1. If `org_membership` is set and allows access, access will be granted
+2. If `org_membership` is not set or does not allow access,
+   `AUTH_LDAP_ADVANCED_REALM_ACCESS_CONTROL` will control access.
+
+This contains a map keyed by the organization's subdomain.  The
+organization list with multiple maps, that contain a map with an attribute, and a required
+value for that attribute. If for any of the attribute maps, all user's
+LDAP attributes match what is configured, access is granted.
+
+```eval_rst
+.. warning::
+    Restricting access using these mechanisms only affects authentication via LDAP,
+    and won't prevent users from accessing the organization using any other
+    authentication backends that are enabled for the organization.
+```
+
 ### Troubleshooting
 
 Most issues with LDAP authentication are caused by misconfigurations of
@@ -458,6 +344,164 @@ the bottom of the problem:
   you're asking for help with your setup, please provide logs from
   this file (feel free to anonymize any email addresses to
   `username@example.com`) in your report.
+
+## SAML
+
+Zulip 2.1 and later supports SAML authentication, used by Okta,
+OneLogin, and many other IdPs (identity providers).  You can configure
+it as follows:
+
+1. These instructions assume you have an installed Zulip server; if
+   you're using Zulip Cloud, see [this article][saml-help-center],
+   which also has IdP-side configuration advice for common IdPs.
+
+   You can have created a Zulip organization already using the default
+   EmailAuthBackend, or plan to create the organization using SAML
+   authentication.
+
+1. Tell your IdP how to find your Zulip server:
+
+    * **SP Entity ID**: `https://yourzulipdomain.example.com`.
+
+      The `Entity ID` should match the value of
+      `SOCIAL_AUTH_SAML_SP_ENTITY_ID` computed in the Zulip settings.
+       You can get the correct value by running the following:
+      `/home/zulip/deployments/current/scripts/get-django-setting
+       SOCIAL_AUTH_SAML_SP_ENTITY_ID`.
+
+    * **SSO URL**:
+      `https://yourzulipdomain.example.com/complete/saml/`.  This is
+      the "SAML ACS url" in SAML terminology.
+
+      If you're
+      [hosting multiple organizations](../production/multiple-organizations.html#authentication),
+      you need to use `SOCIAL_AUTH_SUBDOMAIN`.  For example,
+      if `SOCIAL_AUTH_SUBDOMAIN="auth"` and `EXTERNAL_HOST=zulip.example.com`,
+      this should be `https://auth.zulip.example.com/complete/saml/`.
+
+2. Tell Zulip how to connect to your SAML provider(s) by filling
+   out the section of `/etc/zulip/settings.py` on your Zulip server
+   with the heading "SAML Authentication".
+   * You will need to update `SOCIAL_AUTH_SAML_ORG_INFO` with your
+     organization name (`displayname` may appear in the IdP's
+     authentication flow; `name` won't be displayed to humans).
+   * Fill out `SOCIAL_AUTH_SAML_ENABLED_IDPS` with data provided by
+     your identity provider.  You may find [the python-social-auth
+     SAML
+     docs](https://python-social-auth.readthedocs.io/en/latest/backends/saml.html)
+     helpful.  You'll need to obtain several values from your IdP's
+     metadata and enter them on the right-hand side of this
+     Python dictionary:
+     1. Set the outer `idp_name` key to be an identifier for your IdP,
+        e.g. `testshib` or `okta`.  This field appears in URLs for
+        parts of your Zulip server's SAML authentication flow.
+     2. The IdP should provide the `url` and `entity_id` values.
+     3. Save the `x509cert` value to a file; you'll use it in the
+        instructions below.
+     4. The values needed in the `attr_` fields are often configurable
+        in your IdP's interface when setting up SAML authentication
+        (referred to as "Attribute Statements" with Okta, or
+        "Attribute Mapping" with GSuite).  You'll want to connect
+        these so that Zulip gets the email address (used as a unique
+        user ID) and name for the user.
+     5. The `display_name` and `display_icon` fields are used to
+        display the login/registration buttons for the IdP.
+
+3. Install the certificate(s) required for SAML authentication.  You
+    will definitely need the public certificate of your IdP.  Some IdP
+    providers also support the Zulip server (Service Provider) having
+    a certificate used for encryption and signing.  We detail these
+    steps as optional below, because they aren't required for basic
+    setup, and some IdPs like Okta don't fully support Service
+    Provider certificates.  You should install them as follows:
+
+    1. On your Zulip server, `mkdir -p /etc/zulip/saml/idps/`
+    2. Put the IDP public certificate in `/etc/zulip/saml/idps/{idp_name}.crt`
+    3. (Optional) Put the Zulip server public certificate in `/etc/zulip/saml/zulip-cert.crt`
+       and the corresponding private key in `/etc/zulip/saml/zulip-private-key.key`. Note that
+       the certificate should be the single X.509 certificate for the server, not a full chain of
+       trust, which consists of multiple certificates.
+    4. Set the proper permissions on these files and directories:
+
+    ```
+    chown -R zulip.zulip /etc/zulip/saml/
+    find /etc/zulip/saml/ -type f -exec chmod 644 -- {} +
+    chmod 640 /etc/zulip/saml/zulip-private-key.key
+    ```
+
+4. (Optional) If you configured the optional public and private server
+   certificates above, you can enable the additional setting
+   `"authnRequestsSigned": True` in `SOCIAL_AUTH_SAML_SECURITY_CONFIG`
+   to have the SAMLRequests the server will be issuing to the IdP
+   signed using those certificates.  Additionally, if the IdP supports
+   it, you can upload the public certificate to enable encryption of
+   assertions in the SAMLResponses the IdP will send about
+   authenticated users.
+
+5. Enable the `zproject.backends.SAMLAuthBackend` auth backend, in
+`AUTHENTICATION_BACKENDS` in `/etc/zulip/settings.py`.
+
+6. [Restart the Zulip server](../production/settings.md) to ensure
+your settings changes take effect.  The Zulip login page should now
+have a button for SAML authentication that you can use to log in or
+create an account (including when creating a new organization).
+
+7. If the configuration was successful, the server's metadata can be
+found at `https://yourzulipdomain.example.com/saml/metadata.xml`. You
+can use this for verifying your configuration or provide it to your
+IdP.
+
+[saml-help-center]: https://zulip.com/help/saml-authentication
+
+### IdP-initiated SSO
+
+The above configuration is sufficient for Service Provider initialized
+SSO, i.e. you can visit the Zulip webapp and click "Sign in with
+{IdP}" and it'll correctly start the authentication flow.  If you are
+not hosting multiple organizations, with Zulip 3.0+, the above
+configuration is also sufficient for Identity Provider initiated SSO,
+i.e. clicking a "Sign in to Zulip" button on the IdP's website can
+correctly authenticate the user to Zulip.
+
+If you're hosting multiple organizations and thus using the
+`SOCIAL_AUTH_SUBDOMAIN` setting, you'll need to configure a custom
+`RelayState` in your IdP of the form `{"subdomain":
+"yourzuliporganization"}` to let Zulip know which organization to
+authenticate the user to when they visit your SSO URL from the IdP.
+(If the organization is on the root domain, use the empty string:
+`{"subdomain": ""}`.).
+
+```eval_rst
+.. _ldap:
+```
+
+### Restricting access to specific organizations
+
+If you're hosting multiple Zulip organizations, you can restrict which
+organizations can use a given IdP by setting `limit_to_subdomains`.
+For example, `limit_to_subdomains = ["", "engineering"]` would
+restrict an IdP the root domain and the `engineering` subdomain.
+
+You can achieve the same goal with a SAML attribute; just declare
+which attribute using `attr_org_membership` in the IdP configuration.
+For the root subdomain, `www` in the list will work, or any other of
+`settings.ROOT_SUBDOMAIN_ALIASES`.
+
+For example, with `attr_org_membership` set to `member`, a user with
+the following attribute in their `AttributeStatement` will have access
+to the root and `engineering` subdomains:
+
+```
+<saml2:Attribute Name="member" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:unspecified">
+  <saml2:AttributeValue xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">
+    www
+  </saml2:AttributeValue>
+  <saml2:AttributeValue xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">
+    engineering
+  </saml2:AttributeValue>
+</saml2:Attribute>
+```
+
 
 ## Apache-based SSO with `REMOTE_USER`
 
@@ -481,7 +525,7 @@ straightforward way to deploy that SSO solution with Zulip.
 2. Edit `/etc/zulip/zulip.conf` and change the `puppet_classes` line to read:
 
    ```
-   puppet_classes = zulip::voyager, zulip::apache_sso
+   puppet_classes = zulip::profile::standalone, zulip::apache_sso
    ```
 
 3. As root, run `/home/zulip/deployments/current/scripts/zulip-puppet-apply`
@@ -548,11 +592,12 @@ This summary should help with understanding what's going on as you try
 to debug.
 
 * Since you've configured `/etc/zulip/settings.py` to only define the
-  `zproject.backends.ZulipRemoteUserBackend`, `zproject/settings.py`
-  configures `/accounts/login/sso/` as `HOME_NOT_LOGGED_IN`.  This
-  makes `https://zulip.example.com/` (a.k.a. the homepage for the main
-  Zulip Django app running behind nginx) redirect to
-  `/accounts/login/sso/` for a user that isn't logged in.
+  `zproject.backends.ZulipRemoteUserBackend`,
+  `zproject/computed_settings.py` configures `/accounts/login/sso/` as
+  `HOME_NOT_LOGGED_IN`.  This makes `https://zulip.example.com/`
+  (a.k.a. the homepage for the main Zulip Django app running behind
+  nginx) redirect to `/accounts/login/sso/` for a user that isn't
+  logged in.
 
 * nginx proxies requests to `/accounts/login/sso/` to an Apache
   instance listening on `localhost:8888`, via the config in
@@ -588,12 +633,12 @@ domain for your server).
 1. Create a [Sign in with Apple private key][apple-create-private-key].
 
 1. Store the resulting private key at
-   `/etc/zulip/apple/zulip-private-key.key`.  Be sure to set
+   `/etc/zulip/apple-auth-key.p8`.  Be sure to set
    permissions correctly:
 
    ```
-   chown -R zulip:zulip /etc/zulip/apple/
-   chmod 640 /etc/zulip/apple/zulip-private-key.key
+   chown zulip:zulip /etc/zulip/apple-auth-key.p8
+   chmod 640 /etc/zulip/apple-auth-key.p8
    ```
 
 1. Configure Apple authentication in `/etc/zulip/settings.py`:
@@ -601,7 +646,7 @@ domain for your server).
      string like "A1B2C3D4E5".
    * `SOCIAL_AUTH_APPLE_SERVICES_ID`: The Services ID you created in
      step 1, which might look like "com.example.services".
-   * `SOCIAL_AUTH_APPLE_BUNDLE_ID`: The Bundle ID, or App ID, of your
+   * `SOCIAL_AUTH_APPLE_APP_ID`: The App ID, or Bundle ID, of your
      app that you used in step 1 to configure your Services ID.
      This might look like "com.example.app".
    * `SOCIAL_AUTH_APPLE_KEY`: Despite the name this is not a key, but

@@ -21,9 +21,9 @@ First, export your data from Gitter.
    Zulip.
 
     !!! warn ""
-        **Note:** You'll need a gitter API token to export data. You can get this
+        **Note:** You'll need a Gitter API token to export data. You can get this
         token by following the instructions in the "**Getting Started**" section of the
-        [gitter documentation](https://developer.gitter.im/docs/).
+        [Gitter documentation](https://developer.gitter.im/docs/).
 
 {end_tabs}
 
@@ -45,15 +45,14 @@ skipping "Step 3: Create a Zulip organization, and log in" (you'll
 create your Zulip organization via the data import tool instead).
 
 Log in to a shell on your Zulip server as the `zulip` user. To import with
-the most common configuration, run the following commands, replacing
-`<token>` with the value generated above.
+the most common configuration, run the following commands:
 
 ```
 cd /home/zulip/deployments/current
-supervisorctl stop all  # Stop the Zulip server
+./scripts/stop-server
 ./manage.py convert_gitter_data gitter_data.json --output converted_gitter_data
 ./manage.py import '' converted_gitter_data
-./scripts/restart-server
+./scripts/start-server
 ```
 
 This could take several minutes to run, depending on how much data
@@ -75,14 +74,14 @@ root domain. Replace the last line above with the following, after replacing
 
 {!import-login.md!}
 
-## Create organization administrators
+## Create organization owners
 
 The [Gitter API][gitter-api-user-data] don't contain data on which
 users are administrators of the Gitter channel.  As a result, all
 Gitter users are imported into Zulip as normal users.  You can follow
 the Zulip documentation on
-[making a user an administrator from the terminal][grant-admin-access]
-to mark the appropriate users as administrators.
+[making a user an organization owner from the terminal][grant-admin-access]
+to mark the appropriate users as organization owners.
 
 [grant-admin-access]: https://zulip.readthedocs.io/en/latest/production/management-commands.html#grant-administrator-access)
 [gitter-api-user-data]: https://developer.gitter.im/docs/user-resource
@@ -90,7 +89,7 @@ to mark the appropriate users as administrators.
 ## Caveats
 
 - The [Gitter data export tool](https://github.com/minrk/archive-gitter)
-  doesn't support exporting private gitter channels.
+  doesn't support exporting private Gitter channels.
 
 - Gitter's export tool doesn't export email addresses; just GitHub
   usernames.  The import tool will thus use [GitHub's generated
@@ -101,7 +100,7 @@ to mark the appropriate users as administrators.
   `{github_username}@users.noreply.github.com`.
 
   Since one cannot receive email at those noreply email addresses,
-  imported users will need to use GitHub authentication to login to
+  imported users will need to use GitHub authentication to log in to
   Zulip and will be unable to receive email notifications until they
   [change their Zulip email address](/help/change-your-email-address).
 
@@ -109,11 +108,9 @@ to mark the appropriate users as administrators.
   organization using [this
   tool](https://github.com/minrk/archive-gitter/pull/5).
 
-- This tool doesn't translate Gitter's markdown format into Zulip
-  format markdown (there are a few corner cases where the syntax is
-  different).  Additionally, Gitter's
-  [issue mentions](https://gitter.zendesk.com/hc/en-us/articles/200176692-Issue-and-Pull-Request-mentions)
-  aren't translated into anything yet.
+- This tool doesn't translate Gitter's Markdown format into Zulip
+  format Markdown (there are a few corner cases where the syntax is
+  different).  Additionally, Gitter's issue mention syntax isn't translated.
 
 [upgrade-zulip-from-git]: https://zulip.readthedocs.io/en/latest/production/upgrade-or-modify.html#upgrading-from-a-git-repository
 [github-noreply]: https://docs.github.com/en/github/setting-up-and-managing-your-github-user-account/setting-your-commit-email-address
